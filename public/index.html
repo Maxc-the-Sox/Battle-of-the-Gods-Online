@@ -1,0 +1,1765 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Battle of the Gods</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+    <style>
+        :root { --gold: #d4af37; --gold-light: #f3e2a9; --gold-dim: #8e7220; }
+        body { margin: 0; background: #0a0a0a; color: #ddd; font-family: 'Cormorant Garamond', 'Segoe UI', serif; overflow: hidden; }
+        canvas { display: block; }
+        #gameCanvas { cursor: grab; background: #1a2a35; }
+        #gameCanvas:active { cursor: grabbing; }
+        #fxCanvas { position: absolute; top: 0; left: 0; pointer-events: none; background: transparent; }
+
+        /* ---------- gemeinsamer Ornament-Rahmen für alle Panels ---------- */
+        .corner-tl, .corner-tr, .corner-bl, .corner-br { position: absolute; width: 15px; height: 15px; border: 2px solid var(--panel-color, var(--gold)); pointer-events: none; opacity: 0.95; }
+        .corner-tl { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+        .corner-tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
+        .corner-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
+        .corner-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+        /* Setup Overlay */
+        #setup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.75)), url('bg.jpg') no-repeat center center; background-size: cover; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+        #setup-overlay::before { content:''; position:absolute; inset:0; background: repeating-linear-gradient(115deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 90px); pointer-events:none; }
+
+        /* --- MENÜ DESIGN --- */
+        .menu-box {
+            position: relative;
+            background: linear-gradient(165deg, rgba(28,25,19,0.93), rgba(12,11,8,0.97));
+            padding: 46px 44px 32px;
+            border: 1px solid rgba(212,175,55,0.65);
+            text-align: center;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 60px rgba(212,175,55,0.08), inset 0 0 40px rgba(0,0,0,0.6);
+            width: 500px;
+            backdrop-filter: blur(5px);
+        }
+        .frame-corner { position: absolute; width: 36px; height: 36px; border: 2px solid var(--gold); opacity: 0.95; }
+        .frame-corner.tl { top: -10px; left: -10px; border-right: none; border-bottom: none; }
+        .frame-corner.tr { top: -10px; right: -10px; border-left: none; border-bottom: none; }
+        .frame-corner.bl { bottom: -10px; left: -10px; border-right: none; border-top: none; }
+        .frame-corner.br { bottom: -10px; right: -10px; border-left: none; border-top: none; }
+        .glow-orb { position: absolute; top: -60px; left: 50%; transform: translateX(-50%); width: 340px; height: 200px; background: radial-gradient(ellipse, rgba(212,175,55,0.32), transparent 70%); filter: blur(6px); pointer-events: none; }
+        .title-flourish { font-family: 'Cinzel', serif; font-size: 0.8em; letter-spacing: 6px; color: var(--gold); opacity: 0.8; margin-bottom: 4px; }
+        .menu-subtitle { font-family: 'Cormorant Garamond', serif; font-style: italic; color: #c9b98a; letter-spacing: 1px; margin: 0 0 24px; font-size: 1.05em; }
+        .divider-orn { display: flex; align-items: center; gap: 12px; color: var(--gold); opacity: 0.8; margin: 20px 0; font-family: 'Cinzel', serif; font-size: 0.8em; letter-spacing: 1px; text-transform: uppercase; }
+        .divider-orn::before, .divider-orn::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            font-weight: 900;
+            font-size: 3.2em;
+            text-transform: uppercase;
+            margin: 2px 0 4px;
+            letter-spacing: 3px;
+            background: linear-gradient(to bottom, #fff5c3 0%, #d4af37 40%, #aa8928 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 2px 0px rgba(0,0,0,1));
+        }
+
+        /* --- NEU: DEVELOPER CREDITS --- */
+        .dev-credits {
+            font-family: 'Cinzel', serif;
+            font-size: 0.78em;
+            color: #7d7362;
+            margin-top: 28px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            border-top: 1px solid rgba(212,175,55,0.25);
+            padding-top: 14px;
+        }
+        .dev-name {
+            color: #d4af37;
+            font-weight: bold;
+        }
+
+        .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; text-align: left; font-size: 0.95em; background: rgba(0,0,0,0.3); padding: 20px 22px; border: 1px solid rgba(212,175,55,0.3); }
+        .settings-grid label { font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 0.5px; text-transform: uppercase; color: #b9a86c; }
+        .settings-grid input { background: #0c0b08; border: 1px solid rgba(212,175,55,0.5); color: var(--gold-light); padding: 6px; border-radius: 2px; width: 60px; text-align: center; font-family: 'Cinzel', serif; font-weight: bold; }
+
+        .button-row { display: flex; gap: 16px; margin-top: 28px; }
+        .menu-btn { flex: 1; padding: 16px 0; font-size: 0.95em; font-family: 'Cinzel', serif; font-weight: bold; border-radius: 2px; cursor: pointer; text-transform: uppercase; transition: transform 0.2s, box-shadow 0.2s; letter-spacing: 1.5px; }
+        .btn-start { background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08; border: 1px solid #fff2cf; box-shadow: 0 8px 22px rgba(212,175,55,0.3); }
+        .btn-start:hover { background: linear-gradient(180deg, #fff2cf, #a4841f); transform: translateY(-2px); }
+        .btn-network { background: linear-gradient(180deg, #3f6f95, #223e54); color: #eaf4fb; border: 1px solid #7fb2d9; box-shadow: 0 8px 22px rgba(50,100,140,0.25); }
+        .btn-network:hover { background: linear-gradient(180deg, #5dade2, #3498db); transform: translateY(-2px); }
+
+        select { padding: 12px; width: 100%; background: #0c0b08; color: #f3e2a9; border: 1px solid rgba(212,175,55,0.5); border-radius: 2px; font-size: 1.05em; font-family: 'Cinzel', serif; outline: none; box-sizing: border-box; }
+
+        /* ---------- UI Panels (ornamentaler Rahmen, Spielerfarbe via --panel-color) ---------- */
+        #ui-panel, #inventory-panel, #apo-panel, #victory-panel {
+            position: absolute;
+            background: linear-gradient(160deg, rgba(38,34,26,0.92), rgba(18,16,12,0.95));
+            border: 1px solid var(--panel-color, var(--gold));
+            box-shadow: 0 8px 28px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.5), 0 0 18px color-mix(in srgb, var(--panel-color, var(--gold)) 35%, transparent);
+            padding: 18px 20px 20px;
+            width: 280px;
+            backdrop-filter: blur(6px);
+            transition: border-color 0.4s, box-shadow 0.4s;
+        }
+        #ui-panel { top: 20px; left: 20px; --panel-color: var(--gold); z-index: 10; }
+        #inventory-panel { bottom: 20px; right: 20px; --panel-color: #5dade2; z-index: 20; }
+        #apo-panel { bottom: 20px; left: 20px; --panel-color: #e57368; z-index: 10; font-size: 0.92em; }
+        #victory-panel { top: 20px; left: 20px; --panel-color: #f1c40f; z-index: 2000; text-align: center; }
+
+        .panel-header { font-family: 'Cinzel', serif; font-weight: 700; text-align: center; letter-spacing: 2px; text-transform: uppercase; font-size: 0.88em; color: var(--panel-color, var(--gold)); text-shadow: 0 0 10px color-mix(in srgb, var(--panel-color, var(--gold)) 60%, transparent); padding-bottom: 9px; margin-bottom: 12px; position: relative; }
+        .panel-header::after { content: '❖'; display: block; font-size: 0.7em; color: var(--panel-color, var(--gold)); margin-top: 7px; opacity: 0.85; }
+        .panel-header .rule { position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--panel-color, var(--gold)) 50%, transparent); }
+
+        .player-header {
+            position: relative; font-family: 'Cinzel', serif; font-weight: 700; text-align: center; letter-spacing: 1px; text-transform: uppercase;
+            padding: 10px; margin-bottom: 10px; color: #fff8ea; font-size: 1.02em;
+            background: linear-gradient(180deg, color-mix(in srgb, var(--panel-color) 35%, transparent), color-mix(in srgb, var(--panel-color) 8%, transparent));
+            border: 1px solid color-mix(in srgb, var(--panel-color) 70%, transparent);
+            text-shadow: 0 0 12px color-mix(in srgb, var(--panel-color) 70%, transparent), 0 1px 2px rgba(0,0,0,0.8);
+            box-shadow: 0 0 16px color-mix(in srgb, var(--panel-color) 30%, transparent), inset 0 0 12px rgba(0,0,0,0.35);
+        }
+        #guide-text { font-family: 'Cinzel', serif; background: linear-gradient(180deg, var(--gold-light), var(--gold)); color: #241c08; padding: 9px; font-size: 0.82em; font-weight: bold; text-align: center; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 8px rgba(212,175,55,0.35); }
+        #artifact-display { font-family: 'Cinzel', serif; text-align: center; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(241,196,15,0.5); color: var(--gold-light); padding: 10px; margin-bottom: 14px; font-weight: bold; font-size: 1.02em; letter-spacing: 0.5px; }
+
+        .inv-header { font-family: 'Cinzel', serif; color: #5dade2; font-weight: bold; text-transform: uppercase; text-align: center; padding-bottom: 9px; margin-bottom: 12px; letter-spacing: 2px; font-size: 0.88em; position: relative; }
+        .inv-header::after { content: '❖'; display: block; font-size: 0.7em; margin-top: 7px; opacity: 0.85; }
+        .inv-slot { background: linear-gradient(160deg, rgba(93,173,226,0.08), rgba(0,0,0,0.25)); border: 1px dashed rgba(93,173,226,0.4); padding: 9px 10px; margin-bottom: 7px; display: flex; align-items: center; gap: 4px; cursor: default; }
+        .inv-slot.filled { border: 1px solid #5dade2; background: linear-gradient(160deg, rgba(93,173,226,0.18), rgba(0,0,0,0.3)); cursor: pointer; }
+        .inv-slot.swap-mode { border-color: #e74c3c; cursor: pointer; animation: pulse-border 1s infinite; }
+        .inv-icon { font-size: 1.3em; margin-right: 11px; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 35% 30%, #2c3a44, #0e1518); border: 1px solid rgba(93,173,226,0.5); flex-shrink: 0; pointer-events: none; }
+        .inv-name { font-family: 'Cinzel', serif; font-weight: bold; font-size: 0.8em; letter-spacing: 0.5px; text-transform: uppercase; color: #cfe7f7; pointer-events: none; }
+
+        .apo-header { font-family: 'Cinzel', serif; color: #e57368; font-weight: bold; text-transform: uppercase; text-align: center; padding-bottom: 9px; margin-bottom: 10px; letter-spacing: 2px; font-size: 0.88em; position: relative; }
+        .apo-header::after { content: '❖'; display: block; font-size: 0.7em; margin-top: 7px; opacity: 0.85; }
+        .apo-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 1px; border-bottom: 1px solid rgba(229,115,104,0.18); font-family: 'Cinzel', serif; font-size: 0.85em; letter-spacing: 0.5px; }
+        .apo-row:last-of-type { border-bottom: none; }
+        .apo-status-safe { color: #8fe6ac; font-weight: bold; text-shadow: 0 0 6px rgba(111,207,151,0.5); }
+        .apo-status-safe::before { content: '◆ '; }
+        .apo-status-danger { color: #f1c40f; font-weight: bold; animation: pulse 1s infinite; }
+        .apo-status-danger::before { content: '◆ '; }
+        .apo-status-dead { color: #e57368; font-weight: bold; text-decoration: line-through; }
+        .apo-status-dead::before { content: '◆ '; }
+        .apo-next { margin-top: 10px; font-size: 0.85em; color: #cbb; text-align: center; padding-top: 9px; border-top: 1px solid rgba(229,115,104,0.25); font-family: 'Cormorant Garamond', serif; }
+
+        .victory-title { font-size: 1.8em; color: #f1c40f; text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 2px; border-bottom: 1px solid rgba(241,196,15,0.3); padding-bottom: 10px; font-family: 'Cinzel', serif; font-weight: bold; }
+        .victory-winner { font-family: 'Cinzel', serif; font-size: 1.1em; color: #fff2cf; margin-bottom: 15px; font-weight: bold; letter-spacing: 0.5px; }
+        .victory-reason { font-size: 1.05em; color: #c9b98a; margin-bottom: 20px; font-style: italic; }
+        .victory-btn { font-family: 'Cinzel', serif; background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08; font-size: 0.9em; letter-spacing: 1px; text-transform: uppercase; padding: 12px 0; border: 1px solid #fff2cf; border-radius: 2px; cursor: pointer; font-weight: bold; width: 100%; box-shadow: 0 8px 20px rgba(212,175,55,0.3); }
+        .victory-btn:hover { background: linear-gradient(180deg, #fff2cf, #a4841f); }
+
+        .btn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            font-family: 'Cinzel', serif; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; font-size: 0.8em;
+            background: linear-gradient(180deg, #3a3226, #211c14); color: #fff2cf; border: 1px solid rgba(212,175,55,0.55);
+            padding: 11px 8px; border-radius: 2px; cursor: pointer; width: 100%; margin-top: 9px; box-sizing: border-box;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+            transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
+        }
+        .btn:hover { transform: translateY(-1px); background: linear-gradient(180deg, #4a4030, #2a2418); box-shadow: 0 5px 16px rgba(212,175,55,0.25), inset 0 1px 0 rgba(255,255,255,0.12); }
+        .btn:disabled { background: #2a2a2a; color: #777; cursor: not-allowed; border: 1px solid #444; transform: none; box-shadow: none; }
+        .btn-gold { background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)) !important; color: #241c08 !important; border-color: #fff2cf !important; }
+        .btn-gold:hover { background: linear-gradient(180deg, #fff2cf, #a4841f) !important; }
+        .btn-ok { background: linear-gradient(180deg, #3f8f68, #1f4a35) !important; color: #eafff2 !important; border-color: #6fcf97 !important; }
+        .btn-danger { background: linear-gradient(180deg, #a8453b, #5e2019) !important; color: #ffe9e5 !important; border-color: #e57368 !important; }
+        .btn-secondary { background: linear-gradient(180deg, #5c6266, #34383a) !important; color: #f2f2f2 !important; border-color: #95a5a6 !important; }
+        .hidden { display: none !important; }
+
+        .card-preview { position: relative; background: radial-gradient(ellipse at 50% 0%, rgba(212,175,55,0.12), transparent 70%), linear-gradient(160deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.45); padding: 16px; text-align: center; margin: 10px 0; }
+        #card-icon { width: 54px; height: 54px; margin: 0 auto 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.6em; background: radial-gradient(circle at 35% 30%, #4a4030, #17140f); border: 2px solid var(--gold); box-shadow: 0 0 14px rgba(212,175,55,0.4), inset 0 0 10px rgba(0,0,0,0.6); }
+        #card-name { font-family: 'Cinzel', serif; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--gold-light); font-size: 0.9em; }
+        #dice-display { width: 68px; height: 68px; margin: 12px auto; display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-weight: 900; font-size: 1.8em; color: var(--gold-light); background: radial-gradient(circle at 35% 30%, #3a3226, #14120d); border: 2px solid var(--gold); border-radius: 10px; transform: rotate(2deg); box-shadow: 0 6px 16px rgba(0,0,0,0.55), inset 0 0 12px rgba(212,175,55,0.25); }
+        #dice-display.rolling { animation: shake 0.3s infinite; }
+        @keyframes shake { 0% { transform: rotate(2deg) translate(1px, 1px); } 50% { transform: rotate(-2deg) translate(-1px, 2px); } 100% { transform: rotate(2deg) translate(1px, -2px); } }
+        @keyframes pulse-border { 0% { border-color: #e74c3c; } 50% { border-color: #c0392b; } 100% { border-color: #e74c3c; } }
+        #hover-info { margin-top: 18px; border-top: 1px solid rgba(212,175,55,0.25); padding-top: 10px; font-size: 0.9em; color: #c9b98a; font-family: 'Cormorant Garamond', serif; }
+
+        #turn-toast {
+            position: fixed; top: 26px; left: 50%; transform: translateX(-50%) translateY(-14px);
+            font-family: 'Cinzel', serif; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; font-size: 1.1em;
+            color: #fff2cf; padding: 14px 32px;
+            background: linear-gradient(160deg, rgba(38,34,26,0.95), rgba(18,16,12,0.97));
+            border: 1px solid var(--gold); box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 22px rgba(212,175,55,0.35);
+            z-index: 1500; opacity: 0; transition: opacity 0.35s, transform 0.35s; pointer-events: none;
+        }
+        #turn-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* ---------- Anleitung / Tutorial ---------- */
+        .help-btn {
+            font-family: 'Cinzel', serif; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-size: 0.8em;
+            color: var(--gold-light); background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
+            padding: 10px 0; cursor: pointer; width: 100%; margin-top: 18px; box-sizing: border-box;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.4); transition: transform 0.15s, background 0.2s;
+        }
+        .help-btn:hover { transform: translateY(-1px); background: linear-gradient(180deg, #3a3226, #211c14); }
+        #help-fab {
+            position: fixed; top: 20px; right: 20px; z-index: 900; width: 42px; height: 42px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-weight: 900; font-size: 1.15em;
+            color: #241c08; background: radial-gradient(circle at 35% 30%, var(--gold-light), var(--gold-dim));
+            border: 1px solid #fff2cf; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(212,175,55,0.4);
+            transition: transform 0.15s;
+        }
+        #help-fab:hover { transform: scale(1.08); }
+
+        #tutorial-overlay {
+            position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center;
+            background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
+        }
+        .tutorial-box {
+            position: relative; width: 560px; max-width: 90vw; padding: 40px 42px 30px;
+            background: linear-gradient(165deg, rgba(28,25,19,0.96), rgba(12,11,8,0.98));
+            border: 1px solid rgba(212,175,55,0.65);
+            box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 60px rgba(212,175,55,0.1), inset 0 0 40px rgba(0,0,0,0.6);
+        }
+        .tutorial-close {
+            position: absolute; top: 14px; right: 16px; font-family: 'Cinzel', serif; font-size: 1.1em; color: #c9b98a;
+            background: none; border: none; cursor: pointer; opacity: 0.7; line-height: 1;
+        }
+        .tutorial-close:hover { opacity: 1; color: var(--gold-light); }
+        .tutorial-icon { font-size: 2.4em; text-align: center; margin-bottom: 6px; filter: drop-shadow(0 0 10px rgba(212,175,55,0.4)); }
+        .tutorial-title { font-family: 'Cinzel', serif; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; text-align: center; font-size: 1.25em; color: var(--gold-light); margin-bottom: 4px; }
+        .tutorial-step-label { text-align: center; font-family: 'Cinzel', serif; font-size: 0.72em; letter-spacing: 2px; color: var(--gold); opacity: 0.75; text-transform: uppercase; margin-bottom: 18px; }
+        .tutorial-body { font-family: 'Cormorant Garamond', serif; font-size: 1.15em; line-height: 1.55; color: #e8dcc0; min-height: 160px; }
+        .tutorial-body b { color: var(--gold-light); }
+        .tutorial-body ul { margin: 10px 0 0; padding-left: 22px; }
+        .tutorial-body li { margin-bottom: 8px; }
+        .tutorial-dots { display: flex; justify-content: center; gap: 8px; margin: 22px 0 20px; }
+        .tutorial-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(212,175,55,0.3); cursor: pointer; transition: background 0.2s, transform 0.2s; }
+        .tutorial-dot.active { background: var(--gold); transform: scale(1.3); }
+        .tutorial-nav { display: flex; gap: 16px; }
+        .tutorial-nav .btn { margin-top: 0; }
+
+        /* ---------- Online-Modus / Lobby ---------- */
+        .menu-box { max-height: 90vh; overflow-y: auto; }
+        .menu-btn.btn-secondary-menu { background: linear-gradient(180deg, #5c6266, #34383a); color: #f2f2f2; border: 1px solid #95a5a6; }
+        .menu-btn.btn-secondary-menu:hover { background: linear-gradient(180deg, #7c8286, #454a4c); transform: translateY(-2px); }
+        .color-picker { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 2px; }
+        .color-swatch { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid rgba(255,255,255,0.25); box-shadow: 0 2px 6px rgba(0,0,0,0.5); transition: transform 0.15s, border-color 0.15s; }
+        .color-swatch:hover { transform: scale(1.1); }
+        .color-swatch.selected { border-color: var(--gold-light); box-shadow: 0 0 10px var(--gold); }
+        .color-swatch.taken { opacity: 0.22; cursor: not-allowed; }
+        .lobby-member { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid rgba(212,175,55,0.15); font-family: 'Cinzel', serif; font-size: 0.85em; }
+        .lobby-swatch { width: 16px; height: 16px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+        .lobby-member-name { flex: 1; color: #f3e2a9; text-transform: none; letter-spacing: 0; }
+        .lobby-host-tag { font-size: 0.72em; color: var(--gold); border: 1px solid var(--gold); padding: 2px 6px; border-radius: 2px; letter-spacing: 1px; }
+        .lobby-input { background: #0c0b08; border: 1px solid rgba(212,175,55,0.5); color: #f3e2a9; padding: 10px; font-family: 'Cinzel', serif; box-sizing: border-box; width: 100%; }
+        #room-badge { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 900; font-family: 'Cinzel', serif; font-size: 0.8em; letter-spacing: 1px; color: #c9b98a; background: rgba(18,16,12,0.85); border: 1px solid rgba(212,175,55,0.4); padding: 6px 18px; border-radius: 2px; }
+        #room-badge-code { color: var(--gold-light); font-weight: bold; letter-spacing: 3px; }
+        #action-controls.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
+        #turn-lock-msg { text-align: center; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1px; color: #e57368; margin-bottom: 10px; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+
+<div id="setup-overlay">
+    <div class="menu-box">
+        <div class="glow-orb"></div>
+        <div class="frame-corner tl"></div><div class="frame-corner tr"></div>
+        <div class="frame-corner bl"></div><div class="frame-corner br"></div>
+        <div class="title-flourish">⚜ ✦ ⚜</div>
+        <h1>Battle of the Gods</h1>
+        <p class="menu-subtitle">Ein Zeitalter der Titanen bricht an</p>
+        <select id="player-count" onchange="updateDefaultSettings()">
+            <option value="2">2 Spieler</option><option value="3">3 Spieler</option>
+            <option value="4">4 Spieler</option><option value="5">5 Spieler</option>
+            <option value="6">6 Spieler</option>
+        </select>
+        <div class="divider-orn">Einstellungen</div>
+        <div class="settings-grid">
+            <label>Ziel Artefakte:</label><input type="number" id="cfg-target" value="7">
+            <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1" value="3">
+            <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2" value="5">
+            <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3" value="7">
+        </div>
+        <div class="button-row">
+            <button class="menu-btn btn-start" onclick="loadStandardMap()">⚔ Lokal spielen</button>
+            <button class="menu-btn btn-network" onclick="startNetworkMode()">🌐 Online spielen</button>
+        </div>
+        <button class="help-btn" onclick="openTutorial()">📖 Wie spielt man?</button>
+
+        <div class="dev-credits">
+            Dev: <span class="dev-name">Johannes K aka Maxc the Sox</span>
+        </div>
+
+    </div>
+</div>
+
+<div id="help-fab" class="hidden" onclick="openTutorial()" title="Anleitung">?</div>
+<div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
+
+<div id="lobby-overlay" class="hidden">
+    <div class="menu-box">
+        <div class="glow-orb"></div>
+        <div class="frame-corner tl"></div><div class="frame-corner tr"></div>
+        <div class="frame-corner bl"></div><div class="frame-corner br"></div>
+        <div class="title-flourish">⚜ ✦ ⚜</div>
+        <h1 style="font-size:2em;">Online Spielen</h1>
+        <p class="menu-subtitle">Kein Account, keine Installation — nur ein Raum-Code</p>
+
+        <div id="lobby-step-join">
+            <div class="settings-grid" style="grid-template-columns: 1fr;">
+                <label>Dein Name</label>
+                <input type="text" id="lobby-name-input" class="lobby-input" maxlength="24" placeholder="Name eingeben">
+                <label>Deine Farbe</label>
+                <div id="lobby-colors" class="color-picker"></div>
+                <label>Raum-Code (leer = neuen Raum erstellen)</label>
+                <input type="text" id="lobby-room-input" class="lobby-input" maxlength="4" placeholder="z.B. AB3K" style="text-transform:uppercase;">
+            </div>
+            <div class="button-row">
+                <button id="lobby-connect-btn" class="menu-btn btn-network" onclick="connectAndJoin()">🌐 VERBINDEN</button>
+                <button class="menu-btn btn-secondary-menu" onclick="backToMainMenu()">← Zurück</button>
+            </div>
+        </div>
+
+        <div id="lobby-step-room" class="hidden">
+            <div class="divider-orn">Raum-Code</div>
+            <div id="lobby-room-code" style="font-family:'Cinzel',serif;font-size:2.2em;letter-spacing:6px;color:var(--gold-light);text-align:center;font-weight:900;">----</div>
+            <div style="display:flex; gap:8px; margin: 10px 0 4px;">
+                <input type="text" id="lobby-share-link" class="lobby-input" readonly style="font-size:0.8em;">
+                <button id="lobby-copy-btn" class="btn" style="width:auto; margin:0; white-space:nowrap;" onclick="copyShareLink()">Link kopieren</button>
+            </div>
+            <p style="text-align:center; font-size:0.85em; color:#c9b98a; font-family:'Cormorant Garamond',serif;">Teile den Code oder Link mit deinen Freunden.</p>
+
+            <div class="divider-orn">Spieler im Raum</div>
+            <div id="lobby-members"></div>
+            <p id="lobby-count-hint" style="text-align:center; font-size:0.8em; color:#c9b98a; margin-top:6px;"></p>
+
+            <div id="lobby-host-settings" class="hidden">
+                <div class="divider-orn">Einstellungen (Host)</div>
+                <div class="settings-grid">
+                    <label>Ziel Artefakte:</label><input type="number" id="cfg-target-online" value="7">
+                    <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1-online" value="3">
+                    <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2-online" value="5">
+                    <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3-online" value="7">
+                </div>
+                <button id="lobby-start-btn" class="menu-btn btn-start" style="width:100%; margin-top:16px;" onclick="startOnlineGame()" disabled>⚔ SPIEL STARTEN</button>
+            </div>
+            <p id="lobby-wait-msg" class="hidden" style="text-align:center; font-family:'Cinzel',serif; color:#c9b98a; margin-top:16px;">Warte, bis der Host das Spiel startet…</p>
+            <button class="help-btn" style="margin-top:14px;" onclick="backToMainMenu()">← Raum verlassen</button>
+        </div>
+    </div>
+</div>
+
+<div id="tutorial-overlay" class="hidden">
+    <div class="tutorial-box">
+        <div class="corner-tl"></div><div class="corner-tr"></div>
+        <div class="corner-bl"></div><div class="corner-br"></div>
+        <button class="tutorial-close" onclick="closeTutorial()">✕</button>
+        <div id="tutorial-icon" class="tutorial-icon">📖</div>
+        <div id="tutorial-title" class="tutorial-title">Titel</div>
+        <div id="tutorial-step-label" class="tutorial-step-label">Schritt 1 / 8</div>
+        <div id="tutorial-body" class="tutorial-body">...</div>
+        <div id="tutorial-dots" class="tutorial-dots"></div>
+        <div class="tutorial-nav">
+            <button id="tutorial-prev" class="btn btn-secondary" onclick="tutorialStep(-1)">← Zurück</button>
+            <button id="tutorial-next" class="btn btn-gold" onclick="tutorialStep(1)">Weiter →</button>
+        </div>
+    </div>
+</div>
+
+<div id="victory-panel" class="hidden">
+    <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
+    <h1 class="victory-title">SIEG!</h1>
+    <div id="winner-name" class="victory-winner">Spieler X</div>
+    <div id="victory-reason" class="victory-reason">...</div>
+    <button class="victory-btn" onclick="location.reload()">NEUES SPIEL</button>
+</div>
+
+<div id="ui-panel" class="hidden">
+    <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
+    <div id="player-turn-display" class="player-header">Spieler X</div>
+    <div id="guide-text">BITTE WARTEN...</div>
+    <div id="artifact-display">🏆 Artefakte: 0 / ?</div>
+    <div id="turn-lock-msg" class="hidden">⏳ Warte auf anderen Spieler…</div>
+    <div id="action-controls">
+        <div id="choice-area">
+            <button id="btn-choice-draw" class="btn btn-gold" onclick="handleChoice('DRAWING')">⚔ 2x Karte ziehen</button>
+            <button id="btn-choice-move" class="btn" onclick="handleChoice('MOVING')">🧭 Bewegen</button>
+        </div>
+        <div id="drawing-area" class="hidden">
+            <div id="draw-selection">
+                <button class="btn" onclick="prepareDraw('LANDSCAPE')">Landschaftskarte ziehen</button>
+                <button class="btn" onclick="prepareDraw('ACTION')">Aktionskarte ziehen</button>
+                <p style="text-align:center; font-size:0.85em; margin-top:8px; font-family:'Cormorant Garamond',serif;">Noch <span id="cards-left-display">2</span> Karten</p>
+            </div>
+            <div id="active-card" class="hidden">
+                <div class="card-preview">
+                    <span id="card-icon"></span>
+                    <span id="card-name"></span>
+                </div>
+                <div id="dice-section" class="hidden">
+                    <div id="dice-display"><span id="dice-symbol">?</span></div>
+                    <button id="btn-roll-dice" class="btn btn-gold" onclick="rollDice()">Würfeln</button>
+                </div>
+                <p id="placement-info" style="font-size: 0.88em; color: var(--gold-light); text-align:center; font-weight:bold; font-family:'Cinzel',serif;"></p>
+                <div id="rotation-controls" class="hidden"><button class="btn" onclick="rotateRiver()">Drehen ↻</button><button class="btn btn-ok" onclick="confirmRiver()">Setzen ✓</button></div>
+            </div>
+            <button id="btn-finish-drawing" class="btn btn-danger hidden" onclick="cancelCurrentCard()">Ziehen beenden</button>
+            <button id="btn-discard-new" class="btn btn-danger hidden" onclick="discardNewCard()">Neue Karte abwerfen</button>
+        </div>
+        <div id="movement-area" class="hidden">
+            <p id="ap-display" style="text-align:center; font-weight:bold; color:#6fcf97; margin-bottom:6px; font-family:'Cinzel',serif; font-size:0.85em; letter-spacing:0.5px;"></p>
+            <button class="btn btn-secondary" onclick="deselectUnit()">Auswahl aufheben</button>
+            <button class="btn btn-danger" onclick="finishPath()">Bewegung beenden</button>
+        </div>
+    </div>
+    <div id="hover-info" style="display: none;"><div id="hover-terrain" style="color: #fff2cf; font-weight: bold;"></div><div id="hover-extra" style="color: var(--gold-light); font-weight: bold;"></div></div>
+</div>
+
+<div id="inventory-panel" class="hidden">
+    <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
+    <div class="inv-header">Inventar (Max 3)</div>
+    <div id="inv-slot-0" class="inv-slot" onclick="handleInventoryClick(0)"><span class="inv-icon"></span><span class="inv-name">Leer</span></div>
+    <div id="inv-slot-1" class="inv-slot" onclick="handleInventoryClick(1)"><span class="inv-icon"></span><span class="inv-name">Leer</span></div>
+    <div id="inv-slot-2" class="inv-slot" onclick="handleInventoryClick(2)"><span class="inv-icon"></span><span class="inv-name">Leer</span></div>
+</div>
+
+<div id="apo-panel" class="hidden">
+    <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
+    <div class="apo-header">Apokalypse Status</div>
+    <div class="apo-row"><span>Ring 1</span> <span id="apo-1" class="apo-status-safe">STABIL</span></div>
+    <div class="apo-row"><span>Ring 2</span> <span id="apo-2" class="apo-status-safe">STABIL</span></div>
+    <div class="apo-row"><span>Ring 3</span> <span id="apo-3" class="apo-status-safe">STABIL</span></div>
+    <div class="apo-next">Nächster Kollaps bei <span id="apo-next-trigger" style="color:#f3e2a9; font-weight:bold;">3</span> Artefakten</div>
+</div>
+
+<div id="turn-toast" class="hidden"></div>
+
+<canvas id="gameCanvas"></canvas>
+<canvas id="fxCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const fxCanvas = document.getElementById('fxCanvas');
+const fctx = fxCanvas.getContext('2d');
+let mapData = { hexes: {}, landmarks: [] };
+let hexSize = 40, camera = { x: 0, y: 0, zoom: 0.8 }, iconCache = {};
+let players = [], currentPlayerIdx = 0, gameState = "SETUP";
+let drawPoints = 2, actionPoints = 2, collectedArtifacts = 0;
+let targetArtifacts = 7, ringThresholds = [3, 5, 7], closedRings = { outer: false, middle: false, inner: false };
+let pathDrawn = false, pathMoved = false, isDragging = false, lastMouse = { x: 0, y: 0 };
+let currentCard = null, diceValue = 0, placementsRemaining = 0, pendingRiverHex = null, selectedUnit = null, riverEscapeHexes = [];
+let pendingCardSlot = null, pushRemaining = 0, currentPushUnit = null;
+let boatLandingTargets = []; 
+let isGameOver = false;
+
+const terrainColors = { water: '#4fa3e0', river: '#81ecec', desert: '#d4bb7e', swamp: '#3d4a3d', plains: '#5a8d46', forest: '#1b4d3e', mountains: '#4d4d4d', road: '#333333', hills: '#8a7355', tundra: '#c3d3d9', void: '#000' };
+const terrainNames = { water: 'Wasser', river: 'Fluss', desert: 'Wüste', swamp: 'STARTBURG', plains: 'Ebene', forest: 'Wald', mountains: 'Gebirge', road: 'STRASSE', hills: 'Hügel', tundra: 'Tundra', void: 'VERNICHTET' };
+const hexDirections = [{q:1,r:0}, {q:0,r:1}, {q:-1,r:1}, {q:-1,r:0}, {q:0,r:-1}, {q:1,r:-1}];
+
+function getHexDistance(q1, r1, q2, r2) { return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2; }
+
+// ================= GRAFIK: Terrain-Sprites, Figuren, Ruinen =================
+const REF_S = 80, SPR_PAD = 10, SPR_D = REF_S * 2 + SPR_PAD * 2;
+function shade(hexColor, percent) {
+    const n = parseInt(hexColor.slice(1), 16);
+    let r = (n >> 16) + percent, g = (n >> 8 & 0xff) + percent, b = (n & 0xff) + percent;
+    r = Math.min(255, Math.max(0, r)); g = Math.min(255, Math.max(0, g)); b = Math.min(255, Math.max(0, b));
+    return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
+}
+function seededRandom(seed) {
+    let s = seed >>> 0;
+    return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+function hexSpritePath(sctx, cx, cy, s) {
+    sctx.beginPath();
+    for (let i = 6; i--;) sctx.lineTo(cx + s * Math.cos(Math.PI / 3 * i), cy + s * Math.sin(Math.PI / 3 * i));
+    sctx.closePath();
+}
+function makeDecor(terrain, seed) {
+    const rnd = seededRandom(seed);
+    if (terrain === 'forest') {
+        return Array.from({ length: 7 }, () => {
+            const oy = -0.5 + rnd() * 0.95;
+            const scale = 0.42 + ((oy + 0.5) / 0.95) * 0.35 + rnd() * 0.15;
+            return { ox: (rnd() - 0.5) * 1.5, oy, scale, z: oy };
+        });
+    }
+    if (terrain === 'mountains') {
+        const count = 2 + Math.floor(rnd() * 2);
+        return Array.from({ length: count }, () => ({ dx: (rnd() - 0.5) * 1.3, w: 0.7 + rnd() * 0.5, h: 0.95 + rnd() * 0.65 })).sort((a, b) => a.h - b.h);
+    }
+    if (terrain === 'desert') return Array.from({ length: 22 }, () => ({ a: rnd() * Math.PI * 2, r: rnd() * 0.85 }));
+    if (terrain === 'tundra') return Array.from({ length: 16 }, () => ({ a: rnd() * Math.PI * 2, r: rnd() * 0.85 }));
+    if (terrain === 'swamp') return Array.from({ length: 5 }, () => ({ a: rnd() * Math.PI * 2, r: rnd() * 0.6, size: 2 + rnd() * 3 }));
+    if (terrain === 'plains') return Array.from({ length: 14 }, () => ({ a: rnd() * Math.PI * 2, r: rnd() * 0.8 }));
+    return null;
+}
+function drawTree(sctx, cx, cy, s, ox, oy, scale) {
+    const canopy = '#3fa15f';
+    const x = cx + ox * s, yBase = cy + oy * s, size = s * 0.68 * scale;
+    sctx.save(); sctx.shadowColor = 'rgba(0,0,0,0.55)'; sctx.shadowBlur = 4; sctx.shadowOffsetY = 2;
+    sctx.fillStyle = '#5a3d22';
+    sctx.fillRect(x - size * 0.06, yBase, size * 0.12, size * 0.26);
+    for (let i = 0; i < 3; i++) {
+        const w = size * (0.95 - i * 0.22), yy = yBase - i * size * 0.3;
+        sctx.beginPath();
+        sctx.moveTo(x, yy - size * 0.58); sctx.lineTo(x - w / 2, yy); sctx.lineTo(x + w / 2, yy); sctx.closePath();
+        const g = sctx.createLinearGradient(x - w / 2, yy - size * 0.5, x + w / 2, yy);
+        g.addColorStop(0, shade(canopy, 22)); g.addColorStop(1, shade(canopy, -16));
+        sctx.fillStyle = g; sctx.fill();
+        sctx.strokeStyle = 'rgba(0,0,0,0.4)'; sctx.lineWidth = 1; sctx.stroke();
+    }
+    sctx.restore();
+}
+function drawMountainPeaks(sctx, cx, cy, s, base, decor) {
+    decor.forEach((p, i) => {
+        const x = cx + p.dx * s, w = p.w * s, h = p.h * s, y = cy + s * 0.42;
+        sctx.save(); if (i === decor.length - 1) { sctx.shadowColor = 'rgba(0,0,0,0.5)'; sctx.shadowBlur = 4; }
+        sctx.beginPath(); sctx.moveTo(x - w / 2, y); sctx.lineTo(x, y - h); sctx.lineTo(x + w / 2, y); sctx.closePath();
+        const g = sctx.createLinearGradient(x - w / 2, y, x + w / 2, y - h);
+        g.addColorStop(0, shade(base, -18)); g.addColorStop(1, shade(base, 22));
+        sctx.fillStyle = g; sctx.fill();
+        sctx.strokeStyle = 'rgba(0,0,0,0.35)'; sctx.lineWidth = 1; sctx.stroke();
+        sctx.beginPath();
+        sctx.moveTo(x - w * 0.16, y - h * 0.68); sctx.lineTo(x, y - h); sctx.lineTo(x + w * 0.16, y - h * 0.68);
+        sctx.lineTo(x + w * 0.06, y - h * 0.56); sctx.lineTo(x - w * 0.06, y - h * 0.56); sctx.closePath();
+        sctx.fillStyle = 'rgba(255,255,255,0.92)'; sctx.fill();
+        sctx.restore();
+    });
+}
+function paintHexTerrain(sctx, cx, cy, s, terrain, decor) {
+    const base = terrainColors[terrain] || '#2f3640';
+    hexSpritePath(sctx, cx + 2, cy + 4, s); sctx.fillStyle = 'rgba(0,0,0,0.32)'; sctx.fill();
+    hexSpritePath(sctx, cx, cy, s);
+    const grad = sctx.createLinearGradient(cx - s, cy - s, cx + s, cy + s);
+    grad.addColorStop(0, shade(base, 32)); grad.addColorStop(0.55, base); grad.addColorStop(1, shade(base, -28));
+    sctx.fillStyle = grad; sctx.fill();
+
+    sctx.save(); hexSpritePath(sctx, cx, cy, s); sctx.clip();
+    if (terrain === 'water' || terrain === 'river') {
+        sctx.strokeStyle = shade(base, 55); sctx.globalAlpha = 0.55; sctx.lineWidth = terrain === 'river' ? 2.6 : 2;
+        for (let i = -1; i <= 1; i++) { sctx.beginPath();
+            for (let x = -s; x <= s; x += 6) { const y = cy + i * s * 0.45 + Math.sin((x + i * 20) / 9) * 4; x === -s ? sctx.moveTo(cx + x, y) : sctx.lineTo(cx + x, y); }
+            sctx.stroke(); }
+        sctx.globalAlpha = 0.3;
+        const shimmer = sctx.createLinearGradient(cx - s * 0.3, cy - s, cx + s * 0.7, cy + s);
+        shimmer.addColorStop(0, 'rgba(255,255,255,0)'); shimmer.addColorStop(0.5, 'rgba(255,255,255,0.75)'); shimmer.addColorStop(1, 'rgba(255,255,255,0)');
+        sctx.fillStyle = shimmer; sctx.fillRect(cx - s, cy - s, 2 * s, 2 * s);
+        sctx.globalAlpha = 1;
+    } else if (terrain === 'desert') {
+        sctx.fillStyle = shade(base, -42); sctx.globalAlpha = 0.55;
+        decor.forEach(d => { sctx.beginPath(); sctx.arc(cx + Math.cos(d.a) * d.r * s, cy + Math.sin(d.a) * d.r * s, 1.4, 0, 7); sctx.fill(); });
+        sctx.globalAlpha = 0.18; sctx.strokeStyle = shade(base, 40); sctx.lineWidth = 6;
+        sctx.beginPath(); sctx.arc(cx, cy + s * 0.6, s * 0.9, Math.PI * 1.15, Math.PI * 1.85); sctx.stroke();
+        sctx.globalAlpha = 1;
+    } else if (terrain === 'plains') {
+        sctx.strokeStyle = shade(base, 55); sctx.globalAlpha = 0.55; sctx.lineWidth = 1.5;
+        decor.forEach(d => { const x = cx + Math.cos(d.a) * d.r * s, y = cy + Math.sin(d.a) * d.r * s;
+            sctx.beginPath(); sctx.moveTo(x, y); sctx.lineTo(x + 3, y - 6); sctx.stroke(); });
+        sctx.globalAlpha = 1;
+    } else if (terrain === 'forest') {
+        decor.slice().sort((a, b) => a.z - b.z).forEach(d => drawTree(sctx, cx, cy, s, d.ox, d.oy, d.scale));
+    } else if (terrain === 'mountains') {
+        drawMountainPeaks(sctx, cx, cy, s, base, decor);
+    } else if (terrain === 'hills') {
+        sctx.strokeStyle = shade(base, 45); sctx.lineWidth = 2; sctx.globalAlpha = 0.6;
+        for (let i = 0; i < 3; i++) { sctx.beginPath(); sctx.arc(cx, cy + s * 0.5 - i * s * 0.32, s * 0.55 + i * s * 0.1, Math.PI * 1.1, Math.PI * 1.9); sctx.stroke(); }
+        sctx.globalAlpha = 1;
+    } else if (terrain === 'tundra') {
+        sctx.fillStyle = 'rgba(255,255,255,0.75)';
+        decor.forEach(d => { sctx.beginPath(); sctx.arc(cx + Math.cos(d.a) * d.r * s, cy + Math.sin(d.a) * d.r * s, 1.2, 0, 7); sctx.fill(); });
+    } else if (terrain === 'swamp') {
+        sctx.strokeStyle = shade(base, 30); sctx.globalAlpha = 0.5; sctx.lineWidth = 1.5;
+        for (let i = -1; i <= 1; i++) { sctx.beginPath();
+            for (let x = -s; x <= s; x += 8) { const y = cy + i * s * 0.45 + Math.sin((x + i * 20) / 6) * 3; x === -s ? sctx.moveTo(cx + x, y) : sctx.lineTo(cx + x, y); }
+            sctx.stroke(); }
+        sctx.globalAlpha = 0.5; sctx.strokeStyle = 'rgba(200,220,200,0.6)';
+        decor.forEach(d => { sctx.beginPath(); sctx.arc(cx + Math.cos(d.a) * d.r * s, cy + Math.sin(d.a) * d.r * s, d.size, 0, 7); sctx.stroke(); });
+        sctx.globalAlpha = 1;
+    }
+    const rim = sctx.createLinearGradient(cx - s, cy - s, cx - s, cy);
+    rim.addColorStop(0, 'rgba(255,255,255,0.22)'); rim.addColorStop(1, 'rgba(255,255,255,0)');
+    sctx.fillStyle = rim; sctx.fillRect(cx - s, cy - s, 2 * s, s);
+    sctx.restore();
+
+    hexSpritePath(sctx, cx, cy, s); sctx.strokeStyle = 'rgba(0,0,0,0.45)'; sctx.lineWidth = 1.3; sctx.stroke();
+    if (terrain === 'swamp') {
+        sctx.save(); sctx.shadowColor = 'rgba(0,0,0,0.6)'; sctx.shadowBlur = 5;
+        sctx.font = `bold ${s * 0.85}px Arial`; sctx.textAlign = 'center'; sctx.textBaseline = 'middle'; sctx.fillStyle = 'white';
+        sctx.fillText('🏰', cx, cy); sctx.restore();
+    }
+}
+function bakeHex(hex) {
+    // Straße und Fluss ersetzen das Gelände nicht - sie führen nur darüber. Sprite zeigt also den Untergrund.
+    const groundTerrain = (hex.terrain === 'road' || hex.terrain === 'river') ? (hex.baseTerrain || 'plains') : hex.terrain;
+    hex.decor = makeDecor(groundTerrain, (hex.q + 5000) * 100000 + (hex.r + 5000));
+    const c = document.createElement('canvas'); c.width = SPR_D; c.height = SPR_D;
+    paintHexTerrain(c.getContext('2d'), SPR_D / 2, SPR_D / 2, REF_S, groundTerrain, hex.decor);
+    hex.sprite = c;
+}
+function roadDirOffset(i, s) { const d = hexDirections[i]; return { dx: s * 1.5 * d.q, dy: s * Math.sqrt(3) * (d.r + d.q / 2) }; }
+function drawRoadConnections(ctx, hex, x, y, s) {
+    const connected = [];
+    hexDirections.forEach((d, i) => { const n = mapData.hexes[`${hex.q + d.q},${hex.r + d.r}`]; if (n && n.terrain === 'road') connected.push(i); });
+    const rnd = seededRandom((hex.q + 5000) * 100000 + (hex.r + 5000) + 7);
+    const stoneBase = '#b0a488', stoneAlt = '#9c8f74', joint = 'rgba(55,45,32,0.6)';
+    const halfW = s * 0.27;
+    function slabsAlong(x1, y1, x2, y2) {
+        const dx = x2 - x1, dy = y2 - y1, dist = Math.hypot(dx, dy);
+        const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
+        const slabLen = s * 0.24;
+        const steps = Math.max(2, Math.round(dist / slabLen));
+        for (let t = 0; t < steps; t++) {
+            const f0 = t / steps, f1 = (t + 1) / steps;
+            const cxm = x1 + dx * (f0 + f1) / 2, cym = y1 + dy * (f0 + f1) / 2;
+            const wob = (rnd() - 0.5) * halfW * 0.35;
+            const w = halfW * (0.82 + rnd() * 0.28);
+            const half = slabLen * 0.44;
+            const c1 = [cxm - ux*half + px*(w+wob), cym - uy*half + py*(w+wob)];
+            const c2 = [cxm + ux*half + px*(w-wob*0.5), cym + uy*half + py*(w-wob*0.5)];
+            const c3 = [cxm + ux*half - px*(w+wob*0.5), cym + uy*half - py*(w+wob*0.5)];
+            const c4 = [cxm - ux*half - px*(w-wob), cym - uy*half - py*(w-wob)];
+            ctx.beginPath(); ctx.moveTo(c1[0],c1[1]); ctx.lineTo(c2[0],c2[1]); ctx.lineTo(c3[0],c3[1]); ctx.lineTo(c4[0],c4[1]); ctx.closePath();
+            ctx.fillStyle = rnd() > 0.5 ? stoneBase : stoneAlt; ctx.fill();
+            ctx.strokeStyle = joint; ctx.lineWidth = s * 0.032; ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = s * 0.045;
+        ctx.beginPath(); ctx.moveTo(x1+px*halfW, y1+py*halfW); ctx.lineTo(x2+px*halfW, y2+py*halfW); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x1-px*halfW, y1-py*halfW); ctx.lineTo(x2-px*halfW, y2-py*halfW); ctx.stroke();
+    }
+    ctx.save();
+    if (connected.length === 0) slabsAlong(x - s*0.28, y, x + s*0.28, y);
+    else connected.forEach(i => { const o = roadDirOffset(i, s); slabsAlong(x, y, x + o.dx*0.55, y + o.dy*0.55); });
+    ctx.beginPath(); ctx.arc(x, y, s*0.23, 0, 7); ctx.fillStyle = stoneBase; ctx.fill();
+    ctx.strokeStyle = joint; ctx.lineWidth = s*0.032; ctx.stroke();
+    ctx.restore();
+}
+function opposite(i) { return (i + 3) % 6; }
+function drawRiverConnections(ctx, hex, x, y, s) {
+    const deep = '#2f8fa8', light = '#9beef0';
+    const spokes = [];
+    const outDir = hex.direction || 0;
+    const outNeighbor = mapData.hexes[`${hex.q + hexDirections[outDir].q},${hex.r + hexDirections[outDir].r}`];
+    const isEndOut = !outNeighbor || outNeighbor.terrain !== 'river';
+    spokes.push({ dir: outDir, out: true, isEnd: isEndOut });
+    hexDirections.forEach((d, i) => {
+        const n = mapData.hexes[`${hex.q + d.q},${hex.r + d.r}`];
+        if (n && n.terrain === 'river' && (n.direction || 0) === opposite(i)) spokes.push({ dir: i, out: false, isEnd: false });
+    });
+    function band(x1, y1, x2, y2, out, isEnd, seed) {
+        const dx0 = x2-x1, dy0 = y2-y1, dist0 = Math.hypot(dx0,dy0);
+        const nx = -dy0/dist0, ny = dx0/dist0;
+        const rnd0 = seededRandom(seed);
+        const wob = (rnd0()-0.5) * s * 0.55;
+        const mx = (x1+x2)/2 + nx*wob, my = (y1+y2)/2 + ny*wob;
+        ctx.strokeStyle = deep; ctx.lineWidth = s*0.58; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(mx,my,x2,y2); ctx.stroke();
+        ctx.strokeStyle = light; ctx.lineWidth = s*0.34;
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(mx,my,x2,y2); ctx.stroke();
+        const steps = 2;
+        for (let t = 1; t <= steps; t++) {
+            const f = t/(steps+1), omf = 1-f;
+            const px = omf*omf*x1 + 2*omf*f*mx + f*f*x2;
+            const py = omf*omf*y1 + 2*omf*f*my + f*f*y2;
+            const tx = 2*omf*(mx-x1) + 2*f*(x2-mx);
+            const ty = 2*omf*(my-y1) + 2*f*(y2-my);
+            const ang = Math.atan2(ty,tx) + (out ? 0 : Math.PI);
+            ctx.save(); ctx.translate(px,py); ctx.rotate(ang);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.beginPath(); ctx.moveTo(-s*0.07,-s*0.115); ctx.lineTo(s*0.115,0); ctx.lineTo(-s*0.07,s*0.115); ctx.closePath(); ctx.fill();
+            ctx.restore();
+        }
+        if (isEnd) {
+            const etx = 2*(x2-mx), ety = 2*(y2-my);
+            const dist = Math.hypot(etx,ety);
+            const ux = etx/dist, uy = ety/dist;
+            const dx = dx0, dy = dy0;
+            const ppx = -uy, ppy = ux;
+            const extra = s*0.68;
+            const midW = s*0.32, tipW = s*0.50;
+            const xm = x2+ux*extra*0.5, ym = y2+uy*extra*0.5;
+            const xt = x2+ux*extra, yt = y2+uy*extra;
+            ctx.save();
+            const grad = ctx.createLinearGradient(x2,y2,xt,yt);
+            grad.addColorStop(0, 'rgba(155,238,240,0.88)');
+            grad.addColorStop(0.55, 'rgba(155,238,240,0.45)');
+            grad.addColorStop(1, 'rgba(155,238,240,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(x2+ppx*s*0.17, y2+ppy*s*0.17);
+            ctx.quadraticCurveTo(xm+ppx*midW, ym+ppy*midW, xt+ppx*tipW*0.25, yt+ppy*tipW*0.25);
+            ctx.lineTo(xt-ppx*tipW*0.25, yt-ppy*tipW*0.25);
+            ctx.quadraticCurveTo(xm-ppx*midW, ym-ppy*midW, x2-ppx*s*0.17, y2-ppy*s*0.17);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            const rnd = seededRandom(((x2*131+y2*97)|0) >>> 0);
+            for (let i=0;i<5;i++){
+                const f = 0.35+rnd()*0.75;
+                const side = (rnd()-0.5)*2;
+                const px2 = x2+ux*extra*f + ppx*side*tipW*f*0.75;
+                const py2 = y2+uy*extra*f + ppy*side*tipW*f*0.75;
+                const r = s*(0.025+rnd()*0.05);
+                ctx.beginPath(); ctx.arc(px2, py2, r, 0, 7);
+                ctx.fillStyle = 'rgba(200,246,248,'+(0.45+rnd()*0.35)+')'; ctx.fill();
+            }
+            ctx.save();
+            ctx.shadowColor = 'rgba(155,238,240,0.95)'; ctx.shadowBlur = s*0.28;
+            const ang = Math.atan2(dy,dx);
+            ctx.translate(x2,y2); ctx.rotate(ang);
+            ctx.beginPath(); ctx.ellipse(0,0, s*0.2, s*0.14, 0, 0, 7);
+            ctx.fillStyle = light; ctx.fill();
+            ctx.strokeStyle = deep; ctx.lineWidth = s*0.04; ctx.stroke();
+            ctx.restore();
+            ctx.save();
+            ctx.beginPath(); ctx.arc(x2,y2, s*0.075, 0, 7);
+            ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
+            ctx.restore();
+        }
+    }
+    ctx.save();
+    spokes.forEach(sp => {
+        const o = roadDirOffset(sp.dir, s);
+        const seed = (hex.q + 5000) * 100000 + (hex.r + 5000) + sp.dir * 13 + 31;
+        band(x, y, x+o.dx*0.58, y+o.dy*0.58, sp.out, sp.isEnd, seed);
+    });
+    ctx.beginPath(); ctx.arc(x,y,s*0.28,0,7); ctx.fillStyle = deep; ctx.fill();
+    ctx.beginPath(); ctx.arc(x,y,s*0.18,0,7); ctx.fillStyle = light; ctx.globalAlpha=0.7; ctx.fill(); ctx.globalAlpha=1;
+    ctx.restore();
+}
+function drawVoidHex(dctx, x, y, s) {
+    hexSpritePath(dctx, x, y, s); dctx.fillStyle = '#050505'; dctx.fill();
+    dctx.strokeStyle = 'rgba(255,255,255,0.08)'; dctx.lineWidth = 1; dctx.stroke();
+    dctx.font = `${s}px Arial`; dctx.textAlign = 'center'; dctx.textBaseline = 'middle'; dctx.fillStyle = 'rgba(255,255,255,0.6)';
+    dctx.fillText('☁️', x, y);
+}
+function drawShieldToken(dctx, cx, cy, s, color, glow) {
+    const w = s * 0.85, h = s * 1.05;
+    dctx.save();
+    if (glow) { dctx.shadowColor = 'rgba(241,196,15,0.95)'; dctx.shadowBlur = 14; }
+    else { dctx.shadowColor = 'rgba(0,0,0,0.6)'; dctx.shadowBlur = 5; dctx.shadowOffsetY = 2; }
+    dctx.beginPath();
+    dctx.moveTo(cx - w / 2, cy - h / 2 + w * 0.18);
+    dctx.quadraticCurveTo(cx - w / 2, cy - h / 2 - w * 0.05, cx, cy - h / 2);
+    dctx.quadraticCurveTo(cx + w / 2, cy - h / 2 - w * 0.05, cx + w / 2, cy - h / 2 + w * 0.18);
+    dctx.lineTo(cx + w / 2, cy + h * 0.05);
+    dctx.quadraticCurveTo(cx + w / 2, cy + h * 0.42, cx, cy + h / 2);
+    dctx.quadraticCurveTo(cx - w / 2, cy + h * 0.42, cx - w / 2, cy + h * 0.05);
+    dctx.closePath();
+    const g = dctx.createLinearGradient(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
+    g.addColorStop(0, shade(color, 55)); g.addColorStop(0.5, color); g.addColorStop(1, shade(color, -55));
+    dctx.fillStyle = g; dctx.fill();
+    dctx.restore();
+    dctx.lineWidth = glow ? 2.5 : 1.6; dctx.strokeStyle = glow ? '#f1c40f' : 'rgba(255,255,255,0.85)'; dctx.stroke();
+    dctx.beginPath(); dctx.ellipse(cx - w * 0.18, cy - h * 0.28, w * 0.16, h * 0.09, -0.5, 0, 7);
+    dctx.fillStyle = 'rgba(255,255,255,0.5)'; dctx.fill();
+}
+function drawLandmarkBadge(dctx, cx, cy, s, kind, phase) {
+    const icon = kind === 'temple' ? '🏛️' : (kind === 'looted' ? '🕸️' : '🏺');
+    const gold = kind === 'temple';
+    dctx.save();
+    dctx.shadowColor = gold ? 'rgba(255,215,90,0.9)' : 'rgba(212,175,55,0.55)'; dctx.shadowBlur = 14;
+    dctx.beginPath(); dctx.arc(cx, cy, s * 0.6, 0, 7);
+    const grad = dctx.createRadialGradient(cx - 6, cy - 8, 4, cx, cy, s * 0.6);
+    grad.addColorStop(0, gold ? '#3a3010' : '#2a2018'); grad.addColorStop(1, gold ? '#0f0c02' : '#0a0806');
+    dctx.fillStyle = grad; dctx.fill(); dctx.restore();
+    dctx.save(); dctx.translate(cx, cy); dctx.rotate(phase * 0.4);
+    dctx.beginPath(); dctx.arc(0, 0, s * 0.68, 0, 7); dctx.setLineDash([4, 7]);
+    dctx.strokeStyle = gold ? '#f1c40f' : '#8B7355'; dctx.lineWidth = 2; dctx.stroke(); dctx.restore();
+    if (kind === 'looted') dctx.globalAlpha = 0.65;
+    dctx.save(); dctx.shadowColor = 'rgba(0,0,0,0.7)'; dctx.shadowBlur = 6;
+    dctx.font = `${s * 0.95}px serif`; dctx.textAlign = 'center'; dctx.textBaseline = 'middle';
+    dctx.fillText(icon, cx, cy); dctx.restore(); dctx.globalAlpha = 1;
+    if (gold) {
+        for (let i = 0; i < 5; i++) {
+            const ang = phase * 0.8 + i * (Math.PI * 2 / 5);
+            const rr = s * 0.85 + Math.sin(phase * 2 + i) * 4;
+            const op = 0.4 + 0.6 * Math.max(0, Math.sin(phase * 2.2 + i * 1.7));
+            dctx.beginPath(); dctx.arc(cx + Math.cos(ang) * rr, cy + Math.sin(ang) * rr, 1.6, 0, 7);
+            dctx.fillStyle = `rgba(255,240,180,${op})`; dctx.fill();
+        }
+    }
+}
+
+function updateDefaultSettings() {
+    const count = parseInt(document.getElementById('player-count').value);
+    document.getElementById('cfg-target').value = (count == 2) ? 7 : (count <= 4 ? 8 : 9);
+    const rings = (count == 2) ? [3, 5, 7] : (count <= 4 ? [4, 6, 8] : [5, 7, 9]);
+    document.getElementById('cfg-ring1').value = rings[0];
+    document.getElementById('cfg-ring2').value = rings[1];
+    document.getElementById('cfg-ring3').value = rings[2];
+}
+
+async function loadStandardMap() {
+    const btn = document.querySelector('.btn-start');
+    try {
+        if (btn) { btn.disabled = true; btn.innerText = 'KARTE WIRD VORBEREITET...'; }
+        await new Promise(r => setTimeout(r, 30)); // Browser rendern lassen, bevor die schwere Arbeit startet
+        const response = await fetch('map.json');
+        const data = await response.json();
+        targetArtifacts = parseInt(document.getElementById('cfg-target').value);
+        ringThresholds = [parseInt(document.getElementById('cfg-ring1').value), parseInt(document.getElementById('cfg-ring2').value), parseInt(document.getElementById('cfg-ring3').value)];
+        processLoadedMap(data, parseInt(document.getElementById('player-count').value));
+    } catch (e) {
+        alert("Ladefehler: " + e.message);
+        if (btn) { btn.disabled = false; btn.innerText = 'LOKAL SPIELEN'; }
+    }
+}
+
+function processLoadedMap(data, count, presetPlayers) {
+    mapData = data;
+    Object.values(mapData.hexes).forEach(h => h.baseTerrain = h.terrain);
+
+    // --- RUINEN-LANDSCHAFTEN ---
+    generateRuinLandscapes();
+    // ---------------------------
+
+    Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
+
+    players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, name: null, netId: null }));
+    document.getElementById('setup-overlay').style.display = 'none';
+    document.getElementById('ui-panel').classList.remove('hidden');
+    document.getElementById('apo-panel').classList.remove('hidden');
+    document.getElementById('inventory-panel').classList.remove('hidden');
+    document.getElementById('help-fab').classList.remove('hidden');
+    if (net.active) document.getElementById('room-badge').classList.remove('hidden');
+    gameState = "PLACING"; currentPlayerIdx = 0; centerMap(); updateUI(); render(); updateApoUI();
+}
+
+// --- GENERATOR ---
+function generateRuinLandscapes() {
+    mapData.landmarks.forEach(lm => {
+        const centerHex = mapData.hexes[`${lm.q},${lm.r}`];
+        if (!centerHex) return;
+
+        // --- TEMPEL (MITTE) ---
+        if (lm.icon && lm.icon.toLowerCase().includes('temple')) {
+            hexDirections.forEach((dir, index) => {
+                const nHex = mapData.hexes[`${lm.q + dir.q},${lm.r + dir.r}`];
+                if (isValidTarget(nHex)) {
+                    // Abwechselnd Mountain (gerade) und River (ungerade)
+                    const type = (index % 2 === 0) ? 'mountains' : 'river';
+                    applyTerrain(nHex, type);
+                    // NEU: Flüsse zeigen nach außen (Richtung = Index)
+                    if (type === 'river') nHex.direction = index; 
+                }
+            });
+            return; 
+        }
+
+        // --- NORMALE RUINEN ---
+        let targetType = null;
+        let forbiddenNeighbor = null;
+
+        if (centerHex.terrain === 'desert') {
+            targetType = 'mountains';
+            forbiddenNeighbor = 'plains';
+        } else if (centerHex.terrain === 'plains') {
+            targetType = 'river';
+            forbiddenNeighbor = 'desert';
+        } else if (centerHex.terrain === 'hills') {
+            targetType = 'forest';
+            forbiddenNeighbor = 'plains';
+        } 
+        // Tundra -> nichts tun
+
+        if (targetType) {
+            hexDirections.forEach((dir, index) => {
+                const nHex = mapData.hexes[`${lm.q + dir.q},${lm.r + dir.r}`];
+                if (isValidTarget(nHex) && nHex.baseTerrain !== forbiddenNeighbor) {
+                    applyTerrain(nHex, targetType);
+                    // Kreisverkehr für Plains-Flüsse
+                    if (targetType === 'river') {
+                        nHex.direction = (index + 2) % 6;
+                    }
+                }
+            });
+        }
+    });
+}
+
+function isValidTarget(hex) {
+    if (!hex) return false;
+    if (hex.terrain === 'void' || hex.terrain === 'swamp' || hex.terrain === 'water') return false;
+    if (mapData.landmarks.some(l => l.q === hex.q && l.r === hex.r)) return false;
+    return true;
+}
+
+function applyTerrain(hex, type) {
+    hex.terrain = type;
+    // Fluss ersetzt den Untergrund nicht (genau wie eine Straße) - Original-Gelände bleibt
+    // für die Grafik und die Ring-Logik erhalten.
+    if (type !== 'river') hex.baseTerrain = type;
+}
+// -----------------
+
+// =====================================================================
+// ONLINE-MODUS (Echtzeit-Mehrspieler über einen kleinen Relay-Server)
+// =====================================================================
+// Prinzip: Nur der Server-Betreiber muss den Node.js-Relay einmalig hosten
+// (siehe README). Freunde öffnen einfach die Webseite - kein Account,
+// keine Installation. Jeder Client spielt die komplette Spiellogik lokal
+// (genau wie im Einzelspieler-Modus) und schickt nach jeder Aktion des
+// aktiven Spielers den kompletten Spielzustand an den Server, der ihn an
+// alle anderen im selben "Raum" weiterreicht ("dumb relay").
+
+const PLAYER_COLORS = ["#ff4757", "#2e86de", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"];
+
+function uuid4() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
+function getPersistentClientId() {
+    try {
+        let id = localStorage.getItem('botg_client_id');
+        if (!id) { id = uuid4(); localStorage.setItem('botg_client_id', id); }
+        return id;
+    } catch (e) { return uuid4(); }
+}
+
+let lastVictoryInfo = { id: null, reason: null };
+
+let net = {
+    active: false,          // Läuft gerade ein Online-Spiel?
+    ws: null,
+    clientId: getPersistentClientId(),
+    room: null,
+    hostId: null,
+    myIndex: -1,
+    name: '',
+    color: PLAYER_COLORS[0],
+    lobbyMembers: [],
+    applyingRemote: false,
+    connected: false,
+    centered: false
+};
+
+function playerLabel(p) { return p ? (p.name || `Spieler ${p.id}`) : '?'; }
+function isMyTurn() { return !net.active || net.myIndex === currentPlayerIdx; }
+
+function escapeHtml(s) { const d = document.createElement('div'); d.innerText = (s === null || s === undefined) ? '' : String(s); return d.innerHTML; }
+
+// ---------- Lobby öffnen / verlassen ----------
+function startNetworkMode() {
+    try {
+        net.name = localStorage.getItem('botg_player_name') || '';
+        net.color = localStorage.getItem('botg_player_color') || PLAYER_COLORS[0];
+    } catch (e) {}
+    document.getElementById('setup-overlay').style.display = 'none';
+    document.getElementById('lobby-overlay').classList.remove('hidden');
+    document.getElementById('lobby-name-input').value = net.name;
+    renderColorPicker();
+    showLobbyStep('join');
+    try {
+        const params = new URLSearchParams(location.search);
+        const roomFromLink = params.get('room');
+        if (roomFromLink) document.getElementById('lobby-room-input').value = roomFromLink.toUpperCase();
+    } catch (e) {}
+}
+
+function backToMainMenu() {
+    if (net.ws) { try { net.ws.close(); } catch (e) {} }
+    net.ws = null; net.active = false; net.room = null; net.connected = false;
+    document.getElementById('lobby-overlay').classList.add('hidden');
+    document.getElementById('setup-overlay').style.display = 'flex';
+}
+
+function showLobbyStep(step) {
+    document.getElementById('lobby-step-join').classList.toggle('hidden', step !== 'join');
+    document.getElementById('lobby-step-room').classList.toggle('hidden', step !== 'room');
+}
+
+function renderColorPicker() {
+    const wrap = document.getElementById('lobby-colors');
+    wrap.innerHTML = '';
+    const taken = net.lobbyMembers.filter(m => m.clientId !== net.clientId).map(m => m.color);
+    PLAYER_COLORS.forEach(c => {
+        const sw = document.createElement('div');
+        sw.className = 'color-swatch' + (c === net.color ? ' selected' : '') + (taken.includes(c) ? ' taken' : '');
+        sw.style.background = c;
+        sw.title = taken.includes(c) ? 'Bereits vergeben' : c;
+        sw.onclick = () => { if (!taken.includes(c)) { net.color = c; renderColorPicker(); if (net.connected) sendJoin(); } };
+        wrap.appendChild(sw);
+    });
+}
+
+// ---------- Verbindung & Beitritt ----------
+function connectAndJoin() {
+    const name = document.getElementById('lobby-name-input').value.trim().slice(0, 24) || 'Spieler';
+    const roomCode = document.getElementById('lobby-room-input').value.trim().toUpperCase();
+    net.name = name;
+    try { localStorage.setItem('botg_player_name', name); localStorage.setItem('botg_player_color', net.color); } catch (e) {}
+
+    const btn = document.getElementById('lobby-connect-btn');
+    btn.disabled = true; btn.innerText = 'VERBINDE…';
+
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}`);
+    net.ws = ws; net.room = roomCode;
+    ws.onopen = () => { net.connected = true; sendJoin(); };
+    ws.onclose = () => {
+        net.connected = false;
+        if (net.active) showNotification('⚠️ Verbindung zum Server verloren.');
+        btn.disabled = false; btn.innerText = '🌐 VERBINDEN';
+    };
+    ws.onerror = () => {};
+    ws.onmessage = e => {
+        let msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+        handleNetMessage(msg);
+    };
+}
+
+function sendJoin() {
+    if (!net.ws || net.ws.readyState !== WebSocket.OPEN) return;
+    net.ws.send(JSON.stringify({ type: 'join', room: net.room || '', clientId: net.clientId, name: net.name, color: net.color }));
+}
+
+function handleNetMessage(msg) {
+    if (msg.type === 'joined') {
+        net.room = msg.room; net.hostId = msg.hostId;
+        const btn = document.getElementById('lobby-connect-btn');
+        btn.disabled = false; btn.innerText = '🌐 VERBINDEN';
+        document.getElementById('lobby-room-code').innerText = msg.room;
+        const shareUrl = `${location.origin}${location.pathname}?room=${msg.room}`;
+        document.getElementById('lobby-share-link').value = shareUrl;
+        showLobbyStep('room');
+    } else if (msg.type === 'lobby') {
+        net.hostId = msg.hostId;
+        net.lobbyMembers = msg.members;
+        renderLobbyMembers(msg.started);
+        renderColorPicker();
+    } else if (msg.type === 'state') {
+        net.active = true;
+        applyRemoteState(msg.state);
+    }
+}
+
+function renderLobbyMembers(started) {
+    const list = document.getElementById('lobby-members');
+    list.innerHTML = '';
+    net.lobbyMembers.forEach(m => {
+        const row = document.createElement('div');
+        row.className = 'lobby-member';
+        const isHost = m.clientId === net.hostId, isMe = m.clientId === net.clientId;
+        row.innerHTML = `<span class="lobby-swatch" style="background:${m.color}"></span><span class="lobby-member-name">${escapeHtml(m.name)}${isMe ? ' (Du)' : ''}</span>${isHost ? '<span class="lobby-host-tag">HOST</span>' : ''}`;
+        list.appendChild(row);
+    });
+    const isHost = net.clientId === net.hostId;
+    document.getElementById('lobby-host-settings').classList.toggle('hidden', !isHost);
+    document.getElementById('lobby-wait-msg').classList.toggle('hidden', isHost);
+    const startBtn = document.getElementById('lobby-start-btn');
+    startBtn.disabled = net.lobbyMembers.length < 2 || net.lobbyMembers.length > 6 || started;
+    document.getElementById('lobby-count-hint').innerText = started ? 'Das Spiel läuft bereits…' : `${net.lobbyMembers.length} / 6 Spieler verbunden (mind. 2)`;
+}
+
+function copyShareLink() {
+    const input = document.getElementById('lobby-share-link');
+    input.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    try { navigator.clipboard && navigator.clipboard.writeText(input.value); } catch (e) {}
+    const btn = document.getElementById('lobby-copy-btn');
+    const old = btn.innerText; btn.innerText = '✓ Kopiert'; setTimeout(() => btn.innerText = old, 1500);
+}
+
+// ---------- Spielstart (nur Host) ----------
+async function startOnlineGame() {
+    if (net.clientId !== net.hostId) return;
+    const btn = document.getElementById('lobby-start-btn');
+    try {
+        btn.disabled = true; btn.innerText = 'KARTE WIRD VORBEREITET…';
+        await new Promise(r => setTimeout(r, 30));
+        const response = await fetch('map.json');
+        const data = await response.json();
+        targetArtifacts = parseInt(document.getElementById('cfg-target-online').value) || 7;
+        ringThresholds = [
+            parseInt(document.getElementById('cfg-ring1-online').value) || 3,
+            parseInt(document.getElementById('cfg-ring2-online').value) || 5,
+            parseInt(document.getElementById('cfg-ring3-online').value) || 7
+        ];
+        const presetPlayers = net.lobbyMembers.map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false }));
+        net.active = true;
+        net.myIndex = presetPlayers.findIndex(pl => pl.netId === net.clientId);
+        document.getElementById('lobby-overlay').classList.add('hidden');
+        processLoadedMap(data, presetPlayers.length, presetPlayers);
+    } catch (e) {
+        alert('Ladefehler: ' + e.message);
+        btn.disabled = false; btn.innerText = '⚔ SPIEL STARTEN';
+    }
+}
+
+// ---------- Zustand serialisieren / anwenden ----------
+function findUnitAt(q, r) {
+    if (q === undefined || q === null) return null;
+    for (const p of players) { const u = p.units.find(u => u.q === q && u.r === r); if (u) return u; }
+    return null;
+}
+
+function serializeState() {
+    const hexes = {};
+    Object.entries(mapData.hexes).forEach(([k, h]) => { hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction }; });
+    return {
+        hexes,
+        landmarks: mapData.landmarks.map(l => ({ ...l })),
+        players: players.map(p => ({
+            id: p.id, netId: p.netId, name: p.name, color: p.color, skipped: p.skipped,
+            units: p.units.map(u => ({ q: u.q, r: u.r })),
+            inventory: p.inventory.map(c => ({ ...c }))
+        })),
+        currentPlayerIdx, gameState, drawPoints, actionPoints, collectedArtifacts,
+        targetArtifacts, ringThresholds, closedRings: { ...closedRings },
+        pathDrawn, pathMoved,
+        currentCard: currentCard ? { ...currentCard } : null,
+        diceValue, placementsRemaining,
+        pendingRiverHex: pendingRiverHex ? { q: pendingRiverHex.q, r: pendingRiverHex.r } : null,
+        selectedUnit: selectedUnit ? { q: selectedUnit.q, r: selectedUnit.r } : null,
+        riverEscapeHexes: (riverEscapeHexes || []).map(h => ({ q: h.q, r: h.r })),
+        pendingCardSlot, pushRemaining,
+        currentPushUnit: currentPushUnit ? { q: currentPushUnit.q, r: currentPushUnit.r } : null,
+        boatLandingTargets: (boatLandingTargets || []).map(h => ({ q: h.q, r: h.r })),
+        isGameOver,
+        victoryWinnerId: isGameOver ? lastVictoryInfo.id : null,
+        victoryReason: isGameOver ? lastVictoryInfo.reason : null
+    };
+}
+
+let sendStateTimer = null;
+function sendStateUpdate() {
+    if (!net.active || net.applyingRemote || !net.ws || net.ws.readyState !== WebSocket.OPEN) return;
+    clearTimeout(sendStateTimer);
+    sendStateTimer = setTimeout(() => { net.ws.send(JSON.stringify({ type: 'state', room: net.room, state: serializeState() })); }, 0);
+}
+
+function applyRemoteState(state) {
+    net.applyingRemote = true;
+    mapData.hexes = {};
+    Object.entries(state.hexes).forEach(([k, h]) => { mapData.hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction, sprite: null }; });
+    mapData.landmarks = state.landmarks;
+    Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
+
+    players = state.players.map(p => ({ ...p, units: p.units.map(u => ({ ...u })), inventory: p.inventory.map(c => ({ ...c })) }));
+    net.myIndex = players.findIndex(p => p.netId === net.clientId);
+
+    currentPlayerIdx = state.currentPlayerIdx; gameState = state.gameState;
+    drawPoints = state.drawPoints; actionPoints = state.actionPoints; collectedArtifacts = state.collectedArtifacts;
+    targetArtifacts = state.targetArtifacts; ringThresholds = state.ringThresholds; closedRings = state.closedRings;
+    pathDrawn = state.pathDrawn; pathMoved = state.pathMoved;
+    currentCard = state.currentCard; diceValue = state.diceValue; placementsRemaining = state.placementsRemaining;
+    pendingRiverHex = state.pendingRiverHex ? mapData.hexes[`${state.pendingRiverHex.q},${state.pendingRiverHex.r}`] : null;
+    selectedUnit = state.selectedUnit ? findUnitAt(state.selectedUnit.q, state.selectedUnit.r) : null;
+    riverEscapeHexes = state.riverEscapeHexes || [];
+    pendingCardSlot = state.pendingCardSlot; pushRemaining = state.pushRemaining;
+    currentPushUnit = state.currentPushUnit ? findUnitAt(state.currentPushUnit.q, state.currentPushUnit.r) : null;
+    boatLandingTargets = state.boatLandingTargets || [];
+    isGameOver = state.isGameOver;
+    lastVictoryInfo = { id: state.victoryWinnerId, reason: state.victoryReason };
+
+    document.getElementById('setup-overlay').style.display = 'none';
+    document.getElementById('lobby-overlay').classList.add('hidden');
+    document.getElementById('ui-panel').classList.remove('hidden');
+    document.getElementById('apo-panel').classList.remove('hidden');
+    document.getElementById('inventory-panel').classList.remove('hidden');
+    document.getElementById('help-fab').classList.remove('hidden');
+    document.getElementById('room-badge').classList.remove('hidden');
+    document.getElementById('room-badge-code').innerText = net.room || '';
+    if (!net.centered) { centerMap(); net.centered = true; }
+
+    updateUI(); render(); updateApoUI();
+    if (isGameOver && lastVictoryInfo.id != null) {
+        const winner = players.find(p => p.id === lastVictoryInfo.id);
+        if (winner) showVictoryUI(winner, lastVictoryInfo.reason);
+    }
+    net.applyingRemote = false;
+}
+
+function centerMap() {
+    const hexes = Object.values(mapData.hexes); if (hexes.length === 0) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    hexes.forEach(hex => {
+        const x = hexSize * 1.5 * hex.q; const y = hexSize * Math.sqrt(3) * (hex.r + hex.q / 2);
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    });
+    camera.x = canvas.width / 2 - ((minX + maxX) / 2) * camera.zoom;
+    camera.y = canvas.height / 2 - ((minY + maxY) / 2) * camera.zoom;
+}
+
+canvas.addEventListener('wheel', e => {
+    e.preventDefault(); const factor = Math.pow(1.1, -e.deltaY / 100);
+    const worldX = (e.clientX - camera.x) / camera.zoom, worldY = (e.clientY - camera.y) / camera.zoom;
+    camera.zoom = Math.min(Math.max(camera.zoom * factor, 0.2), 3);
+    camera.x = e.clientX - worldX * camera.zoom; camera.y = e.clientY - worldY * camera.zoom; render();
+}, { passive: false });
+
+canvas.addEventListener('mousedown', e => { if (e.button === 0) { isDragging = true; lastMouse = { x: e.clientX, y: e.clientY }; } });
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mousemove', e => {
+    if (isDragging) { camera.x += (e.clientX - lastMouse.x); camera.y += (e.clientY - lastMouse.y); lastMouse = { x: e.clientX, y: e.clientY }; render(); }
+    const x = (e.clientX-camera.x)/(hexSize*camera.zoom), y = (e.clientY-camera.y)/(hexSize*camera.zoom), q = (2/3*x), r = (-1/3*x + Math.sqrt(3)/3*y);
+    let rx = Math.round(q), rz = Math.round(r), ry = Math.round(-q-r);
+    if (Math.abs(rx-q)>Math.abs(ry-(-q-r)) && Math.abs(rx-q)>Math.abs(rz-r)) rx = -ry-rz; else if (Math.abs(ry-(-q-r))>Math.abs(rz-r)) ry = -rx-rz; else rz = -rx-ry;
+    const hex = mapData.hexes[`${rx},${rz}`], hInfo = document.getElementById('hover-info');
+    if (hex) {
+        hInfo.style.display = 'block'; document.getElementById('hover-terrain').innerText = (terrainNames[hex.terrain] || hex.terrain).toUpperCase();
+        const lm = mapData.landmarks.find(l => l.q === rx && l.r === rz);
+        let extraText = (lm && !lm.looted) ? "♜ RUINE MIT ARTEFAKT" : (lm ? "🕸️ LEERE RUINE" : "");
+        if (lm && lm.icon && lm.icon.toLowerCase().includes('temple')) extraText = "✨ TEMPEL";
+        document.getElementById('hover-extra').innerText = extraText;
+    } else hInfo.style.display = 'none';
+});
+
+function updateApoUI() {
+    const s1 = document.getElementById('apo-1'), s2 = document.getElementById('apo-2'), s3 = document.getElementById('apo-3');
+    s1.className = closedRings.outer ? "apo-status-dead" : (collectedArtifacts >= ringThresholds[0]-1 ? "apo-status-danger" : "apo-status-safe");
+    s1.innerText = closedRings.outer ? "ZERSTÖRT" : "STABIL";
+    s2.className = closedRings.middle ? "apo-status-dead" : (collectedArtifacts >= ringThresholds[1]-1 ? "apo-status-danger" : "apo-status-safe");
+    s2.innerText = closedRings.middle ? "ZERSTÖRT" : "STABIL";
+    s3.className = closedRings.inner ? "apo-status-dead" : (collectedArtifacts >= ringThresholds[2]-1 ? "apo-status-danger" : "apo-status-safe");
+    s3.innerText = closedRings.inner ? "ZERSTÖRT" : "STABIL";
+    let nextT = "KEINER";
+    if (!closedRings.outer) nextT = ringThresholds[0]; else if (!closedRings.middle) nextT = ringThresholds[1]; else if (!closedRings.inner) nextT = ringThresholds[2];
+    document.getElementById('apo-next-trigger').innerText = nextT;
+}
+
+function triggerKollaps(baseTerrains, key) {
+    closedRings[key] = true;
+    Object.values(mapData.hexes).forEach(hex => {
+        if (baseTerrains.includes(hex.baseTerrain) && hex.baseTerrain !== 'water' && hex.baseTerrain !== 'tundra') {
+            hex.terrain = 'void'; players.forEach(p => p.units = p.units.filter(u => !(u.q === hex.q && u.r === hex.r)));
+        }
+    });
+    render(); updateApoUI();
+    const activePlayers = players.filter(p => p.units.length > 0);
+    if (activePlayers.length === 1 && players.length > 1) { 
+        triggerVictory(activePlayers[0], "Einziger Überlebender!");
+    }
+}
+
+function checkApocalypse() {
+    if (collectedArtifacts >= ringThresholds[0] && !closedRings.outer) triggerKollaps(['desert', 'swamp'], 'outer');
+    if (collectedArtifacts >= ringThresholds[1] && !closedRings.middle) triggerKollaps(['plains'], 'middle');
+    if (collectedArtifacts >= ringThresholds[2] && !closedRings.inner) triggerKollaps(['hills'], 'inner');
+}
+
+function handleChoice(choice) { 
+    if (choice === 'DRAWING') { drawPoints = 2; gameState = "DRAWING"; } else if (choice === 'MOVING') { gameState = "MOVING"; } 
+    updateUI(); render(); 
+}
+
+function prepareDraw(type) {
+    if (type === 'LANDSCAPE') {
+        currentCard = [{name:"Berg",type:"mountains",icon:"⛰️"},{name:"Wald",type:"forest",icon:"🌲"},{name:"Fluss",type:"river",icon:"🌊"},{name:"Straße",type:"road",icon:"🛤️"}][Math.floor(Math.random()*4)];
+        currentCard.deck = "LANDSCAPE";
+        gameState = "DICE_ROLL";
+    } else {
+        const cards = [
+            {name:"Extra Zug",type:"extra_move",icon:"🏃"},
+            {name:"Aussetzen",type:"skip_turn",icon:"🚫"},
+            {name:"Teleport",type:"teleport",icon:"✨"},
+            {name:"Gegner zurückwerfen",type:"push_enemy",icon:"💨"},
+            {name:"Wirbelsturm",type:"tornado",icon:"🌪️"},
+            {name:"Seil & Haken",type:"tool_hook",icon:"🪢"}, 
+            {name:"Schlauchboot",type:"tool_boat",icon:"🛶"} 
+        ];
+        currentCard = cards[Math.floor(Math.random()*cards.length)];
+        currentCard.deck = "ACTION";
+        
+        if (currentCard.type === 'tornado') {
+            executeTornado();
+            return;
+        }
+        
+        gameState = "ACTION_VIEW";
+    }
+    diceValue = 0; document.getElementById('dice-symbol').innerText = "?";
+    updateUI();
+}
+
+function executeTornado() {
+    const p = players[currentPlayerIdx];
+    let candidates = [];
+    Object.values(mapData.hexes).forEach(h => {
+        if (['water', 'void', 'mountains'].includes(h.terrain)) return;
+        let isEdge = false;
+        const dirs = [{q:1,r:0}, {q:0,r:1}, {q:-1,r:1}, {q:-1,r:0}, {q:0,r:-1}, {q:1,r:-1}];
+        for(let d of dirs) {
+            let nQ = h.q + d.q, nR = h.r + d.r, nHex = mapData.hexes[`${nQ},${nR}`];
+            if (!nHex || ['water', 'void'].includes(nHex.terrain)) { isEdge = true; break; }
+        }
+        const occupied = players.some(pl => pl.units.some(u => u.q === h.q && u.r === h.r));
+        if (isEdge && !occupied) candidates.push(h);
+    });
+
+    if (candidates.length === 0) {
+        alert("🌪️ Der Sturm tobt, aber es gibt keinen sicheren Rand mehr!");
+        currentCard = null; pathDrawn = true; pathMoved = true; checkTurnEnd(); render(); return;
+    }
+
+    p.units.forEach(u => {
+        let alreadyAtEdge = false;
+        const dirs = [{q:1,r:0}, {q:0,r:1}, {q:-1,r:1}, {q:-1,r:0}, {q:0,r:-1}, {q:1,r:-1}];
+        for(let d of dirs) {
+            let nQ = u.q + d.q, nR = u.r + d.r, nHex = mapData.hexes[`${nQ},${nR}`];
+            if (!nHex || ['water', 'void'].includes(nHex.terrain)) { alreadyAtEdge = true; break; }
+        }
+
+        if (!alreadyAtEdge) {
+            let bestHex = null, minDist = Infinity;
+            candidates.forEach(c => { let d = getHexDistance(u.q, u.r, c.q, c.r); if (d < minDist) { minDist = d; bestHex = c; } });
+            if (bestHex) {
+                u.q = bestHex.q; u.r = bestHex.r; checkLandmark(u.q, u.r);
+                candidates = candidates.filter(c => c !== bestHex);
+            }
+        }
+    });
+
+    alert("🌪️ WIRBELSTURM! Deine Figuren wurden an den Rand geweht (sofern sie nicht schon dort waren)! Zug vorbei.");
+    currentCard = null; pathDrawn = true; pathMoved = true; checkTurnEnd(); render();
+}
+
+function rollDice() {
+    const diceDisplay = document.getElementById('dice-display'); diceDisplay.classList.add('rolling');
+    setTimeout(() => {
+        diceValue = [3, 2, 2, 1, 1, 1][Math.floor(Math.random() * 6)]; placementsRemaining = diceValue;
+        document.getElementById('dice-symbol').innerText = ['','⚀','⚁','⚂'][diceValue] || diceValue;
+        diceDisplay.classList.remove('rolling'); gameState = "PLACING_TERRAIN"; updateUI();
+    }, 500);
+}
+
+function rotateRiver() { if (pendingRiverHex) { pendingRiverHex.direction = (pendingRiverHex.direction + 1) % 6; render(); } }
+
+function confirmRiver() {
+    if (!pendingRiverHex) return;
+    let checkQ = pendingRiverHex.q, checkR = pendingRiverHex.r, safety = 0;
+    while (safety < 50) {
+        let cur = mapData.hexes[`${checkQ},${checkR}`]; if (!cur || cur.terrain !== 'river') break;
+        checkQ += hexDirections[cur.direction || 0].q; checkR += hexDirections[cur.direction || 0].r;
+        if (checkQ === pendingRiverHex.q && checkR === pendingRiverHex.r) { alert("KREISLAUF ERKANNT!"); return; }
+        safety++;
+    }
+    pendingRiverHex = null; placementsRemaining--; if (placementsRemaining <= 0) finishCard(); else gameState = "PLACING_TERRAIN";
+    updateUI(); render();
+}
+
+function finishCard() { 
+    if (currentCard && currentCard.deck === 'ACTION') {
+        const p = players[currentPlayerIdx];
+        if (p.inventory.length < 3) { p.inventory.push(currentCard); drawPoints--; currentCard = null; gameState = (drawPoints <= 0) ? "DRAWING_DONE" : "DRAWING"; }
+        else { gameState = "SWAP_CARD"; }
+    } else { drawPoints--; currentCard = null; gameState = (drawPoints <= 0) ? "DRAWING_DONE" : "DRAWING"; }
+    updateUI(); render(); 
+}
+
+function handleInventoryClick(slotIdx) {
+    const p = players[currentPlayerIdx], card = p.inventory[slotIdx];
+    if (gameState === "SWAP_CARD") { p.inventory[slotIdx] = currentCard; discardNewCard(); return; } 
+    
+    if (pendingCardSlot === slotIdx && gameState !== "CHOOSING" && gameState !== "MOVING") {
+        pendingCardSlot = null;
+        selectedUnit = null;
+        currentPushUnit = null;
+        pushRemaining = 0;
+        gameState = "CHOOSING";
+        updateUI();
+        render();
+        return;
+    }
+
+    if (gameState === "CHOOSING" || gameState === "MOVING") {
+        if (!card) return;
+        if (card.type === 'tool_hook' || card.type === 'tool_boat') { alert("Dies ist ein passives Werkzeug. Es wird automatisch benutzt, wenn du auf das entsprechende Feld ziehst!"); return; }
+        if (card.type === 'extra_move') { p.inventory.splice(slotIdx, 1); actionPoints++; pathMoved = false; }
+        else if (card.type === 'skip_turn') { gameState = "SELECT_SKIP"; pendingCardSlot = slotIdx; }
+        else if (card.type === 'teleport') { gameState = "SELECT_TELEPORT_UNIT"; pendingCardSlot = slotIdx; }
+        else if (card.type === 'push_enemy') { gameState = "SELECT_PUSH_TARGET_1"; pendingCardSlot = slotIdx; pushRemaining = 2; currentPushUnit = null; } 
+        updateUI();
+    }
+}
+
+function cancelCurrentCard() {
+    if (drawPoints <= 0) { pathDrawn = true; currentCard = null; checkTurnEnd(); return; }
+    drawPoints--; currentCard = null; pendingRiverHex = null; placementsRemaining = 0;
+    gameState = (drawPoints > 0) ? "DRAWING" : "DRAWING_DONE";
+    updateUI(); render();
+}
+
+function discardNewCard() { drawPoints--; currentCard = null; gameState = (drawPoints <= 0) ? "DRAWING_DONE" : "DRAWING"; updateUI(); render(); }
+function finishPath() { actionPoints = 0; pathMoved = true; selectedUnit = null; checkTurnEnd(); }
+function deselectUnit() { selectedUnit = null; updateUI(); render(); }
+function checkTurnEnd() { if (pathDrawn && pathMoved) { currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); } else { gameState = "CHOOSING"; updateUI(); render(); } }
+
+function showNotification(text) {
+    const el = document.getElementById('turn-toast');
+    el.innerText = text;
+    el.classList.remove('hidden');
+    // Reflow erzwingen, damit die Einblend-Transition auch bei schneller Wiederholung greift.
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.classList.add('hidden'), 400);
+    }, 1800);
+}
+const tutorialPages = [
+    { icon: '🏛️', title: 'Ziel des Spiels', html: `Sammelt gemeinsam <b>Artefakte</b> aus den Ruinen der Insel. Sobald genug gefunden wurden, gewinnt, wer als Erster den <b>Tempel</b> erreicht.<br><br>Doch Vorsicht: Mit jedem Fortschritt bricht die Welt an ihren Rändern weg. Bleibt am Ende nur noch <b>ein Spieler mit Figuren</b> übrig, gewinnt automatisch er.` },
+    { icon: '⚙️', title: 'Vorbereitung', html: `Wählt die Spieleranzahl (2–6) sowie optional die <b>Ziel-Artefakte</b> und die drei <b>Ring-Schwellen</b> der Apokalypse.<br><br>Danach setzt jeder Spieler reihum seine <b>2 Figuren</b> auf ein Feld mit Startburg (Sumpf-Textur).` },
+    { icon: '🎲', title: 'Der Spielzug', html: `In jedem Zug musst du <b>beides</b> erledigen — die Reihenfolge ist egal:<ul><li><b>2× Karte ziehen</b></li><li><b>Bewegen</b></li></ul>Erst wenn beides abgeschlossen ist, ist der nächste Spieler an der Reihe.` },
+    { icon: '🗺️', title: 'Karten ziehen: Landschaft', html: `Eine <b>Landschaftskarte</b> (Berg, Wald, Fluss oder Straße) bestimmt per Würfelwurf, wie viele Felder du setzen darfst. Klicke dazu freie Felder auf der Karte an.<br><br>Einen <b>Fluss</b> musst du zusätzlich per „Drehen" ausrichten und mit „Setzen" bestätigen — er verbindet sich automatisch mit anschließenden Flussfeldern.` },
+    { icon: '🃏', title: 'Karten ziehen: Aktionen', html: `<b>Aktionskarten</b> wandern in dein Inventar (max. 3 — ist es voll, musst du beim nächsten Ziehen tauschen).<ul>
+        <li>🏃 <b>Extra Zug</b>: sofort +1 Aktionspunkt</li>
+        <li>🚫 <b>Aussetzen</b>: ein Gegner setzt die nächste Runde aus</li>
+        <li>✨ <b>Teleport</b>: eigene Figur sofort auf eine bereits geplünderte Ruine versetzen</li>
+        <li>💨 <b>Gegner zurückwerfen</b>: bis zu 2 gegnerische Figuren je ein Feld verschieben</li>
+        <li>🌪️ <b>Wirbelsturm</b>: wirkt sofort — bläst alle eigenen Figuren an den Kartenrand und beendet den Zug</li>
+        <li>🪢 <b>Seil & Haken</b> / 🛶 <b>Schlauchboot</b>: passive Werkzeuge, die sich automatisch verbrauchen, sobald du auf Berge bzw. einen Fluss ziehst</li>
+    </ul>` },
+    { icon: '🧭', title: 'Bewegen im Gelände', html: `Du hast <b>2 Aktionspunkte</b> pro Zug, jedes Feld kostet normalerweise 1 Punkt.<ul>
+        <li>🌲 <b>Wald</b> verbraucht sofort <b>alle</b> restlichen Punkte</li>
+        <li>⛰️ <b>Berge</b> sind nur begehbar, wenn du schon auf einem Berg stehst oder eine Karte <b>Seil & Haken</b> einsetzt</li>
+        <li>🌊 Ein <b>Fluss</b> reißt dich ohne <b>Schlauchboot</b> automatisch die Fließrichtung entlang mit, bis du an Land gespült wirst oder ein Ufer wählen musst</li>
+    </ul>` },
+    { icon: '🏺', title: 'Ruinen & Tempel', html: `Ruinen (Krug-Symbol) sind ein <b>gemeinsamer Vorrat</b>: Die erste Figur — egal von wem — die eine ungeplünderte Ruine erreicht, sammelt 1 Artefakt für <b>alle Spieler zusammen</b>.<br><br>Der <b>Tempel</b> in der Mitte ist das eigentliche Ziel: Sobald genug Artefakte gesammelt sind, gewinnt, wer als Erster dort ankommt.` },
+    { icon: '☄️', title: 'Die Apokalypse', html: `Bei den drei eingestellten Artefakt-Ständen (Standard 3 / 5 / 7) kollabiert jeweils ein <b>Ring</b> der Karte — von außen nach innen — zu Leere.<br><br>Figuren auf einbrechenden Feldern gehen <b>verloren</b>. Bleibt danach nur noch ein Spieler mit Figuren übrig, gewinnt er automatisch als „Einziger Überlebender".` },
+];
+let tutorialIdx = 0;
+function renderTutorialPage() {
+    const p = tutorialPages[tutorialIdx];
+    document.getElementById('tutorial-icon').innerText = p.icon;
+    document.getElementById('tutorial-title').innerText = p.title;
+    document.getElementById('tutorial-step-label').innerText = `Schritt ${tutorialIdx + 1} / ${tutorialPages.length}`;
+    document.getElementById('tutorial-body').innerHTML = p.html;
+    document.getElementById('tutorial-prev').style.visibility = tutorialIdx === 0 ? 'hidden' : 'visible';
+    document.getElementById('tutorial-next').innerText = tutorialIdx === tutorialPages.length - 1 ? 'Fertig ✓' : 'Weiter →';
+    const dots = document.getElementById('tutorial-dots');
+    dots.innerHTML = '';
+    tutorialPages.forEach((_, i) => {
+        const d = document.createElement('div');
+        d.className = 'tutorial-dot' + (i === tutorialIdx ? ' active' : '');
+        d.onclick = () => { tutorialIdx = i; renderTutorialPage(); };
+        dots.appendChild(d);
+    });
+}
+function openTutorial() { tutorialIdx = 0; renderTutorialPage(); document.getElementById('tutorial-overlay').classList.remove('hidden'); }
+function closeTutorial() { document.getElementById('tutorial-overlay').classList.add('hidden'); }
+function tutorialStep(dir) {
+    if (dir > 0 && tutorialIdx === tutorialPages.length - 1) { closeTutorial(); return; }
+    tutorialIdx = Math.max(0, Math.min(tutorialPages.length - 1, tutorialIdx + dir));
+    renderTutorialPage();
+}
+function startTurn() {
+    if (players[currentPlayerIdx].skipped) { alert(`${playerLabel(players[currentPlayerIdx])} muss aussetzen!`); players[currentPlayerIdx].skipped = false; currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); return; }
+    pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING";
+    showNotification(`⚔️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} IST DRAN!`);
+    updateUI(); render();
+}
+
+function triggerVictory(player, reason = "Tempel erreicht!") {
+    isGameOver = true;
+    lastVictoryInfo = { id: player.id, reason };
+    showVictoryUI(player, reason);
+    if (net.active && !net.applyingRemote) sendStateUpdate();
+}
+
+function showVictoryUI(player, reason) {
+    camera.zoom = 0.5;
+    centerMap();
+    render();
+
+    const panel = document.getElementById('victory-panel');
+    const winnerName = document.getElementById('winner-name');
+    const reasonText = document.getElementById('victory-reason');
+    winnerName.innerText = `${playerLabel(player)} hat gewonnen!`;
+    winnerName.style.color = player.color;
+    reasonText.innerText = reason;
+
+    document.getElementById('ui-panel').classList.add('hidden');
+    document.getElementById('inventory-panel').classList.add('hidden');
+
+    panel.classList.remove('hidden');
+}
+
+function checkLandmark(q, r) {
+    const landmark = mapData.landmarks.find(l => l.q === q && l.r === r); if (!landmark) return;
+    if (landmark.icon && landmark.icon.toLowerCase().includes('temple')) { 
+        if (collectedArtifacts >= targetArtifacts) { 
+            triggerVictory(players[currentPlayerIdx]); 
+        } 
+    }
+    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; checkApocalypse(); updateUI(); updateApoUI(); }
+}
+
+function handlePushFlow(unit) {
+    let curHex = mapData.hexes[`${unit.q},${unit.r}`];
+    while (curHex && curHex.terrain === 'river') {
+        let nQ = unit.q + hexDirections[curHex.direction || 0].q, nR = unit.r + hexDirections[curHex.direction || 0].r, nH = mapData.hexes[`${nQ},${nR}`];
+        const occupied = players.some(p => p.units.some(u => u.q === nQ && u.r === nR));
+        if (nH && !['mountains', 'water', 'void'].includes(nH.terrain) && !occupied) {
+            unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); curHex = nH;
+        } 
+        else if (nH) {
+            riverEscapeHexes = hexDirections.map(d => ({q: unit.q+d.q, r: unit.r+d.r})).filter(p => { const h = mapData.hexes[`${p.q},${p.r}`]; return h && !['mountains', 'water', 'void', 'river'].includes(h.terrain); });
+            if (riverEscapeHexes.length > 0) { selectedUnit = unit; gameState = "RIVER_ESCAPE_PUSH"; return true; } else break;
+        } else break;
+    }
+    return false;
+}
+
+function getConnectedRivers(startQ, startR) {
+    let visited = new Set();
+    let queue = [{q: startQ, r: startR}];
+    let riverGroup = [];
+    while(queue.length > 0) {
+        let curr = queue.shift();
+        let key = `${curr.q},${curr.r}`;
+        if(visited.has(key)) continue;
+        visited.add(key);
+        riverGroup.push(curr);
+        for(let d of hexDirections) {
+            let nQ = curr.q + d.q, nR = curr.r + d.r;
+            let nHex = mapData.hexes[`${nQ},${nR}`];
+            if(nHex && nHex.terrain === 'river' && !visited.has(`${nQ},${nR}`)) {
+                queue.push({q: nQ, r: nR});
+            }
+        }
+    }
+    return riverGroup;
+}
+
+function processMovement(unit, tQ, tR) {
+    const oldHex = mapData.hexes[`${unit.q},${unit.r}`], newHex = mapData.hexes[`${tQ},${tR}`];
+    if (!newHex || ['void', 'water'].includes(newHex.terrain)) return false; 
+
+    const p = players[currentPlayerIdx];
+    
+    // 1. MOUNTAINS (KLETTERHAKEN)
+    if (newHex.terrain === 'mountains') {
+        const hookIndex = p.inventory.findIndex(c => c.type === 'tool_hook');
+        if (oldHex.terrain === 'mountains') {
+            // Free move
+        } else {
+            if (hookIndex === -1) return false; 
+            p.inventory.splice(hookIndex, 1); 
+        }
+    }
+    
+    // 2. RIVER (BOOT)
+    if (newHex.terrain === 'river') {
+        const boatIndex = p.inventory.findIndex(c => c.type === 'tool_boat');
+        if (boatIndex !== -1) {
+            selectedUnit = unit; 
+            let rivers = getConnectedRivers(tQ, tR); 
+            let shores = [];
+            let seen = new Set();
+            rivers.forEach(r => {
+                for(let d of hexDirections) {
+                    let sQ = r.q + d.q, sR = r.r + d.r;
+                    let sHex = mapData.hexes[`${sQ},${sR}`];
+                    if(sHex && !['river', 'water', 'void'].includes(sHex.terrain) && !players.some(pl => pl.units.some(u => u.q === sQ && u.r === sR))) {
+                        let key = `${sQ},${sR}`;
+                        if(!seen.has(key)) { seen.add(key); shores.push(sHex); }
+                    }
+                }
+            });
+            boatLandingTargets = shores; 
+            if(boatLandingTargets.length > 0) {
+                unit.q = tQ; unit.r = tR; 
+                gameState = "BOAT_LANDING"; 
+                updateUI(); render();
+                return true; 
+            }
+        }
+    }
+
+    if (newHex.terrain === 'mountains' && p.inventory.findIndex(c => c.type === 'tool_hook') === -1 && oldHex.terrain !== 'mountains') return false; 
+
+    let cost = 1;
+    unit.q = tQ; unit.r = tR; checkLandmark(tQ, tR);
+    
+    if (newHex.terrain === 'river') {
+        let curH = newHex;
+        while (true) {
+            let nQ = unit.q + hexDirections[curH.direction || 0].q, nR = unit.r + hexDirections[curH.direction || 0].r, nH = mapData.hexes[`${nQ},${nR}`];
+            const occupied = players.some(p => p.units.some(u => u.q === nQ && u.r === nR));
+            if (!nH || ['mountains', 'water', 'void'].includes(nH.terrain) || occupied) {
+                riverEscapeHexes = hexDirections.map(d => ({q: unit.q+d.q, r: unit.r+d.r})).filter(p => { const h = mapData.hexes[`${p.q},${p.r}`]; return h && !['mountains', 'water', 'void', 'river'].includes(h.terrain); });
+                if (riverEscapeHexes.length > 0) { gameState = "RIVER_ESCAPE"; updateUI(); return true; } else { actionPoints = 0; finishPath(); return true; }
+            } else if (nH.terrain === 'river') { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); curH = nH; } else { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); actionPoints = 0; finishPath(); return true; }
+        }
+    } else { actionPoints -= cost; if (newHex.terrain === 'forest') actionPoints = 0; if (actionPoints <= 0) finishPath(); }
+    updateUI(); render();
+}
+
+canvas.addEventListener('click', e => {
+    if (isGameOver) return;
+    if (net.active && !isMyTurn()) return;
+    if (isDragging) return; const x = (e.clientX-camera.x)/(hexSize*camera.zoom), y = (e.clientY-camera.y)/(hexSize*camera.zoom), q = (2/3*x), r = (-1/3*x + Math.sqrt(3)/3*y);
+    let rx = Math.round(q), rz = Math.round(r), ry = Math.round(-q-r);
+    if (Math.abs(rx-q)>Math.abs(ry-(-q-r)) && Math.abs(rx-q)>Math.abs(rz-r)) rx = -ry-rz; else if (Math.abs(ry-(-q-r)) > Math.abs(rz-r)) ry = -rx-rz; else rz = -rx-ry;
+    const hex = mapData.hexes[`${rx},${rz}`]; if (!hex || hex.terrain === 'void') return;
+
+    if (gameState === "PLACING" && hex.terrain === 'swamp') { 
+        if (players.some(p => p.units.some(u => u.q === rx && u.r === rz))) return;
+        players[currentPlayerIdx].units.push({ q: rx, r: rz }); 
+        if (players.reduce((sum, p) => sum + p.units.length, 0) === players.length * 2) { currentPlayerIdx = 0; startTurn(); } else { currentPlayerIdx = (currentPlayerIdx + 1) % players.length; }
+    } else if (gameState === "MOVING") { 
+        let dist = selectedUnit ? getHexDistance(selectedUnit.q, selectedUnit.r, rx, rz) : 0;
+        if (selectedUnit && dist === 1) processMovement(selectedUnit, rx, rz);
+        else { const u = players[currentPlayerIdx].units.find(u => u.q === rx && u.r === rz); if (u) selectedUnit = u; }
+    } else if (gameState === "RIVER_ESCAPE") {
+        if (riverEscapeHexes.some(p => p.q === rx && p.r === rz)) {
+            selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz); riverEscapeHexes = []; actionPoints = 0; finishPath();
+        }
+    } else if (gameState === "BOAT_LANDING") { 
+        if (boatLandingTargets.some(t => t.q === rx && t.r === rz)) {
+            const p = players[currentPlayerIdx];
+            if (hex.terrain === 'mountains') {
+                const hookIdx = p.inventory.findIndex(c => c.type === 'tool_hook');
+                if (hookIdx === -1) { alert("Landung im Gebirge nur mit Seil & Haken möglich!"); return; }
+                p.inventory.splice(hookIdx, 1); 
+            }
+            const boatIdx = p.inventory.findIndex(c => c.type === 'tool_boat');
+            if (boatIdx !== -1) p.inventory.splice(boatIdx, 1);
+
+            selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz);
+            boatLandingTargets = [];
+            actionPoints = 0; finishPath(); 
+        }
+    } else if (gameState === "RIVER_ESCAPE_PUSH") { 
+        if (riverEscapeHexes.some(p => p.q === rx && p.r === rz)) {
+            selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz); riverEscapeHexes = [];
+            currentPushUnit = null; selectedUnit = null; 
+            pushRemaining--;
+            if (pushRemaining > 0) gameState = "SELECT_PUSH_TARGET_2"; 
+            else { players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
+        }
+    } else if (gameState === "PLACING_TERRAIN" && currentCard) { 
+        if (['mountains', 'forest', 'river', 'road'].includes(hex.terrain)) return;
+        hex.terrain = currentCard.type; bakeHex(hex); if (currentCard.type === 'river') { hex.direction = 0; pendingRiverHex = hex; gameState = "ROTATING_RIVER"; } else { placementsRemaining--; if (placementsRemaining <= 0) finishCard(); }
+    } else if (gameState === "SELECT_SKIP") {
+        const owner = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz));
+        if (owner) { owner.skipped = true; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
+    } else if (gameState === "SELECT_TELEPORT_UNIT") {
+        const u = players[currentPlayerIdx].units.find(u => u.q === rx && u.r === rz); if (u) { selectedUnit = u; gameState = "SELECT_TELEPORT_TARGET"; }
+    } else if (gameState === "SELECT_TELEPORT_TARGET") {
+        const lm = mapData.landmarks.find(l => l.q === rx && l.r === rz);
+        if (lm && lm.looted) { 
+            selectedUnit.q = rx; selectedUnit.r = rz; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); selectedUnit = null; gameState = "CHOOSING";
+        }
+    } else if (gameState === "SELECT_PUSH_TARGET_1" || gameState === "SELECT_PUSH_TARGET_2") { 
+        const u = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz))?.units.find(u => u.q === rx && u.r === rz);
+        if (u) { currentPushUnit = u; gameState = "SELECT_PUSH_DESTINATION"; }
+    } else if (gameState === "SELECT_PUSH_DESTINATION") {
+        if (getHexDistance(currentPushUnit.q, currentPushUnit.r, rx, rz) === 1 && hex && !['mountains', 'void', 'water'].includes(hex.terrain)) {
+            currentPushUnit.q = rx; currentPushUnit.r = rz; 
+            if (!handlePushFlow(currentPushUnit)) {
+                pushRemaining--;
+                if (pushRemaining > 0) { gameState = "SELECT_PUSH_TARGET_2"; currentPushUnit = null; }
+                else { players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; currentPushUnit = null; }
+            }
+        }
+    }
+    updateUI(); render();
+});
+
+function updateUI() {
+    const p = players[currentPlayerIdx], guide = document.getElementById('guide-text');
+    document.getElementById('player-turn-display').innerText = playerLabel(p);
+    document.getElementById('ui-panel').style.setProperty('--panel-color', p?.color || '#d4af37');
+    document.getElementById('artifact-display').innerText = `🏆 Artefakte: ${collectedArtifacts} / ${targetArtifacts}`;
+    document.getElementById('cards-left-display').innerText = drawPoints;
+    document.getElementById('btn-choice-draw').disabled = pathDrawn;
+    document.getElementById('btn-choice-move').disabled = pathMoved;
+    const states = { PLACING: "FIGUR SETZEN", CHOOSING: "AKTION WÄHLEN", DRAWING: "STAPEL WÄHLEN", DICE_ROLL: "WÜRFELN!", PLACING_TERRAIN: `${placementsRemaining}X SETZEN`, ROTATING_RIVER: "FLUSS DREHEN", ACTION_VIEW: "AKTION GEZOGEN", SWAP_CARD: "INVENTAR TAUSCHEN", MOVING: selectedUnit ? "ZIEHEN" : "FIGUR WÄHLEN", SELECT_PUSH_TARGET_1: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_TARGET_2: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_DESTINATION: "ZIELFELD WÄHLEN", RIVER_ESCAPE: "ANS UFER RETTEN", RIVER_ESCAPE_PUSH: "GEGNER RETTEN", BOAT_LANDING: "UFER WÄHLEN" };
+    guide.innerText = states[gameState] || "BITTE WARTEN...";
+    document.getElementById('choice-area').classList.toggle('hidden', gameState !== 'CHOOSING');
+    document.getElementById('drawing-area').classList.toggle('hidden', !['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE', 'SWAP_CARD'].includes(gameState));
+    document.getElementById('draw-selection').classList.toggle('hidden', gameState !== 'DRAWING');
+    document.getElementById('active-card').classList.toggle('hidden', !['DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'SWAP_CARD'].includes(gameState));
+    document.getElementById('dice-section').classList.toggle('hidden', !['DICE_ROLL', 'PLACING_TERRAIN'].includes(gameState));
+    document.getElementById('btn-roll-dice').classList.toggle('hidden', gameState !== 'DICE_ROLL');
+    document.getElementById('rotation-controls').classList.toggle('hidden', gameState !== 'ROTATING_RIVER');
+    document.getElementById('btn-finish-drawing').classList.toggle('hidden', !['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE'].includes(gameState));
+    document.getElementById('btn-discard-new').classList.toggle('hidden', gameState !== 'SWAP_CARD');
+
+    document.getElementById('movement-area').classList.toggle('hidden', gameState !== 'MOVING' && gameState !== 'RIVER_ESCAPE' && gameState !== 'RIVER_ESCAPE_PUSH' && gameState !== 'BOAT_LANDING'); 
+    document.getElementById('ap-display').innerText = `AKTIONSPUNKTE: ${actionPoints}`;
+    if (currentCard) {
+        document.getElementById('card-icon').innerText = currentCard.icon;
+        document.getElementById('card-name').innerText = currentCard.name;
+        if(gameState === 'ACTION_VIEW') setTimeout(() => { if(gameState === 'ACTION_VIEW') finishCard(); }, 1500);
+    }
+    if (gameState === 'PLACING_TERRAIN' || gameState === 'ROTATING_RIVER') document.getElementById('placement-info').innerText = `NOCH ${placementsRemaining}`;
+
+    for(let i=0; i<3; i++) {
+        const slot = document.getElementById(`inv-slot-${i}`), card = p.inventory[i];
+        slot.querySelector('.inv-icon').innerText = card ? card.icon : ""; slot.querySelector('.inv-name').innerText = card ? card.name : "Leer";
+        slot.classList.toggle('filled', !!card); slot.classList.toggle('swap-mode', gameState === "SWAP_CARD" && !!card);
+    }
+
+    if (net.active) {
+        const myTurn = isMyTurn();
+        document.getElementById('action-controls').classList.toggle('locked', !myTurn);
+        document.getElementById('turn-lock-msg').classList.toggle('hidden', myTurn);
+        if (!myTurn) document.getElementById('turn-lock-msg').innerText = `⏳ ${playerLabel(p)} ist am Zug…`;
+    }
+    if (net.active && !net.applyingRemote) sendStateUpdate();
+}
+
+function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); const s = hexSize * camera.zoom;
+    const destSize = SPR_D * (s / REF_S);
+    // Pass 1: alle Terrain-Sprites zeichnen (undurchsichtig) - muss komplett fertig sein,
+    // bevor Fluss-/Straßen-Verbindungen darübergelegt werden, sonst übermalt ein spaeter
+    // gezeichnetes Nachbarfeld die Verbindung/Mündung des vorherigen Feldes wieder.
+    Object.values(mapData.hexes).forEach(hex => {
+        const x = (hexSize*1.5*hex.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(hex.r+hex.q/2))*camera.zoom+camera.y;
+        if (hex.terrain === 'void') { drawVoidHex(ctx, x, y, s); return; }
+        if (!hex.sprite) bakeHex(hex);
+        ctx.drawImage(hex.sprite, x - destSize/2, y - destSize/2, destSize, destSize);
+    });
+    // Pass 2: Fluss- und Straßen-Verbindungen (inkl. Mündungen) obendrauf, damit sie nie
+    // von einem Nachbarfeld überdeckt werden.
+    Object.values(mapData.hexes).forEach(hex => {
+        if (hex.terrain !== 'river' && hex.terrain !== 'road') return;
+        const x = (hexSize*1.5*hex.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(hex.r+hex.q/2))*camera.zoom+camera.y;
+        if (hex.terrain === 'river') drawRiverConnections(ctx, hex, x, y, s);
+        else if (hex.terrain === 'road') drawRoadConnections(ctx, hex, x, y, s);
+    });
+}
+function renderFX() {
+    fctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    const s = hexSize * camera.zoom, now = performance.now()/1000;
+
+    let targets = [];
+    if (gameState === "BOAT_LANDING") targets = boatLandingTargets;
+    else if (gameState === "RIVER_ESCAPE" || gameState === "RIVER_ESCAPE_PUSH") targets = riverEscapeHexes;
+    if (targets.length) {
+        const phase = Math.sin(now*3)*0.5+0.5;
+        targets.forEach(t => {
+            const x = (hexSize*1.5*t.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(t.r+t.q/2))*camera.zoom+camera.y;
+            fctx.save();
+            fctx.shadowColor = `rgba(241,196,15,${0.55+phase*0.45})`; fctx.shadowBlur = 8+phase*12;
+            fctx.beginPath(); for (let i=6; i--;) fctx.lineTo(x+(s*0.95)*Math.cos(Math.PI/3*i), y+(s*0.95)*Math.sin(Math.PI/3*i)); fctx.closePath();
+            fctx.strokeStyle = `rgba(241,196,15,${0.75+phase*0.25})`; fctx.lineWidth = 3; fctx.stroke();
+            fctx.restore();
+        });
+    }
+
+    mapData.landmarks.forEach(lm => {
+        const hexHere = mapData.hexes[`${lm.q},${lm.r}`];
+        if (!hexHere || hexHere.terrain === 'void') return;
+        const x = (hexSize*1.5*lm.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(lm.r+lm.q/2))*camera.zoom+camera.y;
+        const isTemple = lm.icon && lm.icon.toLowerCase().includes('temple');
+        const kind = isTemple ? 'temple' : (lm.looted ? 'looted' : 'ruin');
+        drawLandmarkBadge(fctx, x, y, s, kind, now);
+    });
+
+    let unitMap = {}; players.forEach(p => p.units.forEach(u => { const key = `${u.q},${u.r}`; if(!unitMap[key]) unitMap[key] = []; unitMap[key].push({ ...u, color: p.color, original: u }); }));
+    Object.keys(unitMap).forEach(key => {
+        const group = unitMap[key], [q, r] = key.split(',').map(Number), centerX = (hexSize*1.5*q)*camera.zoom+camera.x, centerY = (hexSize*Math.sqrt(3)*(r+q/2))*camera.zoom+camera.y;
+        let spread = s * 0.35;
+        group.forEach((item, i) => {
+            let offsetX = 0, offsetY = 0; if (group.length === 2) { offsetX = (i===0 ? -1 : 1) * spread * 0.7; offsetY = (i===0 ? -1 : 1) * spread * 0.7; }
+            else if (group.length > 2) { let angle = i * (Math.PI * 2 / group.length) - Math.PI/2; offsetX = Math.cos(angle) * spread; offsetY = Math.sin(angle) * spread; }
+            const glow = (item.original === selectedUnit || item.original === currentPushUnit);
+            drawShieldToken(fctx, centerX + offsetX, centerY + offsetY, s * (group.length > 1 ? 0.62 : 0.78), item.color, glow);
+        });
+    });
+}
+function fxLoop() { renderFX(); requestAnimationFrame(fxLoop); }
+function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; fxCanvas.width = window.innerWidth; fxCanvas.height = window.innerHeight; render(); }
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas(); updateDefaultSettings(); requestAnimationFrame(fxLoop);
+</script>
+</body>
+</html>
