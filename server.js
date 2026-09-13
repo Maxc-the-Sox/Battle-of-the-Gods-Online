@@ -115,6 +115,19 @@ function sanitizeColor(color) {
     return '#d4af37';
 }
 
+// Muss dieselbe Palette sein wie PLAYER_COLORS im Client (public/index.html).
+const PLAYER_COLORS = ["#ff4757", "#2e86de", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"];
+
+// Verhindert, dass zwei Spieler (z.B. durch gleichzeitiges Klicken) dieselbe Farbe bekommen -
+// der Client blockt das zwar schon visuell, aber das hier ist die verbindliche, serverseitige
+// Absicherung gegen die seltene Race Condition.
+function resolveColor(room, clientId, requestedColor) {
+    const takenByOthers = new Set(Array.from(room.members.entries()).filter(([id]) => id !== clientId).map(([, m]) => m.color));
+    if (!takenByOthers.has(requestedColor)) return requestedColor;
+    const free = PLAYER_COLORS.find(c => !takenByOthers.has(c));
+    return free || requestedColor; // alle 6 vergeben (>6 Spieler) - dann eben doppelt
+}
+
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', ws => {
@@ -130,9 +143,10 @@ wss.on('connection', ws => {
             const clientId = String(msg.clientId || '').slice(0, 64);
             if (!clientId) return;
             const name = sanitizeName(msg.name);
-            const color = sanitizeColor(msg.color);
+            let color = sanitizeColor(msg.color);
 
             const { code, room } = getOrCreateRoom(msg.room, clientId);
+            color = resolveColor(room, clientId, color);
 
             // Falls dieser Client (gleiche persistente ID) schon mit einer alten
             // Verbindung im Raum war (z.B. Seite neu geladen), die alte sauber ersetzen.
