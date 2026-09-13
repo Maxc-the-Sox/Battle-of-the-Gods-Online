@@ -2682,7 +2682,13 @@ function updateUI() {
         document.getElementById('action-controls').classList.toggle('locked', !myTurn);
         document.getElementById('inventory-panel').classList.toggle('locked', !myTurn);
         document.getElementById('turn-lock-msg').classList.toggle('hidden', myTurn);
-        if (!myTurn) document.getElementById('turn-lock-msg').innerText = npcTurn ? `🤖 ${playerLabel(p)} ist am Zug…` : `⏳ ${playerLabel(p)} ist am Zug…`;
+        if (!myTurn) {
+            // Der KI-Name enthaelt meist schon ein 🤖 (siehe presetPlayers) - nicht nochmal
+            // davorsetzen, sonst steht am Ende "🤖 🤖 KI (...) ist am Zug".
+            const label = playerLabel(p);
+            const prefix = npcTurn ? (label.startsWith('🤖') ? '' : '🤖 ') : '⏳ ';
+            document.getElementById('turn-lock-msg').innerText = `${prefix}${label} ist am Zug…`;
+        }
     } else {
         document.getElementById('inventory-panel').classList.remove('locked');
     }
