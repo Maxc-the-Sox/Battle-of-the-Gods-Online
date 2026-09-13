@@ -265,7 +265,7 @@
         .settings-grid input.lobby-input { width: 100%; text-align: left; }
         #room-badge { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 900; font-family: 'Cinzel', serif; font-size: 0.8em; letter-spacing: 1px; color: #c9b98a; background: rgba(18,16,12,0.85); border: 1px solid rgba(212,175,55,0.4); padding: 6px 18px; border-radius: 2px; }
         #room-badge-code { color: var(--gold-light); font-weight: bold; letter-spacing: 3px; }
-        #action-controls.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
+        #action-controls.locked, #inventory-panel.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
         #turn-lock-msg { text-align: center; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1px; color: #e57368; margin-bottom: 10px; text-transform: uppercase; }
     </style>
 </head>
@@ -280,11 +280,13 @@
         <div class="title-flourish">⚜ ✦ ⚜</div>
         <h1>Battle of the Gods</h1>
         <p class="menu-subtitle">Ein Zeitalter der Titanen bricht an</p>
-        <select id="player-count" onchange="updateDefaultSettings()">
+        <select id="player-count" onchange="updateDefaultSettings(); renderPlayerTypeSelectors();">
             <option value="2">2 Spieler</option><option value="3">3 Spieler</option>
             <option value="4">4 Spieler</option><option value="5">5 Spieler</option>
             <option value="6">6 Spieler</option>
         </select>
+        <div class="divider-orn">Spieler</div>
+        <div id="player-types" class="settings-grid"></div>
         <div class="divider-orn">Einstellungen</div>
         <div class="settings-grid">
             <label>Ziel Artefakte:</label><input type="number" id="cfg-target" value="7">
@@ -356,6 +358,15 @@
             <p id="lobby-count-hint" style="text-align:center; font-size:0.8em; color:#c9b98a; margin-top:6px;"></p>
 
             <div id="lobby-host-settings" class="hidden">
+                <div class="divider-orn">KI-Spieler</div>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:4px;">
+                    <select id="lobby-npc-difficulty" style="flex:1;">
+                        <option value="easy">KI: Leicht</option>
+                        <option value="medium" selected>KI: Mittel</option>
+                        <option value="hard">KI: Schwer</option>
+                    </select>
+                    <button type="button" class="btn" style="width:auto; margin:0; white-space:nowrap;" onclick="addLocalNpc()">+ Hinzufügen</button>
+                </div>
                 <button type="button" class="lobby-settings-toggle" onclick="toggleOnlineSettings()">⚙ Erweiterte Einstellungen <span id="lobby-settings-caret">▾</span></button>
                 <div id="lobby-settings-body" class="hidden">
                     <div class="settings-grid">
@@ -816,6 +827,24 @@ function updateDefaultSettings() {
     document.getElementById('cfg-ring3').value = rings[2];
 }
 
+const NPC_DIFF_LABELS = { easy: 'Leicht', medium: 'Mittel', hard: 'Schwer' };
+function renderPlayerTypeSelectors() {
+    const count = parseInt(document.getElementById('player-count').value);
+    const container = document.getElementById('player-types');
+    const prevValues = Array.from(container.querySelectorAll('select')).map(s => s.value);
+    container.innerHTML = '';
+    for (let i = 0; i < count; i++) {
+        const label = document.createElement('label');
+        label.innerText = `Spieler ${i + 1}:`;
+        const select = document.createElement('select');
+        select.id = `player-type-${i}`;
+        select.innerHTML = '<option value="human">Mensch</option><option value="easy">KI: Leicht</option><option value="medium">KI: Mittel</option><option value="hard">KI: Schwer</option>';
+        if (prevValues[i]) select.value = prevValues[i];
+        container.appendChild(label);
+        container.appendChild(select);
+    }
+}
+
 async function loadStandardMap() {
     const btn = document.querySelector('.btn-start');
     try {
@@ -825,7 +854,18 @@ async function loadStandardMap() {
         const data = await response.json();
         targetArtifacts = parseInt(document.getElementById('cfg-target').value);
         ringThresholds = [parseInt(document.getElementById('cfg-ring1').value), parseInt(document.getElementById('cfg-ring2').value), parseInt(document.getElementById('cfg-ring3').value)];
-        processLoadedMap(data, parseInt(document.getElementById('player-count').value));
+        const count = parseInt(document.getElementById('player-count').value);
+        const presetPlayers = Array.from({ length: count }, (_, i) => {
+            const sel = document.getElementById(`player-type-${i}`);
+            const type = sel ? sel.value : 'human';
+            const isNPC = type !== 'human';
+            return {
+                id: i + 1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, netId: null,
+                name: isNPC ? `🤖 KI (${NPC_DIFF_LABELS[type]})` : null,
+                isNPC, npcDifficulty: isNPC ? type : null
+            };
+        });
+        processLoadedMap(data, count, presetPlayers);
     } catch (e) {
         alert("Ladefehler: " + e.message);
         if (btn) { btn.disabled = false; btn.innerText = 'LOKAL SPIELEN'; }
@@ -842,7 +882,7 @@ function processLoadedMap(data, count, presetPlayers) {
 
     Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
 
-    players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, name: null, netId: null }));
+    players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, name: null, netId: null, isNPC: false, npcDifficulty: null }));
     document.getElementById('setup-overlay').style.display = 'none';
     document.getElementById('ui-panel').classList.remove('hidden');
     document.getElementById('apo-panel').classList.remove('hidden');
@@ -960,11 +1000,22 @@ let net = {
     lobbyMembers: [],
     applyingRemote: false,
     connected: false,
-    centered: false
+    centered: false,
+    localNpcs: [],   // nur beim Host: KI-Spieler, die noch NICHT beim Server angemeldet sind (siehe addLocalNpc)
+    started: false
 };
 
 function playerLabel(p) { return p ? (p.name || `Spieler ${p.id}`) : '?'; }
 function isMyTurn() { return !net.active || net.myIndex === currentPlayerIdx; }
+// Darf GERADE ein Mensch an der Maus/Tastatur etwas tun? (blockt sowohl "nicht mein Online-Zug"
+// als auch "gerade ist eine KI am Zug" - die KI selbst umgeht diese Funktion und ruft ihre
+// Aktionen direkt auf, siehe NPC-Modul weiter unten.)
+function isControllable() {
+    if (isGameOver) return false;
+    const p = players[currentPlayerIdx];
+    if (p && p.isNPC) return false;
+    return isMyTurn();
+}
 
 function escapeHtml(s) { const d = document.createElement('div'); d.innerText = (s === null || s === undefined) ? '' : String(s); return d.innerHTML; }
 
@@ -988,7 +1039,7 @@ function startNetworkMode() {
 
 function backToMainMenu() {
     if (net.ws) { try { net.ws.close(); } catch (e) {} }
-    net.ws = null; net.active = false; net.room = null; net.connected = false;
+    net.ws = null; net.active = false; net.room = null; net.connected = false; net.localNpcs = [];
     document.getElementById('lobby-overlay').classList.add('hidden');
     document.getElementById('setup-overlay').style.display = 'flex';
 }
@@ -1077,6 +1128,7 @@ function handleNetMessage(msg) {
     } else if (msg.type === 'lobby') {
         net.hostId = msg.hostId;
         net.lobbyMembers = msg.members;
+        net.started = !!msg.started;
         // Der Server ist die Autoritaet bei Farbkonflikten (z.B. zwei Klicks im selben Moment) -
         // falls er meine Farbe korrigiert hat, das hier uebernehmen statt zu ueberschreiben.
         const me = msg.members.find(m => m.clientId === net.clientId);
@@ -1092,6 +1144,22 @@ function handleNetMessage(msg) {
     }
 }
 
+function npcDifficultyLabel(d) { return NPC_DIFF_LABELS[d] || d; }
+
+function addLocalNpc() {
+    if (net.clientId !== net.hostId) return;
+    if (net.lobbyMembers.length + net.localNpcs.length >= 6) { alert('Maximal 6 Spieler pro Raum.'); return; }
+    const diff = document.getElementById('lobby-npc-difficulty').value;
+    const usedColors = net.lobbyMembers.map(m => m.color).concat(net.localNpcs.map(n => n.color));
+    const color = PLAYER_COLORS.find(c => !usedColors.includes(c)) || PLAYER_COLORS[0];
+    net.localNpcs.push({ localId: uuid4(), name: `🤖 KI (${npcDifficultyLabel(diff)})`, color, difficulty: diff });
+    renderLobbyMembers(net.started);
+}
+function removeLocalNpc(localId) {
+    net.localNpcs = net.localNpcs.filter(n => n.localId !== localId);
+    renderLobbyMembers(net.started);
+}
+
 function renderLobbyMembers(started) {
     const list = document.getElementById('lobby-members');
     list.innerHTML = '';
@@ -1103,11 +1171,27 @@ function renderLobbyMembers(started) {
         list.appendChild(row);
     });
     const isHost = net.clientId === net.hostId;
+    if (isHost) {
+        net.localNpcs.forEach(n => {
+            const row = document.createElement('div');
+            row.className = 'lobby-member';
+            row.innerHTML = `<span class="lobby-swatch" style="background:${n.color}"></span><span class="lobby-member-name">${escapeHtml(n.name)}</span><span class="lobby-host-tag" style="border-color:#5dade2;color:#5dade2;">KI</span>`;
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button'; removeBtn.className = 'help-btn';
+            removeBtn.style.cssText = 'width:auto; padding:2px 8px; margin-left:6px; font-size:0.7em;';
+            removeBtn.innerText = '✕';
+            removeBtn.onclick = () => removeLocalNpc(n.localId);
+            row.appendChild(removeBtn);
+            list.appendChild(row);
+        });
+    }
     document.getElementById('lobby-host-settings').classList.toggle('hidden', !isHost);
     document.getElementById('lobby-wait-msg').classList.toggle('hidden', isHost);
+    const totalCount = net.lobbyMembers.length + (isHost ? net.localNpcs.length : 0);
     const startBtn = document.getElementById('lobby-start-btn');
-    startBtn.disabled = net.lobbyMembers.length < 2 || net.lobbyMembers.length > 6 || started;
-    document.getElementById('lobby-count-hint').innerText = started ? 'Das Spiel läuft bereits…' : `${net.lobbyMembers.length} / 6 Spieler verbunden (mind. 2)`;
+    startBtn.disabled = totalCount < 2 || totalCount > 6 || started;
+    const npcHint = (isHost && net.localNpcs.length) ? ` (davon ${net.localNpcs.length} KI)` : '';
+    document.getElementById('lobby-count-hint').innerText = started ? 'Das Spiel läuft bereits…' : `${totalCount} / 6 Spieler${npcHint} (mind. 2)`;
     if (isHost) updateOnlineDefaults();
 }
 
@@ -1117,7 +1201,7 @@ let onlineSettingsTouched = false;
 function markOnlineSettingsTouched() { onlineSettingsTouched = true; }
 function updateOnlineDefaults() {
     if (onlineSettingsTouched) return;
-    const count = Math.max(net.lobbyMembers.length, 2); // vor dem 2. Beitritt schon die 2-Spieler-Defaults zeigen
+    const count = Math.max(net.lobbyMembers.length + net.localNpcs.length, 2); // vor dem 2. Beitritt schon die 2-Spieler-Defaults zeigen
     document.getElementById('cfg-target-online').value = (count == 2) ? 7 : (count <= 4 ? 8 : 9);
     const rings = (count == 2) ? [3, 5, 7] : (count <= 4 ? [4, 6, 8] : [5, 7, 9]);
     document.getElementById('cfg-ring1-online').value = rings[0];
@@ -1156,7 +1240,10 @@ async function startOnlineGame() {
             parseInt(document.getElementById('cfg-ring2-online').value) || 5,
             parseInt(document.getElementById('cfg-ring3-online').value) || 7
         ];
-        const presetPlayers = net.lobbyMembers.map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false }));
+        const presetPlayers = net.lobbyMembers.map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false, isNPC: false, npcDifficulty: null }));
+        net.localNpcs.forEach(n => {
+            presetPlayers.push({ id: presetPlayers.length + 1, netId: null, name: n.name, color: n.color, units: [], inventory: [], skipped: false, isNPC: true, npcDifficulty: n.difficulty });
+        });
         net.active = true;
         net.myIndex = presetPlayers.findIndex(pl => pl.netId === net.clientId);
         document.getElementById('lobby-overlay').classList.add('hidden');
@@ -1182,6 +1269,7 @@ function serializeState() {
         landmarks: mapData.landmarks.map(l => ({ ...l })),
         players: players.map(p => ({
             id: p.id, netId: p.netId, name: p.name, color: p.color, skipped: p.skipped,
+            isNPC: !!p.isNPC, npcDifficulty: p.npcDifficulty || null,
             units: p.units.map(u => ({ q: u.q, r: u.r })),
             inventory: p.inventory.map(c => ({ ...c }))
         })),
@@ -1249,6 +1337,430 @@ function applyRemoteState(state) {
         if (winner) showVictoryUI(winner, lastVictoryInfo.reason);
     }
     net.applyingRemote = false;
+}
+
+// =====================================================================
+// KI-SPIELER (NPCs) - lokal UND online
+// =====================================================================
+// Prinzip: Die KI ruft exakt dieselben Funktionen auf, die auch ein Klick
+// ausloesen wuerde (performHexClick, handleChoice, prepareDraw, rollDice,
+// handleInventoryClick, confirmRiver, cancelCurrentCard, finishPath, ...).
+// Dadurch kann die Spiellogik selbst niemals von KI und Mensch abweichen.
+// Im Online-Modus fuehrt NUR der Host die KI-Zuege aus (siehe isHostOrLocal) -
+// alle anderen Clients bekommen das Ergebnis ganz normal per State-Broadcast
+// (das passiert automatisch, weil updateUI() bei jeder Aenderung sendet).
+const NPC_TICK_MS = 650;
+const NPC_CARD_TYPES = ['tool_hook', 'tool_boat']; // "passive" Karten, die die KI nie aktiv anklickt
+let npcTickTimer = null;
+
+function isHostOrLocal() { return !net.active || net.clientId === net.hostId; }
+
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function scheduleNpcCheck(delay = NPC_TICK_MS) {
+    clearTimeout(npcTickTimer);
+    npcTickTimer = setTimeout(runNpcStepIfNeeded, delay);
+}
+
+function runNpcStepIfNeeded() {
+    if (isGameOver || !players.length) return;
+    const p = players[currentPlayerIdx];
+    if (!p || !p.isNPC) return;
+    if (!isHostOrLocal()) return; // nur der Host "denkt" im Online-Modus
+    try {
+        npcStep(p);
+    } catch (e) {
+        console.error('KI-Fehler, versuche sauber weiterzumachen:', e);
+        npcSafetyBailout();
+    }
+    scheduleNpcCheck();
+}
+
+function npcStep(p) {
+    const diff = p.npcDifficulty || 'medium';
+    switch (gameState) {
+        case 'PLACING': return npcDoPlacing(p, diff);
+        case 'CHOOSING': return npcDoChoosing(p, diff);
+        case 'DRAWING': return npcDoDrawing(p, diff);
+        case 'DICE_ROLL': rollDice(); return;
+        case 'PLACING_TERRAIN': return npcDoPlacingTerrain(p, diff);
+        case 'ROTATING_RIVER': return npcDoRotatingRiver(p, diff);
+        case 'ACTION_VIEW': return; // loest sich nach 1.5s von selbst auf
+        case 'DRAWING_DONE': cancelCurrentCard(); return;
+        case 'SWAP_CARD': return npcDoSwapCard(p, diff);
+        case 'MOVING': return npcDoMoving(p, diff);
+        case 'RIVER_ESCAPE': case 'RIVER_ESCAPE_PUSH': return npcDoRiverEscape(p, diff);
+        case 'BOAT_LANDING': return npcDoBoatLanding(p, diff);
+        case 'SELECT_SKIP': return npcDoSelectSkip(p, diff);
+        case 'SELECT_TELEPORT_UNIT': return npcDoSelectTeleportUnit(p, diff);
+        case 'SELECT_TELEPORT_TARGET': return npcDoSelectTeleportTarget(p, diff);
+        case 'SELECT_PUSH_TARGET_1': case 'SELECT_PUSH_TARGET_2': return npcDoSelectPushTarget(p, diff);
+        case 'SELECT_PUSH_DESTINATION': return npcDoSelectPushDestination(p, diff);
+        default: return; // unbekannter/kurzlebiger Zustand - beim naechsten Tick erneut schauen
+    }
+}
+
+// Sicherheitsnetz: falls die KI irgendwo in einen unerwarteten Zustand laeuft (z.B. durch eine
+// Kartenkombination, die wir nicht bedacht haben), lieber die aktuelle Teil-Aktion sauber
+// abbrechen als den Zug fuer immer haengen zu lassen.
+function npcSafetyBailout() {
+    try {
+        if (['SELECT_SKIP', 'SELECT_TELEPORT_UNIT', 'SELECT_TELEPORT_TARGET', 'SELECT_PUSH_TARGET_1', 'SELECT_PUSH_TARGET_2', 'SELECT_PUSH_DESTINATION'].includes(gameState)) {
+            npcCancelPendingCard();
+        } else if (['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE', 'SWAP_CARD'].includes(gameState)) {
+            cancelCurrentCard();
+        } else if (['MOVING', 'RIVER_ESCAPE', 'RIVER_ESCAPE_PUSH', 'BOAT_LANDING'].includes(gameState)) {
+            finishPath();
+        } else if (gameState === 'CHOOSING') {
+            pathMoved = true; pathDrawn = true; checkTurnEnd();
+        }
+    } catch (e2) { console.error('KI-Sicherheitsnetz fehlgeschlagen:', e2); }
+}
+
+function npcCancelPendingCard() {
+    if (pendingCardSlot != null) { handleInventoryClick(pendingCardSlot); }
+    else { gameState = 'CHOOSING'; updateUI(); render(); }
+}
+
+// ---------- Zielfindung (gemeinsam fuer mehrere Entscheidungen genutzt) ----------
+function templeLandmark() { return mapData.landmarks.find(l => l.icon && l.icon.toLowerCase().includes('temple')); }
+function unlootedLandmarks() { return mapData.landmarks.filter(l => !l.looted && !(l.icon && l.icon.toLowerCase().includes('temple'))); }
+function objectiveHexFor(unit) {
+    if (!unit) return null;
+    const temple = templeLandmark();
+    if (collectedArtifacts >= targetArtifacts && temple) return temple;
+    const list = unlootedLandmarks();
+    if (list.length === 0) return temple || null;
+    let best = null, bestD = Infinity;
+    list.forEach(l => { const d = getHexDistance(unit.q, unit.r, l.q, l.r); if (d < bestD) { bestD = d; best = l; } });
+    return best;
+}
+function npcOpponentUnits(p) {
+    const list = [];
+    players.forEach(pl => { if (pl.id !== p.id) pl.units.forEach(u => list.push({ unit: u, owner: pl })); });
+    return list;
+}
+function npcLeadingOpponentTargetUnit(p) {
+    const list = npcOpponentUnits(p);
+    if (list.length === 0) return null;
+    const temple = templeLandmark();
+    if (!temple) return pickRandom(list).unit;
+    let best = list[0], bestD = Infinity;
+    list.forEach(entry => { const d = getHexDistance(entry.unit.q, entry.unit.r, temple.q, temple.r); if (d < bestD) { bestD = d; best = entry; } });
+    return best.unit;
+}
+
+// ---------- Anfangsaufstellung ----------
+function npcDoPlacing(p, diff) {
+    const candidates = Object.values(mapData.hexes).filter(h => h.terrain === 'swamp' && !players.some(pl => pl.units.some(u => u.q === h.q && u.r === h.r)));
+    if (candidates.length === 0) return; // sollte nicht vorkommen
+    let hex;
+    if (diff === 'easy') { hex = pickRandom(candidates); }
+    else {
+        const temple = templeLandmark();
+        const sorted = candidates.slice().sort((a, b) => {
+            const da = temple ? getHexDistance(a.q, a.r, temple.q, temple.r) : 0;
+            const db = temple ? getHexDistance(b.q, b.r, temple.q, temple.r) : 0;
+            return da - db;
+        });
+        const poolSize = diff === 'hard' ? 3 : 6;
+        hex = pickRandom(sorted.slice(0, Math.min(poolSize, sorted.length)));
+    }
+    performHexClick(hex.q, hex.r, hex);
+}
+
+// ---------- Zug-Wahl (Ziehen vs. Bewegen) ----------
+function npcDoChoosing(p, diff) {
+    if (npcMaybeUseInventoryCard(p, diff)) return;
+    let choice;
+    if (pathDrawn && !pathMoved) choice = 'MOVING';
+    else if (!pathDrawn && pathMoved) choice = 'DRAWING';
+    else choice = (diff === 'easy') ? (Math.random() < 0.5 ? 'DRAWING' : 'MOVING') : 'DRAWING';
+    handleChoice(choice);
+}
+
+// ---------- Karten ziehen ----------
+function npcDoDrawing(p, diff) {
+    let type;
+    if (diff === 'easy') type = Math.random() < 0.5 ? 'LANDSCAPE' : 'ACTION';
+    else type = (p.inventory.length < 3 || Math.random() < 0.3) ? 'ACTION' : 'LANDSCAPE';
+    prepareDraw(type);
+}
+
+function npcValidTerrainPlacementHexes() {
+    return Object.values(mapData.hexes).filter(h => h.terrain !== 'void' && !['mountains', 'forest', 'river', 'road'].includes(h.terrain));
+}
+function npcDoPlacingTerrain(p, diff) {
+    const candidates = npcValidTerrainPlacementHexes();
+    if (candidates.length === 0) { cancelCurrentCard(); return; }
+    let hex;
+    if (diff === 'easy' || p.units.length === 0) { hex = pickRandom(candidates); }
+    else {
+        const sorted = candidates.slice().sort((a, b) => {
+            const da = Math.min(...p.units.map(u => getHexDistance(u.q, u.r, a.q, a.r)));
+            const db = Math.min(...p.units.map(u => getHexDistance(u.q, u.r, b.q, b.r)));
+            return da - db;
+        });
+        const poolSize = diff === 'hard' ? 3 : 6;
+        hex = pickRandom(sorted.slice(0, Math.min(poolSize, sorted.length)));
+    }
+    performHexClick(hex.q, hex.r, hex);
+}
+
+// Prueft (ohne echten Spielzustand zu beschaedigen), ob eine Flussrichtung einen geschlossenen
+// Kreislauf erzeugen wuerde - so vermeiden wir, dass die KI den blockierenden "KREISLAUF ERKANNT"-
+// Dialog ausloest und dann für immer haengen bleibt.
+function npcSafeRiverDirection(preferredDir) {
+    const order = [preferredDir, 0, 1, 2, 3, 4, 5].filter((d, i, arr) => arr.indexOf(d) === i);
+    for (const dir of order) {
+        pendingRiverHex.direction = dir;
+        let checkQ = pendingRiverHex.q, checkR = pendingRiverHex.r, safety = 0, cyclic = false;
+        while (safety < 50) {
+            const cur = mapData.hexes[`${checkQ},${checkR}`]; if (!cur || cur.terrain !== 'river') break;
+            checkQ += hexDirections[cur.direction || 0].q; checkR += hexDirections[cur.direction || 0].r;
+            if (checkQ === pendingRiverHex.q && checkR === pendingRiverHex.r) { cyclic = true; break; }
+            safety++;
+        }
+        if (!cyclic) return dir;
+    }
+    return null;
+}
+function npcDoRotatingRiver(p, diff) {
+    let preferredDir = pendingRiverHex.direction || 0;
+    if (diff === 'hard') {
+        const obj = objectiveHexFor(p.units[0] || { q: pendingRiverHex.q, r: pendingRiverHex.r });
+        let bestDir = preferredDir, bestD = Infinity;
+        for (let d = 0; d < 6; d++) {
+            const nq = pendingRiverHex.q + hexDirections[d].q, nr = pendingRiverHex.r + hexDirections[d].r;
+            const dist = obj ? getHexDistance(nq, nr, obj.q, obj.r) : 0;
+            if (dist < bestD) { bestD = dist; bestDir = d; }
+        }
+        preferredDir = bestDir;
+    } else {
+        preferredDir = Math.floor(Math.random() * 6);
+    }
+    const safeDir = npcSafeRiverDirection(preferredDir);
+    if (safeDir !== null) {
+        pendingRiverHex.direction = safeDir;
+        confirmRiver();
+    } else {
+        // Extrem seltener Sonderfall: alle 6 Richtungen zyklisch. Karte trotzdem sauber
+        // abschliessen, statt den blockierenden Dialog auszuloesen.
+        pendingRiverHex = null; placementsRemaining--;
+        if (placementsRemaining <= 0) finishCard(); else gameState = "PLACING_TERRAIN";
+        updateUI(); render();
+    }
+}
+
+const NPC_CARD_VALUE = { tool_hook: 3, tool_boat: 3, teleport: 4, extra_move: 2, push_enemy: 2, skip_turn: 1 };
+function npcDoSwapCard(p, diff) {
+    let slotIdx;
+    if (diff === 'easy') { slotIdx = Math.floor(Math.random() * 3); }
+    else {
+        let worst = 0, worstVal = Infinity;
+        p.inventory.forEach((c, i) => { const v = NPC_CARD_VALUE[c.type] ?? 2; if (v < worstVal) { worstVal = v; worst = i; } });
+        slotIdx = worst;
+    }
+    handleInventoryClick(slotIdx);
+}
+
+// ---------- Aktionskarten aus dem Inventar einsetzen (Extra-Zug/Teleport/Schubsen/Aussetzen) ----------
+function npcCardUsefulness(p, card) {
+    if (card.type === 'extra_move') return 1.5;
+    if (card.type === 'teleport') {
+        const options = mapData.landmarks.filter(l => l.looted);
+        if (options.length === 0 || p.units.length === 0) return 0;
+        let bestGain = 0;
+        p.units.forEach(u => {
+            const obj = objectiveHexFor(u); if (!obj) return;
+            const curD = getHexDistance(u.q, u.r, obj.q, obj.r);
+            options.forEach(l => { const gain = curD - getHexDistance(l.q, l.r, obj.q, obj.r); if (gain > bestGain) bestGain = gain; });
+        });
+        return bestGain;
+    }
+    if (card.type === 'push_enemy' || card.type === 'skip_turn') {
+        const leader = npcLeadingOpponentTargetUnit(p);
+        const temple = templeLandmark();
+        if (!leader || !temple) return 0;
+        const d = getHexDistance(leader.q, leader.r, temple.q, temple.r);
+        return Math.max(0, 8 - d) * (card.type === 'skip_turn' ? 0.6 : 0.8);
+    }
+    return 0;
+}
+function npcMaybeUseInventoryCard(p, diff) {
+    const usable = [];
+    p.inventory.forEach((c, i) => { if (!NPC_CARD_TYPES.includes(c.type)) usable.push({ idx: i, card: c }); });
+    if (usable.length === 0) return false;
+    if (diff === 'easy') {
+        if (Math.random() < 0.75) return false;
+        handleInventoryClick(pickRandom(usable).idx);
+        return true;
+    }
+    let best = null, bestScore = -Infinity;
+    usable.forEach(entry => { const score = npcCardUsefulness(p, entry.card); if (score > bestScore) { bestScore = score; best = entry; } });
+    const threshold = diff === 'hard' ? 0.8 : 1.5;
+    if (!best || bestScore < threshold) return false;
+    handleInventoryClick(best.idx);
+    return true;
+}
+
+// ---------- Bewegung ----------
+function npcCandidateStepsForUnit(unit, player) {
+    const out = [];
+    hexDirections.forEach(d => {
+        const hex = mapData.hexes[`${unit.q + d.q},${unit.r + d.r}`];
+        if (!hex || ['void', 'water'].includes(hex.terrain)) return;
+        if (hex.terrain === 'mountains') {
+            const oldHex = mapData.hexes[`${unit.q},${unit.r}`];
+            if ((!oldHex || oldHex.terrain !== 'mountains') && !(player.inventory || []).some(c => c.type === 'tool_hook')) return;
+        }
+        out.push(hex);
+    });
+    return out;
+}
+function npcScoreHexForUnit(unit, hex, diff, lookahead) {
+    const obj = objectiveHexFor(unit);
+    if (!obj) return 0;
+    let score = getHexDistance(unit.q, unit.r, obj.q, obj.r) - getHexDistance(hex.q, hex.r, obj.q, obj.r);
+    if (hex.terrain === 'forest') score -= 0.4;
+    if (diff === 'hard' && lookahead !== false) {
+        const virtualUnit = { q: hex.q, r: hex.r };
+        let bestNext = 0;
+        npcCandidateStepsForUnit(virtualUnit, { inventory: [] }).forEach(h2 => {
+            const s2 = npcScoreHexForUnit(virtualUnit, h2, diff, false);
+            if (s2 > bestNext) bestNext = s2;
+        });
+        score += bestNext * 0.5;
+    }
+    return score;
+}
+function npcBestStepForUnit(p, unit, diff) {
+    const steps = npcCandidateStepsForUnit(unit, p);
+    if (steps.length === 0) return null;
+    if (diff === 'easy') return pickRandom(steps);
+    let best = null, bestScore = -Infinity;
+    steps.forEach(hex => { const s = npcScoreHexForUnit(unit, hex, diff); if (s > bestScore) { bestScore = s; best = hex; } });
+    return best;
+}
+function npcBestMovePlan(p, diff) {
+    if (diff === 'easy') {
+        const withMoves = p.units.filter(u => npcCandidateStepsForUnit(u, p).length > 0);
+        if (withMoves.length === 0) return null;
+        const unit = pickRandom(withMoves);
+        return { unit, hex: pickRandom(npcCandidateStepsForUnit(unit, p)) };
+    }
+    let best = null, bestScore = -Infinity;
+    p.units.forEach(unit => {
+        npcCandidateStepsForUnit(unit, p).forEach(hex => {
+            const score = npcScoreHexForUnit(unit, hex, diff);
+            if (score > bestScore) { bestScore = score; best = { unit, hex }; }
+        });
+    });
+    return best;
+}
+function npcDoMoving(p, diff) {
+    if (actionPoints <= 0) { finishPath(); return; }
+    if (npcMaybeUseInventoryCard(p, diff)) return;
+    if (!selectedUnit || !p.units.includes(selectedUnit)) {
+        const plan = npcBestMovePlan(p, diff);
+        if (!plan) { finishPath(); return; }
+        performHexClick(plan.unit.q, plan.unit.r, mapData.hexes[`${plan.unit.q},${plan.unit.r}`]);
+        return;
+    }
+    const step = npcBestStepForUnit(p, selectedUnit, diff);
+    if (!step) { finishPath(); return; }
+    performHexClick(step.q, step.r, step);
+}
+
+// ---------- Fluss-/Boot-Sonderfaelle ----------
+function npcDoRiverEscape(p, diff) {
+    if (!riverEscapeHexes || riverEscapeHexes.length === 0) return;
+    let target;
+    if (diff === 'easy') { target = pickRandom(riverEscapeHexes); }
+    else {
+        const unit = selectedUnit || currentPushUnit;
+        const forSelf = gameState === 'RIVER_ESCAPE';
+        const obj = unit ? objectiveHexFor(unit) : null;
+        let best = null, bestScore = -Infinity;
+        riverEscapeHexes.forEach(h => {
+            const d = obj ? getHexDistance(h.q, h.r, obj.q, obj.r) : 0;
+            const score = forSelf ? -d : d;
+            if (score > bestScore) { bestScore = score; best = h; }
+        });
+        target = best || pickRandom(riverEscapeHexes);
+    }
+    performHexClick(target.q, target.r, mapData.hexes[`${target.q},${target.r}`]);
+}
+function npcDoBoatLanding(p, diff) {
+    if (!boatLandingTargets || boatLandingTargets.length === 0) { finishPath(); return; }
+    const hasHook = p.inventory.some(c => c.type === 'tool_hook');
+    const valid = boatLandingTargets.filter(h => { const hex = mapData.hexes[`${h.q},${h.r}`]; return hex && (hex.terrain !== 'mountains' || hasHook); });
+    if (valid.length === 0) { boatLandingTargets = []; actionPoints = 0; finishPath(); return; }
+    let target;
+    if (diff === 'easy') { target = pickRandom(valid); }
+    else {
+        const obj = objectiveHexFor(selectedUnit || p.units[0]);
+        let best = valid[0], bestD = Infinity;
+        valid.forEach(h => { const d = obj ? getHexDistance(h.q, h.r, obj.q, obj.r) : 0; if (d < bestD) { bestD = d; best = h; } });
+        target = best;
+    }
+    performHexClick(target.q, target.r, mapData.hexes[`${target.q},${target.r}`]);
+}
+
+// ---------- Zielauswahl fuer Aktionskarten (Aussetzen/Schubsen/Teleport) ----------
+function npcDoSelectSkip(p, diff) {
+    const list = npcOpponentUnits(p);
+    if (list.length === 0) { npcCancelPendingCard(); return; }
+    const unit = (diff === 'easy') ? pickRandom(list).unit : npcLeadingOpponentTargetUnit(p);
+    performHexClick(unit.q, unit.r, mapData.hexes[`${unit.q},${unit.r}`]);
+}
+function npcDoSelectTeleportUnit(p, diff) {
+    if (p.units.length === 0) { npcCancelPendingCard(); return; }
+    let unit;
+    if (diff === 'easy') { unit = pickRandom(p.units); }
+    else {
+        let best = p.units[0], bestD = -Infinity;
+        p.units.forEach(u => { const obj = objectiveHexFor(u); const d = obj ? getHexDistance(u.q, u.r, obj.q, obj.r) : 0; if (d > bestD) { bestD = d; best = u; } });
+        unit = best;
+    }
+    performHexClick(unit.q, unit.r, mapData.hexes[`${unit.q},${unit.r}`]);
+}
+function npcDoSelectTeleportTarget(p, diff) {
+    const options = mapData.landmarks.filter(l => l.looted);
+    if (options.length === 0) { npcCancelPendingCard(); return; }
+    let target;
+    if (diff === 'easy') { target = pickRandom(options); }
+    else {
+        const obj = objectiveHexFor(selectedUnit || p.units[0]);
+        let best = options[0], bestD = Infinity;
+        options.forEach(l => { const d = obj ? getHexDistance(l.q, l.r, obj.q, obj.r) : 0; if (d < bestD) { bestD = d; best = l; } });
+        target = best;
+    }
+    performHexClick(target.q, target.r, mapData.hexes[`${target.q},${target.r}`]);
+}
+function npcDoSelectPushTarget(p, diff) {
+    const list = npcOpponentUnits(p);
+    if (list.length === 0) { npcCancelPendingCard(); return; }
+    const unit = (diff === 'easy') ? pickRandom(list).unit : npcLeadingOpponentTargetUnit(p);
+    performHexClick(unit.q, unit.r, mapData.hexes[`${unit.q},${unit.r}`]);
+}
+function npcDoSelectPushDestination(p, diff) {
+    if (!currentPushUnit) { npcCancelPendingCard(); return; }
+    const candidates = [];
+    hexDirections.forEach(d => {
+        const hex = mapData.hexes[`${currentPushUnit.q + d.q},${currentPushUnit.r + d.r}`];
+        if (hex && !['mountains', 'void', 'water'].includes(hex.terrain)) candidates.push(hex);
+    });
+    if (candidates.length === 0) { npcCancelPendingCard(); return; }
+    let target;
+    if (diff === 'easy') { target = pickRandom(candidates); }
+    else {
+        const obj = objectiveHexFor(currentPushUnit);
+        let best = candidates[0], bestD = -Infinity;
+        candidates.forEach(h => { const d = obj ? getHexDistance(h.q, h.r, obj.q, obj.r) : 0; if (d > bestD) { bestD = d; best = h; } });
+        target = best;
+    }
+    performHexClick(target.q, target.r, target);
 }
 
 function centerMap() {
@@ -1369,7 +1881,7 @@ function executeTornado() {
     });
 
     if (candidates.length === 0) {
-        alert("🌪️ Der Sturm tobt, aber es gibt keinen sicheren Rand mehr!");
+        showNotification("🌪️ Der Sturm tobt, aber es gibt keinen sicheren Rand mehr!");
         currentCard = null; pathDrawn = true; pathMoved = true; checkTurnEnd(); render(); return;
     }
 
@@ -1391,7 +1903,7 @@ function executeTornado() {
         }
     });
 
-    alert("🌪️ WIRBELSTURM! Deine Figuren wurden an den Rand geweht (sofern sie nicht schon dort waren)! Zug vorbei.");
+    showNotification("🌪️ WIRBELSTURM! Figuren wurden an den Rand geweht (sofern sie nicht schon dort waren)!");
     currentCard = null; pathDrawn = true; pathMoved = true; checkTurnEnd(); render();
 }
 
@@ -1526,7 +2038,7 @@ function tutorialStep(dir) {
     renderTutorialPage();
 }
 function startTurn() {
-    if (players[currentPlayerIdx].skipped) { alert(`${playerLabel(players[currentPlayerIdx])} muss aussetzen!`); players[currentPlayerIdx].skipped = false; currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); return; }
+    if (players[currentPlayerIdx].skipped) { showNotification(`⏭️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} MUSS AUSSETZEN!`); players[currentPlayerIdx].skipped = false; currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); return; }
     pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING";
     showNotification(`⚔️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} IST DRAN!`);
     updateUI(); render();
@@ -1668,15 +2180,8 @@ function processMovement(unit, tQ, tR) {
     updateUI(); render();
 }
 
-canvas.addEventListener('click', e => {
-    if (isGameOver) return;
-    if (net.active && !isMyTurn()) return;
-    if (isDragging) return; const x = (e.clientX-camera.x)/(hexSize*camera.zoom), y = (e.clientY-camera.y)/(hexSize*camera.zoom), q = (2/3*x), r = (-1/3*x + Math.sqrt(3)/3*y);
-    let rx = Math.round(q), rz = Math.round(r), ry = Math.round(-q-r);
-    if (Math.abs(rx-q)>Math.abs(ry-(-q-r)) && Math.abs(rx-q)>Math.abs(rz-r)) rx = -ry-rz; else if (Math.abs(ry-(-q-r)) > Math.abs(rz-r)) ry = -rx-rz; else rz = -rx-ry;
-    const hex = mapData.hexes[`${rx},${rz}`]; if (!hex || hex.terrain === 'void') return;
-
-    if (gameState === "PLACING" && hex.terrain === 'swamp') { 
+function performHexClick(rx, rz, hex) {
+    if (gameState === "PLACING" && hex.terrain === 'swamp') {
         if (players.some(p => p.units.some(u => u.q === rx && u.r === rz))) return;
         players[currentPlayerIdx].units.push({ q: rx, r: rz }); 
         if (players.reduce((sum, p) => sum + p.units.length, 0) === players.length * 2) { currentPlayerIdx = 0; startTurn(); } else { currentPlayerIdx = (currentPlayerIdx + 1) % players.length; }
@@ -1738,6 +2243,15 @@ canvas.addEventListener('click', e => {
         }
     }
     updateUI(); render();
+}
+
+canvas.addEventListener('click', e => {
+    if (!isControllable()) return;
+    if (isDragging) return; const x = (e.clientX-camera.x)/(hexSize*camera.zoom), y = (e.clientY-camera.y)/(hexSize*camera.zoom), q = (2/3*x), r = (-1/3*x + Math.sqrt(3)/3*y);
+    let rx = Math.round(q), rz = Math.round(r), ry = Math.round(-q-r);
+    if (Math.abs(rx-q)>Math.abs(ry-(-q-r)) && Math.abs(rx-q)>Math.abs(rz-r)) rx = -ry-rz; else if (Math.abs(ry-(-q-r)) > Math.abs(rz-r)) ry = -rx-rz; else rz = -rx-ry;
+    const hex = mapData.hexes[`${rx},${rz}`]; if (!hex || hex.terrain === 'void') return;
+    performHexClick(rx, rz, hex);
 });
 
 function updateUI() {
@@ -1775,13 +2289,18 @@ function updateUI() {
         slot.classList.toggle('filled', !!card); slot.classList.toggle('swap-mode', gameState === "SWAP_CARD" && !!card);
     }
 
-    if (net.active) {
-        const myTurn = isMyTurn();
+    const npcTurn = !!(p && p.isNPC);
+    if (net.active || npcTurn) {
+        const myTurn = isControllable();
         document.getElementById('action-controls').classList.toggle('locked', !myTurn);
+        document.getElementById('inventory-panel').classList.toggle('locked', !myTurn);
         document.getElementById('turn-lock-msg').classList.toggle('hidden', myTurn);
-        if (!myTurn) document.getElementById('turn-lock-msg').innerText = `⏳ ${playerLabel(p)} ist am Zug…`;
+        if (!myTurn) document.getElementById('turn-lock-msg').innerText = npcTurn ? `🤖 ${playerLabel(p)} ist am Zug…` : `⏳ ${playerLabel(p)} ist am Zug…`;
+    } else {
+        document.getElementById('inventory-panel').classList.remove('locked');
     }
     if (net.active && !net.applyingRemote) sendStateUpdate();
+    scheduleNpcCheck();
 }
 
 function render() {
@@ -1848,7 +2367,7 @@ function renderFX() {
 function fxLoop() { renderFX(); requestAnimationFrame(fxLoop); }
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; fxCanvas.width = window.innerWidth; fxCanvas.height = window.innerHeight; render(); }
 window.addEventListener('resize', resizeCanvas);
-resizeCanvas(); updateDefaultSettings(); requestAnimationFrame(fxLoop);
+resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); requestAnimationFrame(fxLoop);
 </script>
 </body>
 </html>
