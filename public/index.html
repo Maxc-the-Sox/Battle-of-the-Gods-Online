@@ -770,7 +770,7 @@ function drawRoadConnections(ctx, hex, x, y, s) {
     ctx.restore();
 }
 function opposite(i) { return (i + 3) % 6; }
-function drawRiverConnections(ctx, hex, x, y, s) {
+function drawRiverConnections(ctx, hex, x, y, s, skipInboundSet) {
     const deep = '#2f8fa8', light = '#9beef0';
     const spokes = [];
     const outDir = hex.direction || 0;
@@ -778,7 +778,10 @@ function drawRiverConnections(ctx, hex, x, y, s) {
     const isEndOut = !outNeighbor || outNeighbor.terrain !== 'river';
     spokes.push({ dir: outDir, out: true, isEnd: isEndOut });
     hexDirections.forEach((d, i) => {
-        const n = mapData.hexes[`${hex.q + d.q},${hex.r + d.r}`];
+        const nKey = `${hex.q + d.q},${hex.r + d.r}`;
+        if (skipInboundSet && skipInboundSet.has(nKey)) return; // See-Muendung: die Verbindung zum
+        // eigenen See-Innenfeld traegt schon der organische See-Trichter, kein zusaetzliches Flussband noetig.
+        const n = mapData.hexes[nKey];
         if (n && n.terrain === 'river' && (n.direction || 0) === opposite(i)) spokes.push({ dir: i, out: false, isEnd: false });
     });
     function band(x1, y1, x2, y2, out, isEnd, seed) {
@@ -2875,6 +2878,227 @@ function updateUI() {
     scheduleNpcCheck();
 }
 
+// ================= SEEN: 3+ zusammenhaengende Flussfelder verschmelzen optisch =================
+// Rein visuell! Mechanisch bleibt jedes Feld ganz normales 'river'-Terrain - Bewegung, Boot und die
+// automatische Stroemung (processMovement) funktionieren dadurch fuer den ganzen See unveraendert
+// genauso wie bisher fuer einzelne Fluesse, ohne dass dafuer irgendwas angepasst werden musste.
+// Nur wie diese Felder GEZEICHNET werden, aendert sich: statt einzelner gewundener Flussbaender
+// verschmelzen sie zu einer Fluche mit organischer (nicht-sechseckiger) Uferlinie. Wo ein Feld des
+// Sees per eigener Fliessrichtung an Land grenzt (= "Muendung", ergibt sich automatisch aus den
+// beim Platzieren gewaehlten Fluss-Richtungen), verjuengt sich das Ufer dort trichterfoermig und
+// geht in den bekannten Fluss-Spray-Effekt ueber, statt einfach nur aufzuhoeren.
+function getLakeGroups() {
+    const processed = new Set();
+    const groups = [];
+    const groupIndexByKey = new Map(); // "q,r" -> Index in groups[], nur fuer Felder DIE zu einem See gehoeren (>=3)
+    Object.values(mapData.hexes).forEach(hex => {
+        if (hex.terrain !== 'river') return;
+        const key = `${hex.q},${hex.r}`;
+        if (processed.has(key)) return;
+        const group = getConnectedRivers(hex.q, hex.r);
+        group.forEach(g => processed.add(`${g.q},${g.r}`));
+        if (group.length >= 3) {
+            const idx = groups.length;
+            groups.push(group);
+            group.forEach(g => groupIndexByKey.set(`${g.q},${g.r}`, idx));
+        }
+    });
+    return { groups, groupIndexByKey };
+}
+function hexCornerWorld(hex, i, s) {
+    const cx = (hexSize * 1.5 * hex.q) * camera.zoom + camera.x, cy = (hexSize * Math.sqrt(3) * (hex.r + hex.q / 2)) * camera.zoom + camera.y;
+    return { x: cx + s * Math.cos(Math.PI / 3 * i), y: cy + s * Math.sin(Math.PI / 3 * i) };
+}
+// Chaikin-Corner-Cutting fuer eine OFFENE Punktkette: erster und letzter Punkt bleiben als Anker fix
+// (dort muss die Kontur exakt an den naechsten Abschnitt/Trichter anschliessen), nur die Punkte
+// dazwischen werden rundgeschliffen - ergibt eine glatte, organische Uferlinie statt Sechseck-Kanten.
+function chaikinOpenPts(points, iterations) {
+    let pts = points;
+    for (let it = 0; it < iterations; it++) {
+        const next = [pts[0]];
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[i], p1 = pts[i + 1];
+            next.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
+            next.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
+        }
+        next.push(pts[pts.length - 1]);
+        pts = next;
+    }
+    return pts;
+}
+function chaikinClosedPts(points, iterations) { // Fallback falls ein See ausnahmsweise keine Muendung haette
+    let pts = points;
+    for (let it = 0; it < iterations; it++) {
+        const next = [];
+        for (let i = 0; i < pts.length; i++) {
+            const p0 = pts[i], p1 = pts[(i + 1) % pts.length];
+            next.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
+            next.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
+        }
+        pts = next;
+    }
+    return pts;
+}
+function ptKey(p) { return `${Math.round(p.x * 10)},${Math.round(p.y * 10)}`; }
+function circularSlice(arr, startIdx, endIdx) {
+    const n = arr.length, res = [];
+    let i = startIdx;
+    while (true) { res.push(arr[i]); if (i === endIdx) break; i = (i + 1) % n; }
+    return res;
+}
+function drawLakeBlob(group, s) {
+    // Muendungs-Felder (eigene Fliessrichtung geht auf Land/Nicht-Fluss) werden NICHT zum runden
+    // Hauptkoerper des Sees gezaehlt, sondern als eigener, sich verjuengender Auslauf angesetzt -
+    // genau wie im ersten Mockup, das gut ankam. Wuerden sie zum Hauptkoerper gehoeren, ginge der
+    // Trichter nur ueber die halbe Breite EINES Feldes und wirkt dann eher wie eine Zange als wie
+    // ein richtiger, organisch auslaufender Fluss-Trichter.
+    let mouthKeys = [];
+    group.forEach(g => {
+        const hex = mapData.hexes[`${g.q},${g.r}`];
+        const d = hexDirections[hex.direction || 0];
+        const n = mapData.hexes[`${hex.q + d.q},${hex.r + d.r}`];
+        if (!n || n.terrain !== 'river') mouthKeys.push(`${g.q},${g.r}`);
+    });
+    let bodyKeys = group.map(g => `${g.q},${g.r}`).filter(k => !mouthKeys.includes(k));
+    if (bodyKeys.length === 0) { bodyKeys = group.map(g => `${g.q},${g.r}`); mouthKeys = []; } // Fallback: See besteht NUR aus Muendungen (jedes Feld fliesst direkt raus) -> kein separater Auslauf noetig
+    const bodySet = new Set(bodyKeys);
+
+    const boundaryEdges = [];
+    bodyKeys.forEach(k => {
+        const hex = mapData.hexes[k];
+        for (let i = 0; i < 6; i++) {
+            const d = hexDirections[i];
+            const nKey = `${hex.q + d.q},${hex.r + d.r}`;
+            if (bodySet.has(nKey)) continue; // innere Kante zwischen zwei Koerper-Feldern -> ueberspringen
+            const isNeck = mouthKeys.includes(nKey); // Kante zu einem angesetzten Muendungs-Feld
+            boundaryEdges.push({ p1: hexCornerWorld(hex, i, s), p2: hexCornerWorld(hex, (i + 1) % 6, s), isNeck, mouthHex: isNeck ? mapData.hexes[nKey] : null });
+        }
+    });
+    if (boundaryEdges.length === 0) return;
+
+    // Kanten zu einer geschlossenen Schleife verketten (Endpunkte matchen)
+    const used = new Array(boundaryEdges.length).fill(false);
+    const loopPts = [boundaryEdges[0].p1, boundaryEdges[0].p2];
+    const loopEdgeInfo = [boundaryEdges[0]];
+    used[0] = true;
+    let cur = boundaryEdges[0].p2;
+    for (let guard = 0; guard < boundaryEdges.length * 2; guard++) {
+        let found = -1;
+        for (let i = 0; i < boundaryEdges.length; i++) {
+            if (used[i]) continue;
+            if (ptKey(boundaryEdges[i].p1) === ptKey(cur)) { found = i; break; }
+        }
+        if (found === -1) break;
+        used[found] = true;
+        cur = boundaryEdges[found].p2;
+        loopPts.push(cur);
+        loopEdgeInfo.push(boundaryEdges[found]);
+        if (ptKey(cur) === ptKey(loopPts[0])) break;
+    }
+    loopPts.pop(); loopEdgeInfo.pop();
+    const n = loopPts.length;
+    if (n < 3) return;
+
+    const mouthIdxs = [];
+    loopEdgeInfo.forEach((e, i) => { if (e.isNeck) mouthIdxs.push(i); });
+
+    let full;
+    if (mouthIdxs.length === 0) {
+        full = chaikinClosedPts(loopPts, 3); // sollte durch die Kreislauf-Pruefung beim Platzieren nicht vorkommen
+    } else {
+        full = [];
+        for (let m = 0; m < mouthIdxs.length; m++) {
+            const edgeIdx = mouthIdxs[m];
+            const anchorA = loopPts[edgeIdx], anchorB = loopPts[(edgeIdx + 1) % n];
+            const mh = loopEdgeInfo[edgeIdx].mouthHex;
+            const mc = { x: (hexSize * 1.5 * mh.q) * camera.zoom + camera.x, y: (hexSize * Math.sqrt(3) * (mh.r + mh.q / 2)) * camera.zoom + camera.y };
+            const edgeMid = { x: (anchorA.x + anchorB.x) / 2, y: (anchorA.y + anchorB.y) / 2 };
+            const dirA = { x: anchorA.x - edgeMid.x, y: anchorA.y - edgeMid.y };
+            const dirB = { x: anchorB.x - edgeMid.x, y: anchorB.y - edgeMid.y };
+            const axisX = mc.x - edgeMid.x, axisY = mc.y - edgeMid.y;
+            // Der Trichter darf NICHT auf eine duenne Spitze zulaufen, bevor er die Muendungs-Grafik
+            // (die teal Kapsel mit Pfeilen/Spray, s.u. drawRiverConnections) erreicht - genau das sah
+            // wie eine Zange aus (duenner Steg, der in einen separaten Klecks muendet). Stattdessen
+            // verjuengt sich die Breite nur bis auf die Breite der Kapsel selbst (CAPSULE_FRAC, an der
+            // Muendungsfeld-Mitte) und reicht dann noch ein Stueck darueber hinaus (STRETCH) - dort
+            // liegt spaeter die Kapsel-Grafik sauber (deckend) drueber, es entsteht kein sichtbarer Spalt.
+            const STRETCH = 1.1;
+            const CAPSULE_FRAC = 0.62; // ~ Kapsel-Breite (s*0.58) relativ zur Seeufer-Breite (halfW = s*0.5)
+            const steps = 12;
+            const rightPts = [], leftPts = [];
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps; // 0 = Seeufer-Kante, 1 = Muendungsfeld-Mitte (STRETCH reicht noch etwas weiter)
+                const width = CAPSULE_FRAC + (1 - CAPSULE_FRAC) * Math.pow(1 - t, 1.6);
+                const px = edgeMid.x + axisX * STRETCH * t, py = edgeMid.y + axisY * STRETCH * t;
+                rightPts.push({ x: px + dirA.x * width, y: py + dirA.y * width });
+                leftPts.push({ x: px + dirB.x * width, y: py + dirB.y * width });
+            }
+            const spoutSmooth = [...rightPts, ...leftPts.slice().reverse()];
+            full.push(...(m === 0 ? spoutSmooth : spoutSmooth.slice(1)));
+
+            const nextEdgeIdx = mouthIdxs[(m + 1) % mouthIdxs.length];
+            const shoreStart = (edgeIdx + 1) % n, shoreEnd = nextEdgeIdx;
+            const shoreChain = circularSlice(loopPts, shoreStart, shoreEnd);
+            const shoreSmooth = mouthIdxs.length > 1 || shoreStart !== shoreEnd ? chaikinOpenPts(shoreChain, 3) : shoreChain;
+            full.push(...shoreSmooth.slice(1));
+        }
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    full.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+    const bounds = full.reduce((b, p) => ({ minX: Math.min(b.minX, p.x), minY: Math.min(b.minY, p.y), maxX: Math.max(b.maxX, p.x), maxY: Math.max(b.maxY, p.y) }), { minX: 1e9, minY: 1e9, maxX: -1e9, maxY: -1e9 });
+    const grad = ctx.createLinearGradient(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+    grad.addColorStop(0, '#6cc7f0'); grad.addColorStop(0.55, '#3f96d6'); grad.addColorStop(1, '#276fa8');
+    ctx.fillStyle = grad; ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2.2;
+    for (let row = bounds.minY - 10; row < bounds.maxY + 10; row += 16) {
+        ctx.beginPath();
+        for (let x = bounds.minX - 10; x <= bounds.maxX + 10; x += 6) {
+            const y = row + Math.sin((x + row) / 14) * 4;
+            x === bounds.minX - 10 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+    const shimmer = ctx.createLinearGradient(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+    shimmer.addColorStop(0, 'rgba(255,255,255,0)'); shimmer.addColorStop(0.5, 'rgba(255,255,255,0.5)'); shimmer.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = shimmer; ctx.fillRect(bounds.minX, bounds.minY, bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();
+    full.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+}
+
+// Dezenter Stroemungspfeil auf einem See-Innenfeld: zeigt schon VOR dem Reinschwimmen, wohin dieses
+// Feld die Stroemung zieht - bei mehreren Muendungen kann man so gezielt an einer bestimmten Stelle
+// in den See, um an einer bestimmten Muendung rauszukommen. Muendungs-Felder brauchen das nicht extra
+// (die haben durch den Sprueh-Effekt schon eine sichtbare Richtung).
+function drawLakeCurrentArrow(hex, s) {
+    const cx = (hexSize * 1.5 * hex.q) * camera.zoom + camera.x, cy = (hexSize * Math.sqrt(3) * (hex.r + hex.q / 2)) * camera.zoom + camera.y;
+    const d = hexDirections[hex.direction || 0];
+    const ang = Math.atan2(hexSize * Math.sqrt(3) * (d.r + d.q / 2), hexSize * 1.5 * d.q);
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(ang);
+    ctx.globalAlpha = 0.75;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.shadowColor = 'rgba(20,60,90,0.8)'; ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.22, -s * 0.24);
+    ctx.lineTo(s * 0.3, 0);
+    ctx.lineTo(-s * 0.22, s * 0.24);
+    ctx.lineTo(-s * 0.08, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height); const s = hexSize * camera.zoom;
     const destSize = SPR_D * (s / REF_S);
@@ -2887,12 +3111,31 @@ function render() {
         if (!hex.sprite) bakeHex(hex);
         ctx.drawImage(hex.sprite, x - destSize/2, y - destSize/2, destSize, destSize);
     });
+    // Pass 1.5: Seen (3+ zusammenhaengende Flussfelder) als verschmolzene Flaeche obendrauf -
+    // muss vor Pass 2 kommen, damit einzelne Fluss-/Muendungs-Baender (fuer Muendungs-Felder und
+    // fuer von aussen hineinfliessende Fluss-Ketten) danach noch sauber darueber gezeichnet werden.
+    const { groups: lakeGroups, groupIndexByKey: lakeIndexByKey } = getLakeGroups();
+    lakeGroups.forEach(group => drawLakeBlob(group, s));
+    const lakeGroupSets = lakeGroups.map(g => new Set(g.map(h => `${h.q},${h.r}`)));
     // Pass 2: Fluss- und Straßen-Verbindungen (inkl. Mündungen) obendrauf, damit sie nie
     // von einem Nachbarfeld überdeckt werden.
     Object.values(mapData.hexes).forEach(hex => {
         if (hex.terrain !== 'river' && hex.terrain !== 'road') return;
         const x = (hexSize*1.5*hex.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(hex.r+hex.q/2))*camera.zoom+camera.y;
-        if (hex.terrain === 'river') drawRiverConnections(ctx, hex, x, y, s);
+        if (hex.terrain === 'river') {
+            const lakeIdx = lakeIndexByKey.get(`${hex.q},${hex.r}`);
+            if (lakeIdx !== undefined) {
+                // Teil eines Sees: nur das Muendungs-Feld (eigene Fliessrichtung geht auf Land/Nicht-Fluss)
+                // bekommt noch den bekannten Fluss-/Spray-Effekt obendrauf - die reine Innenflaeche wird
+                // schon komplett vom See-Blob getragen, keine einzelnen Flussbaender mehr noetig.
+                const outDir = hex.direction || 0;
+                const outN = mapData.hexes[`${hex.q + hexDirections[outDir].q},${hex.r + hexDirections[outDir].r}`];
+                if (!outN || outN.terrain !== 'river') drawRiverConnections(ctx, hex, x, y, s, lakeGroupSets[lakeIdx]);
+                else drawLakeCurrentArrow(hex, s); // Innenfeld: dezenter Pfeil statt vollem Flussband
+            } else {
+                drawRiverConnections(ctx, hex, x, y, s);
+            }
+        }
         else if (hex.terrain === 'road') drawRoadConnections(ctx, hex, x, y, s);
     });
 }
