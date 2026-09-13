@@ -248,7 +248,7 @@
         #lobby-overlay .glow-orb { height: 120px; }
         .lobby-settings-toggle { display: block; width: 100%; background: none; border: none; cursor: pointer; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1px; text-transform: uppercase; color: #c9b98a; padding: 4px 0; text-align: center; }
         .lobby-settings-toggle:hover { color: var(--gold-light); }
-        .lobby-settings-toggle.open #lobby-settings-caret { display: inline-block; transform: rotate(180deg); }
+        .lobby-settings-toggle.open #lobby-settings-caret, .lobby-settings-toggle.open #local-settings-caret { display: inline-block; transform: rotate(180deg); }
         .menu-btn.btn-secondary-menu { background: linear-gradient(180deg, #5c6266, #34383a); color: #f2f2f2; border: 1px solid #95a5a6; }
         .menu-btn.btn-secondary-menu:hover { background: linear-gradient(180deg, #7c8286, #454a4c); transform: translateY(-2px); }
         .color-picker { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 2px; }
@@ -287,12 +287,14 @@
         </select>
         <div class="divider-orn">Spieler</div>
         <div id="player-types" class="settings-grid"></div>
-        <div class="divider-orn">Einstellungen</div>
-        <div class="settings-grid">
-            <label>Ziel Artefakte:</label><input type="number" id="cfg-target" value="7">
-            <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1" value="3">
-            <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2" value="5">
-            <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3" value="7">
+        <button type="button" id="local-settings-toggle" class="lobby-settings-toggle" onclick="toggleLocalSettings()">⚙ Erweiterte Einstellungen <span id="local-settings-caret">▾</span></button>
+        <div id="local-settings-body" class="hidden">
+            <div class="settings-grid">
+                <label>Ziel Artefakte:</label><input type="number" id="cfg-target" value="7">
+                <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1" value="3">
+                <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2" value="5">
+                <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3" value="7">
+            </div>
         </div>
         <div class="button-row">
             <button class="menu-btn btn-start" onclick="loadStandardMap()">⚔ Lokal spielen</button>
@@ -1211,7 +1213,14 @@ function updateOnlineDefaults() {
 
 function toggleOnlineSettings() {
     const body = document.getElementById('lobby-settings-body');
-    const btn = document.querySelector('.lobby-settings-toggle');
+    const btn = document.querySelector('#lobby-step-room .lobby-settings-toggle');
+    const open = body.classList.toggle('hidden') === false;
+    btn.classList.toggle('open', open);
+}
+
+function toggleLocalSettings() {
+    const body = document.getElementById('local-settings-body');
+    const btn = document.getElementById('local-settings-toggle');
     const open = body.classList.toggle('hidden') === false;
     btn.classList.toggle('open', open);
 }
