@@ -2685,8 +2685,6 @@ function processMovement(unit, tQ, tR) {
         }
     }
 
-    if (newHex.terrain === 'mountains' && p.inventory.findIndex(c => c.type === 'tool_hook') === -1 && oldHex.terrain !== 'mountains') return false; 
-
     // Straßenbonus: der erste Schritt auf/entlang einer Straße pro Zug ist kostenlos, danach normal.
     let cost = 1;
     let usedRoadBonus = false;
