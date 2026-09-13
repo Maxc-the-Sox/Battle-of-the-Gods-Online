@@ -187,6 +187,43 @@
         }
         #turn-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+        /* ---------- Wirbelsturm: kurzer, spuerbarer Effekt statt nur einer stillen Text-Notification ---------- */
+        @keyframes screenShake {
+            0%, 100% { transform: translate(0, 0); }
+            10% { transform: translate(-10px, -6px) rotate(-0.4deg); }
+            20% { transform: translate(12px, 4px) rotate(0.5deg); }
+            30% { transform: translate(-14px, 8px) rotate(-0.6deg); }
+            40% { transform: translate(10px, -8px) rotate(0.4deg); }
+            50% { transform: translate(-8px, 6px) rotate(-0.3deg); }
+            60% { transform: translate(8px, -4px) rotate(0.3deg); }
+            70% { transform: translate(-6px, 4px) rotate(-0.2deg); }
+            80% { transform: translate(6px, -3px) rotate(0.2deg); }
+            90% { transform: translate(-3px, 2px) rotate(-0.1deg); }
+        }
+        body.screen-shake { animation: screenShake 0.5s ease-in-out 2; }
+        #tornado-overlay {
+            position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: radial-gradient(circle at 50% 50%, rgba(60,50,20,0.35), rgba(5,5,8,0.88) 75%);
+            opacity: 0; transition: opacity 0.35s; pointer-events: none;
+        }
+        #tornado-overlay.show { opacity: 1; }
+        #tornado-overlay .twister { font-size: 7em; animation: twisterSpin 0.9s linear infinite; filter: drop-shadow(0 0 30px rgba(0,0,0,0.7)); }
+        @keyframes twisterSpin { 0% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(180deg) scale(1.15); } 100% { transform: rotate(360deg) scale(1); } }
+        #tornado-overlay .twister-label { margin-top: 18px; font-family: 'Cinzel', serif; font-weight: 800; letter-spacing: 3px; font-size: 1.6em; color: #fff2cf; text-transform: uppercase; text-shadow: 0 0 18px rgba(0,0,0,0.9), 0 0 30px rgba(212,175,55,0.5); }
+
+        /* ---------- Zug-Checkliste: zeigt auf einen Blick, was diesen Zug schon erledigt ist ---------- */
+        #turn-checklist { display: flex; gap: 8px; margin-bottom: 10px; }
+        .check-item {
+            flex: 1; text-align: center; font-family: 'Cinzel', serif; font-size: 0.72em; letter-spacing: 0.5px; text-transform: uppercase;
+            padding: 7px 4px; border-radius: 3px; border: 1px solid rgba(212,175,55,0.3); background: rgba(0,0,0,0.3); color: #c9b98a;
+        }
+        .check-item.pending { border-color: rgba(241,196,15,0.6); color: #f1c40f; animation: checkPulse 1.6s ease-in-out infinite; }
+        .check-item.done { color: #6fcf97; border-color: rgba(111,207,151,0.5); background: rgba(111,207,151,0.08); }
+        @keyframes checkPulse { 0%, 100% { box-shadow: 0 0 0 rgba(241,196,15,0); } 50% { box-shadow: 0 0 10px rgba(241,196,15,0.5); } }
+
+        /* ---------- Karten-/Inventar-Erklaerung: direkt sichtbarer Text statt nur Tooltip ---------- */
+        #card-desc { font-family: 'Cormorant Garamond', serif; font-size: 0.9em; color: #d8c9a3; text-align: center; margin-top: 6px; font-style: italic; line-height: 1.3; }
+
         /* ---------- Anleitung / Tutorial ---------- */
         .help-btn {
             font-family: 'Cinzel', serif; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-size: 0.8em;
@@ -468,6 +505,10 @@
     <div id="guide-hint"></div>
     <div id="artifact-display">🏆 Artefakte: 0 / ?</div>
     <div id="turn-lock-msg" class="hidden">⏳ Warte auf anderen Spieler…</div>
+    <div id="turn-checklist">
+        <div id="check-draw" class="check-item pending">⬜ Karten ziehen</div>
+        <div id="check-move" class="check-item pending">⬜ Bewegen</div>
+    </div>
     <div id="action-controls">
         <div id="choice-area">
             <button id="btn-choice-draw" class="btn btn-gold" onclick="handleChoice('DRAWING')">⚔ 2x Karte ziehen</button>
@@ -484,6 +525,7 @@
                     <span id="card-icon"></span>
                     <span id="card-name"></span>
                 </div>
+                <div id="card-desc"></div>
                 <div id="dice-section" class="hidden">
                     <div id="dice-display"><span id="dice-symbol">?</span></div>
                     <button id="btn-roll-dice" class="btn btn-gold" onclick="rollDice()">Würfeln</button>
@@ -521,6 +563,7 @@
 </div>
 
 <div id="turn-toast" class="hidden"></div>
+<div id="tornado-overlay" class="hidden"><div class="twister">🌪️</div><div class="twister-label">Wirbelsturm!</div></div>
 
 <canvas id="gameCanvas"></canvas>
 <canvas id="fxCanvas"></canvas>
@@ -537,6 +580,9 @@ let drawPoints = 2, actionPoints = 2, collectedArtifacts = 0;
 let targetArtifacts = 7, ringThresholds = [3, 5, 7], closedRings = { outer: false, middle: false, inner: false };
 let pathDrawn = false, pathMoved = false, isDragging = false, lastMouse = { x: 0, y: 0 };
 let currentCard = null, diceValue = 0, placementsRemaining = 0, pendingRiverHex = null, selectedUnit = null, riverEscapeHexes = [];
+// Regel "Straßenbonus": der erste Schritt auf/entlang einer Straße in einem Zug kostet keinen
+// Aktionspunkt - danach normal. Wird bei jedem Zugstart zurueckgesetzt (siehe startTurn()).
+let roadBonusUsedThisTurn = false;
 let pendingCardSlot = null, pushRemaining = 0, currentPushUnit = null;
 let boatLandingTargets = []; 
 let isGameOver = false;
@@ -1539,6 +1585,7 @@ function npcStep(p) {
         case 'PLACING_TERRAIN': return npcDoPlacingTerrain(p, diff);
         case 'ROTATING_RIVER': return npcDoRotatingRiver(p, diff);
         case 'ACTION_VIEW': return; // loest sich nach 1.5s von selbst auf
+        case 'TORNADO_FX': return; // loest sich von selbst auf, sobald die Sturm-Animation fertig ist
         case 'DRAWING_DONE': cancelCurrentCard(); return;
         case 'SWAP_CARD': return npcDoSwapCard(p, diff);
         case 'MOVING': return npcDoMoving(p, diff);
@@ -2021,7 +2068,23 @@ function checkApocalypse() {
     if (collectedArtifacts >= ringThresholds[2] && !closedRings.inner) triggerKollaps(['hills'], 'inner');
 }
 
-function handleChoice(choice) { 
+// Klartext-Erklaerung jeder Aktionskarte/jedes Werkzeugs - wird beim Ziehen direkt unter der Karte
+// angezeigt (#card-desc) UND als Tooltip auf jedem Inventar-Slot, damit man auch spaeter noch
+// nachschauen kann, was eine bereits eingesammelte Karte im Inventar eigentlich macht.
+const CARD_INFO = {
+    extra_move: "Sofort +1 Aktionspunkt für diesen Zug.",
+    skip_turn: "Eine gegnerische Figur deiner Wahl setzt die nächste Runde aus.",
+    teleport: "Versetzt eine eigene Figur sofort auf eine bereits geplünderte Ruine.",
+    push_enemy: "Wirft bis zu 2 gegnerische Figuren je ein Feld zurück.",
+    tornado: "Wirkt sofort: bläst alle eigenen Figuren an den Kartenrand und beendet deinen Zug.",
+    tool_hook: "Passives Werkzeug: wird automatisch verbraucht, sobald du auf ein Bergfeld ziehst.",
+    tool_boat: "Passives Werkzeug: wird automatisch verbraucht, sobald du auf einen Fluss ziehst.",
+    mountains: "Landschaftskarte: platziert Bergfelder auf der Karte.",
+    forest: "Landschaftskarte: platziert Waldfelder auf der Karte.",
+    river: "Landschaftskarte: platziert einen Fluss - danach ausrichten und bestätigen.",
+    road: "Landschaftskarte: platziert eine Straße - der erste Straßen-Schritt pro Zug ist kostenlos."
+};
+function handleChoice(choice) {
     if (choice === 'DRAWING') { drawPoints = 2; gameState = "DRAWING"; } else if (choice === 'MOVING') { gameState = "MOVING"; } 
     updateUI(); render(); 
 }
@@ -2055,7 +2118,32 @@ function prepareDraw(type) {
     updateUI();
 }
 
+// Wirbelsturm ist die einzige Karte, die "sofort wirkt" und den Zug erzwungen beendet - das soll
+// man auch koerperlich spueren, nicht nur an einem kurzen Toast-Text ablesen. Deshalb erst ein
+// kurzer, dramatischer Effekt (Screen-Shake + Sturm-Overlay), DANACH die eigentliche Verschiebung,
+// und danach noch ein kurzer Moment mit rausgezoomter Kamera, damit man sieht, wohin alle Figuren
+// verweht wurden, bevor der Zug an den naechsten Spieler uebergeht.
 function executeTornado() {
+    // Eigener, kurzlebiger Zustand waehrend der Sturm-Animation laeuft: blendet Kartenauswahl/
+    // Zug-Buttons aus (sonst koennte man z.B. waehrend der Animation eine zweite Karte ziehen) und
+    // sorgt dafuer, dass die KI-Zug-Schleife in dieser Zeit brav nichts tut (siehe npcStep()).
+    gameState = "TORNADO_FX"; updateUI();
+    playTornadoFX(() => resolveTornado());
+}
+function playTornadoFX(callback) {
+    const overlay = document.getElementById('tornado-overlay');
+    overlay.classList.remove('hidden');
+    void overlay.offsetWidth;
+    overlay.classList.add('show');
+    document.body.classList.add('screen-shake');
+    setTimeout(() => document.body.classList.remove('screen-shake'), 1000);
+    setTimeout(() => {
+        overlay.classList.remove('show');
+        setTimeout(() => overlay.classList.add('hidden'), 400);
+        callback();
+    }, 1100);
+}
+function resolveTornado() {
     const p = players[currentPlayerIdx];
     let candidates = [];
     Object.values(mapData.hexes).forEach(h => {
@@ -2094,7 +2182,10 @@ function executeTornado() {
     });
 
     showNotification("🌪️ WIRBELSTURM! Figuren wurden an den Rand geweht (sofern sie nicht schon dort waren)!");
-    currentCard = null; pathDrawn = true; pathMoved = true; checkTurnEnd(); render();
+    currentCard = null; pathDrawn = true; pathMoved = true;
+    focusOnPlayerUnits(p, 0.55); // etwas rausgezoomt, damit man sieht, wohin alle verweht wurden
+    render(); updateUI();
+    setTimeout(() => checkTurnEnd(), 1400);
 }
 
 function rollDice() {
@@ -2198,6 +2289,7 @@ const tutorialPages = [
         <li>🌲 <b>Wald</b> verbraucht sofort <b>alle</b> restlichen Punkte</li>
         <li>⛰️ <b>Berge</b> sind nur begehbar, wenn du schon auf einem Berg stehst oder eine Karte <b>Seil & Haken</b> einsetzt</li>
         <li>🌊 Ein <b>Fluss</b> reißt dich ohne <b>Schlauchboot</b> automatisch die Fließrichtung entlang mit, bis du an Land gespült wirst oder ein Ufer wählen musst</li>
+        <li>🛤️ <b>Straßen</b>: der <b>erste</b> Schritt auf oder entlang einer Straße ist in jedem Zug <b>kostenlos</b> (kein Aktionspunkt) — danach kostet auch die Straße wieder normal</li>
     </ul>` },
     { icon: '🏺', title: 'Ruinen & Tempel', demo: 'ruins', html: `Ruinen (Krug-Symbol) sind ein <b>gemeinsamer Vorrat</b>: Die erste Figur — egal von wem — die eine ungeplünderte Ruine erreicht, sammelt 1 Artefakt für <b>alle Spieler zusammen</b>.<br><br>Der <b>Tempel</b> in der Mitte ist das eigentliche Ziel: Sobald genug Artefakte gesammelt sind, gewinnt, wer als Erster dort ankommt.` },
     { icon: '☄️', title: 'Die Apokalypse', demo: 'apocalypse', html: `Bei den drei eingestellten Artefakt-Ständen (Standard 3 / 5 / 7) kollabiert jeweils ein <b>Ring</b> der Karte — von außen nach innen — zu Leere.<br><br>Figuren auf einbrechenden Feldern gehen <b>verloren</b>. Bleibt danach nur noch ein Spieler mit Figuren übrig, gewinnt er automatisch als „Einziger Überlebender".` },
@@ -2467,7 +2559,7 @@ function tutorialStep(dir) {
 }
 function startTurn() {
     if (players[currentPlayerIdx].skipped) { showNotification(`⏭️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} MUSS AUSSETZEN!`); players[currentPlayerIdx].skipped = false; currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); return; }
-    pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING";
+    pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING"; roadBonusUsedThisTurn = false;
     showNotification(`⚔️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} IST DRAN!`);
     focusOnPlayerUnits(players[currentPlayerIdx]);
     updateUI(); render();
@@ -2592,7 +2684,10 @@ function processMovement(unit, tQ, tR) {
 
     if (newHex.terrain === 'mountains' && p.inventory.findIndex(c => c.type === 'tool_hook') === -1 && oldHex.terrain !== 'mountains') return false; 
 
+    // Straßenbonus: der erste Schritt auf/entlang einer Straße pro Zug ist kostenlos, danach normal.
     let cost = 1;
+    let usedRoadBonus = false;
+    if (newHex.terrain === 'road' && !roadBonusUsedThisTurn) { cost = 0; usedRoadBonus = true; }
     unit.q = tQ; unit.r = tR; checkLandmark(tQ, tR);
     
     if (newHex.terrain === 'river') {
@@ -2605,7 +2700,11 @@ function processMovement(unit, tQ, tR) {
                 if (riverEscapeHexes.length > 0) { gameState = "RIVER_ESCAPE"; updateUI(); return true; } else { actionPoints = 0; finishPath(); return true; }
             } else if (nH.terrain === 'river') { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); curH = nH; } else { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); actionPoints = 0; finishPath(); return true; }
         }
-    } else { actionPoints -= cost; if (newHex.terrain === 'forest') actionPoints = 0; if (actionPoints <= 0) finishPath(); }
+    } else {
+        actionPoints -= cost;
+        if (usedRoadBonus) { roadBonusUsedThisTurn = true; showNotification("🛤️ Straßen-Bonus: dieser Schritt war kostenlos!"); }
+        if (newHex.terrain === 'forest') actionPoints = 0; if (actionPoints <= 0) finishPath();
+    }
     updateUI(); render();
 }
 
@@ -2691,7 +2790,7 @@ function updateUI() {
     document.getElementById('cards-left-display').innerText = drawPoints;
     document.getElementById('btn-choice-draw').disabled = pathDrawn;
     document.getElementById('btn-choice-move').disabled = pathMoved;
-    const states = { PLACING: "FIGUR SETZEN", CHOOSING: "AKTION WÄHLEN", DRAWING: "STAPEL WÄHLEN", DICE_ROLL: "WÜRFELN!", PLACING_TERRAIN: `${placementsRemaining}X SETZEN`, ROTATING_RIVER: "FLUSS DREHEN", ACTION_VIEW: "AKTION GEZOGEN", SWAP_CARD: "INVENTAR TAUSCHEN", MOVING: selectedUnit ? "ZIEHEN" : "FIGUR WÄHLEN", SELECT_PUSH_TARGET_1: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_TARGET_2: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_DESTINATION: "ZIELFELD WÄHLEN", RIVER_ESCAPE: "ANS UFER RETTEN", RIVER_ESCAPE_PUSH: "GEGNER RETTEN", BOAT_LANDING: "UFER WÄHLEN" };
+    const states = { PLACING: "FIGUR SETZEN", CHOOSING: "AKTION WÄHLEN", DRAWING: "STAPEL WÄHLEN", DICE_ROLL: "WÜRFELN!", PLACING_TERRAIN: `${placementsRemaining}X SETZEN`, ROTATING_RIVER: "FLUSS DREHEN", ACTION_VIEW: "AKTION GEZOGEN", SWAP_CARD: "INVENTAR TAUSCHEN", MOVING: selectedUnit ? "ZIEHEN" : "FIGUR WÄHLEN", SELECT_PUSH_TARGET_1: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_TARGET_2: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_DESTINATION: "ZIELFELD WÄHLEN", RIVER_ESCAPE: "ANS UFER RETTEN", RIVER_ESCAPE_PUSH: "GEGNER RETTEN", BOAT_LANDING: "UFER WÄHLEN", TORNADO_FX: "🌪️ STURM!" };
     guide.innerText = states[gameState] || "BITTE WARTEN...";
     // Klartext-Hinweis darunter: erklaert in Worten, was gerade anklickbar ist - passend zu den
     // farbigen Markierungen auf dem Spielfeld (siehe computeHighlightTargets()/renderFX()).
@@ -2731,6 +2830,7 @@ function updateUI() {
     if (currentCard) {
         document.getElementById('card-icon').innerText = currentCard.icon;
         document.getElementById('card-name').innerText = currentCard.name;
+        document.getElementById('card-desc').innerText = CARD_INFO[currentCard.type] || '';
         if(gameState === 'ACTION_VIEW') setTimeout(() => { if(gameState === 'ACTION_VIEW') finishCard(); }, 1500);
     }
     if (gameState === 'PLACING_TERRAIN' || gameState === 'ROTATING_RIVER') document.getElementById('placement-info').innerText = `NOCH ${placementsRemaining}`;
@@ -2739,7 +2839,16 @@ function updateUI() {
         const slot = document.getElementById(`inv-slot-${i}`), card = p.inventory[i];
         slot.querySelector('.inv-icon').innerText = card ? card.icon : ""; slot.querySelector('.inv-name').innerText = card ? card.name : "Leer";
         slot.classList.toggle('filled', !!card); slot.classList.toggle('swap-mode', gameState === "SWAP_CARD" && !!card);
+        slot.title = card ? `${card.name}: ${CARD_INFO[card.type] || ''}` : '';
     }
+
+    // Zug-Checkliste: zeigt auf einen Blick, welche der zwei Pflicht-Aktionen diesen Zug schon
+    // erledigt sind (pulsiert gold, solange offen; wird gruen sobald erledigt).
+    const checkDraw = document.getElementById('check-draw'), checkMove = document.getElementById('check-move');
+    checkDraw.textContent = pathDrawn ? '✅ Karten gezogen' : '⬜ Karten ziehen';
+    checkDraw.classList.toggle('done', pathDrawn); checkDraw.classList.toggle('pending', !pathDrawn);
+    checkMove.textContent = pathMoved ? '✅ Bewegt' : '⬜ Bewegen';
+    checkMove.classList.toggle('done', pathMoved); checkMove.classList.toggle('pending', !pathMoved);
 
     const npcTurn = !!(p && p.isNPC);
     if (net.active || npcTurn) {
