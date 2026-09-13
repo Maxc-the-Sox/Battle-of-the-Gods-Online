@@ -226,7 +226,16 @@
         .tutorial-nav .btn { margin-top: 0; }
 
         /* ---------- Online-Modus / Lobby ---------- */
-        .menu-box { max-height: 90vh; overflow-y: auto; }
+        .menu-box { max-height: 90vh; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
+        .menu-box::-webkit-scrollbar { width: 8px; }
+        .menu-box::-webkit-scrollbar-track { background: transparent; }
+        .menu-box::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 4px; }
+        .menu-box::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+        .lobby-hint { font-size: 0.78em; color: #9a8f6f; font-family: 'Cormorant Garamond', serif; text-align: center; margin: 14px 0 4px; line-height: 1.4; font-style: italic; }
+        /* Der Lobby-Raum-Schritt hat viel Inhalt (Code, Farbe, Mitglieder, Einstellungen) - kompakter als das Hauptmenü */
+        #lobby-overlay .divider-orn { margin: 13px 0; }
+        #lobby-overlay .settings-grid { gap: 9px 14px; padding: 14px 18px; }
+        #lobby-room-code { font-size: 1.7em; letter-spacing: 4px; margin-bottom: 2px; }
         .menu-btn.btn-secondary-menu { background: linear-gradient(180deg, #5c6266, #34383a); color: #f2f2f2; border: 1px solid #95a5a6; }
         .menu-btn.btn-secondary-menu:hover { background: linear-gradient(180deg, #7c8286, #454a4c); transform: translateY(-2px); }
         .color-picker { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 2px; }
@@ -239,6 +248,8 @@
         .lobby-member-name { flex: 1; color: #f3e2a9; text-transform: none; letter-spacing: 0; }
         .lobby-host-tag { font-size: 0.72em; color: var(--gold); border: 1px solid var(--gold); padding: 2px 6px; border-radius: 2px; letter-spacing: 1px; }
         .lobby-input { background: #0c0b08; border: 1px solid rgba(212,175,55,0.5); color: #f3e2a9; padding: 10px; font-family: 'Cinzel', serif; box-sizing: border-box; width: 100%; }
+        /* .settings-grid input hat sonst width:60px/text-align:center fuer die kleinen Zahlenfelder - hier ueberschreiben */
+        .settings-grid input.lobby-input { width: 100%; text-align: left; }
         #room-badge { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 900; font-family: 'Cinzel', serif; font-size: 0.8em; letter-spacing: 1px; color: #c9b98a; background: rgba(18,16,12,0.85); border: 1px solid rgba(212,175,55,0.4); padding: 6px 18px; border-radius: 2px; }
         #room-badge-code { color: var(--gold-light); font-weight: bold; letter-spacing: 3px; }
         #action-controls.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
@@ -296,25 +307,34 @@
             <div class="settings-grid" style="grid-template-columns: 1fr;">
                 <label>Dein Name</label>
                 <input type="text" id="lobby-name-input" class="lobby-input" maxlength="24" placeholder="Name eingeben">
-                <label>Deine Farbe</label>
-                <div id="lobby-colors" class="color-picker"></div>
-                <label>Raum-Code (leer = neuen Raum erstellen)</label>
+            </div>
+
+            <div class="divider-orn">Neues Spiel</div>
+            <button id="lobby-host-btn" class="menu-btn btn-start" style="width:100%; box-sizing:border-box;" onclick="hostRoom()">🏰 SPIEL HOSTEN</button>
+
+            <div class="divider-orn">Beitreten</div>
+            <div class="settings-grid" style="grid-template-columns: 1fr;">
+                <label>Raum-Code von deinem Freund</label>
                 <input type="text" id="lobby-room-input" class="lobby-input" maxlength="4" placeholder="z.B. AB3K" style="text-transform:uppercase;">
             </div>
-            <div class="button-row">
-                <button id="lobby-connect-btn" class="menu-btn btn-network" onclick="connectAndJoin()">🌐 VERBINDEN</button>
-                <button class="menu-btn btn-secondary-menu" onclick="backToMainMenu()">← Zurück</button>
-            </div>
+            <button id="lobby-join-btn" class="menu-btn btn-network" style="width:100%; box-sizing:border-box;" onclick="joinRoom()">🔑 RAUM BEITRETEN</button>
+
+            <p class="lobby-hint">Hinweis: Der kostenlose Server schläft nach 15 Minuten Inaktivität ein. War er gerade eingeschlafen, kann das erste Verbinden bis zu einer Minute dauern — einfach kurz warten.</p>
+
+            <button class="help-btn" style="margin-top:6px;" onclick="backToMainMenu()">← Zurück</button>
         </div>
 
         <div id="lobby-step-room" class="hidden">
             <div class="divider-orn">Raum-Code</div>
-            <div id="lobby-room-code" style="font-family:'Cinzel',serif;font-size:2.2em;letter-spacing:6px;color:var(--gold-light);text-align:center;font-weight:900;">----</div>
+            <div id="lobby-room-code" style="font-family:'Cinzel',serif;color:var(--gold-light);text-align:center;font-weight:900;">----</div>
             <div style="display:flex; gap:8px; margin: 10px 0 4px;">
                 <input type="text" id="lobby-share-link" class="lobby-input" readonly style="font-size:0.8em;">
                 <button id="lobby-copy-btn" class="btn" style="width:auto; margin:0; white-space:nowrap;" onclick="copyShareLink()">Link kopieren</button>
             </div>
             <p style="text-align:center; font-size:0.85em; color:#c9b98a; font-family:'Cormorant Garamond',serif;">Teile den Code oder Link mit deinen Freunden.</p>
+
+            <div class="divider-orn">Deine Farbe</div>
+            <div id="lobby-colors" class="color-picker"></div>
 
             <div class="divider-orn">Spieler im Raum</div>
             <div id="lobby-members"></div>
@@ -969,29 +989,51 @@ function renderColorPicker() {
         sw.className = 'color-swatch' + (c === net.color ? ' selected' : '') + (taken.includes(c) ? ' taken' : '');
         sw.style.background = c;
         sw.title = taken.includes(c) ? 'Bereits vergeben' : c;
-        sw.onclick = () => { if (!taken.includes(c)) { net.color = c; renderColorPicker(); if (net.connected) sendJoin(); } };
+        sw.onclick = () => { if (!taken.includes(c)) { net.color = c; try { localStorage.setItem('botg_player_color', c); } catch (e) {} renderColorPicker(); if (net.connected) sendJoin(); } };
         wrap.appendChild(sw);
     });
 }
 
 // ---------- Verbindung & Beitritt ----------
-function connectAndJoin() {
+function resetLobbyButtons() {
+    clearTimeout(connectStallTimer);
+    const hostBtn = document.getElementById('lobby-host-btn'), joinBtn = document.getElementById('lobby-join-btn');
+    hostBtn.disabled = false; hostBtn.innerText = '🏰 SPIEL HOSTEN';
+    joinBtn.disabled = false; joinBtn.innerText = '🔑 RAUM BEITRETEN';
+}
+
+function hostRoom() {
+    const name = document.getElementById('lobby-name-input').value.trim().slice(0, 24) || 'Spieler';
+    connectWebSocket(name, '', 'lobby-host-btn');
+}
+
+function joinRoom() {
     const name = document.getElementById('lobby-name-input').value.trim().slice(0, 24) || 'Spieler';
     const roomCode = document.getElementById('lobby-room-input').value.trim().toUpperCase();
-    net.name = name;
-    try { localStorage.setItem('botg_player_name', name); localStorage.setItem('botg_player_color', net.color); } catch (e) {}
+    if (!roomCode) { alert('Bitte gib den Raum-Code deines Freundes ein.'); return; }
+    connectWebSocket(name, roomCode, 'lobby-join-btn');
+}
 
-    const btn = document.getElementById('lobby-connect-btn');
-    btn.disabled = true; btn.innerText = 'VERBINDE…';
+let connectStallTimer = null;
+function connectWebSocket(name, roomCode, activeBtnId) {
+    net.name = name; net.room = roomCode;
+    try { localStorage.setItem('botg_player_name', name); } catch (e) {}
+
+    document.getElementById('lobby-host-btn').disabled = true;
+    document.getElementById('lobby-join-btn').disabled = true;
+    const btn = document.getElementById(activeBtnId);
+    btn.innerText = 'VERBINDE…';
+    clearTimeout(connectStallTimer);
+    connectStallTimer = setTimeout(() => { if (btn.disabled) btn.innerText = 'SERVER WACHT AUF… (bis zu 1 Min.)'; }, 4000);
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}`);
-    net.ws = ws; net.room = roomCode;
+    net.ws = ws;
     ws.onopen = () => { net.connected = true; sendJoin(); };
     ws.onclose = () => {
         net.connected = false;
         if (net.active) showNotification('⚠️ Verbindung zum Server verloren.');
-        btn.disabled = false; btn.innerText = '🌐 VERBINDEN';
+        resetLobbyButtons();
     };
     ws.onerror = () => {};
     ws.onmessage = e => {
@@ -1007,13 +1049,13 @@ function sendJoin() {
 
 function handleNetMessage(msg) {
     if (msg.type === 'joined') {
+        resetLobbyButtons();
         net.room = msg.room; net.hostId = msg.hostId;
-        const btn = document.getElementById('lobby-connect-btn');
-        btn.disabled = false; btn.innerText = '🌐 VERBINDEN';
         document.getElementById('lobby-room-code').innerText = msg.room;
         const shareUrl = `${location.origin}${location.pathname}?room=${msg.room}`;
         document.getElementById('lobby-share-link').value = shareUrl;
         showLobbyStep('room');
+        renderColorPicker();
     } else if (msg.type === 'lobby') {
         net.hostId = msg.hostId;
         net.lobbyMembers = msg.members;
