@@ -256,6 +256,44 @@
         .color-swatch:hover { transform: scale(1.1); }
         .color-swatch.selected { border-color: var(--gold-light); box-shadow: 0 0 10px var(--gold); }
         .color-swatch.taken { opacity: 0.22; cursor: not-allowed; }
+        .player-cards { display: flex; flex-direction: column; gap: 10px; }
+        .player-card {
+            --pc-color: var(--gold);
+            border: 1px solid rgba(212,175,55,0.3);
+            border-left: 4px solid var(--pc-color);
+            border-radius: 3px;
+            background: linear-gradient(160deg, color-mix(in srgb, var(--pc-color) 14%, rgba(0,0,0,0.3)), rgba(0,0,0,0.3));
+            padding: 12px 14px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.35);
+            transition: border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+        .player-card-head { display: flex; align-items: center; gap: 10px; }
+        .player-card-badge {
+            width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+            background: var(--pc-color); color: #1c1608;
+            font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.85em;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 10px color-mix(in srgb, var(--pc-color) 55%, transparent), inset 0 1px 2px rgba(255,255,255,0.4);
+            border: 1px solid rgba(255,255,255,0.25);
+            transition: background 0.2s ease, box-shadow 0.2s ease;
+        }
+        .player-card-head select.player-type-select { flex: 1; padding: 9px 10px; font-size: 0.92em; }
+        .player-card-row { display: flex; gap: 8px; margin-top: 9px; }
+        .player-card-row input.local-name-input { flex: 1.4; min-width: 0; padding: 9px 10px !important; }
+        .color-select-wrap { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; }
+        .color-select-wrap select.local-color-select { width: 100%; padding: 9px 8px 9px 26px; font-size: 0.85em; }
+        .color-dot {
+            position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+            width: 11px; height: 11px; border-radius: 50%; background: var(--pc-color);
+            box-shadow: 0 0 6px color-mix(in srgb, var(--pc-color) 70%, transparent);
+            border: 1px solid rgba(255,255,255,0.4);
+            pointer-events: none; z-index: 2;
+        }
+        .player-card-head select.player-type-select:focus,
+        .player-card-row input.local-name-input:focus,
+        .color-select-wrap select.local-color-select:focus {
+            outline: none; border-color: var(--gold-light); box-shadow: 0 0 8px rgba(212,175,55,0.4);
+        }
         .lobby-member { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid rgba(212,175,55,0.15); font-family: 'Cinzel', serif; font-size: 0.85em; }
         .lobby-swatch { width: 16px; height: 16px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
         .lobby-member-name { flex: 1; color: #f3e2a9; text-transform: none; letter-spacing: 0; }
@@ -286,7 +324,7 @@
             <option value="6">6 Spieler</option>
         </select>
         <div class="divider-orn">Spieler</div>
-        <div id="player-types" class="settings-grid"></div>
+        <div id="player-types" class="player-cards"></div>
         <button type="button" id="local-settings-toggle" class="lobby-settings-toggle" onclick="toggleLocalSettings()">⚙ Erweiterte Einstellungen <span id="local-settings-caret">▾</span></button>
         <div id="local-settings-body" class="hidden">
             <div class="settings-grid">
@@ -830,21 +868,111 @@ function updateDefaultSettings() {
 }
 
 const NPC_DIFF_LABELS = { easy: 'Leicht', medium: 'Mittel', hard: 'Schwer' };
+// Muss dieselbe Reihenfolge wie PLAYER_COLORS haben - fuer die Beschriftung im Dropdown.
+const PLAYER_COLOR_LABELS = { "#ff4757": "Rot", "#2e86de": "Blau", "#2ecc71": "Grün", "#f1c40f": "Gelb", "#9b59b6": "Lila", "#e67e22": "Orange" };
+let localPlayerColors = [];
+let localPlayerColorsTouched = []; // true = der Mensch hat diese Farbe selbst gewaehlt (nicht mehr automatisch aendern)
+let localPlayerNames = [];
+
+// Loest Kollisionen auf, OHNE eine vom Menschen bewusst gewaehlte Farbe anzutasten - genau wie
+// resolveColor() im Server fuer den Online-Modus, nur lokal ohne Server-Rundreise.
+function resolveLocalColorConflicts(count) {
+    for (let i = 0; i < count; i++) {
+        if (localPlayerColorsTouched[i]) continue;
+        const usedByOthers = new Set();
+        for (let j = 0; j < count; j++) { if (j !== i) usedByOthers.add(localPlayerColors[j]); }
+        if (usedByOthers.has(localPlayerColors[i])) {
+            const free = PLAYER_COLORS.find(c => !usedByOthers.has(c));
+            if (free) localPlayerColors[i] = free;
+        }
+    }
+}
+
 function renderPlayerTypeSelectors() {
     const count = parseInt(document.getElementById('player-count').value);
     const container = document.getElementById('player-types');
-    const prevValues = Array.from(container.querySelectorAll('select')).map(s => s.value);
+    const prevTypes = Array.from(container.querySelectorAll('select.player-type-select')).map(s => s.value);
+    const prevNames = Array.from(container.querySelectorAll('input.local-name-input')).map(inp => inp.value);
     container.innerHTML = '';
     for (let i = 0; i < count; i++) {
-        const label = document.createElement('label');
-        label.innerText = `Spieler ${i + 1}:`;
-        const select = document.createElement('select');
-        select.id = `player-type-${i}`;
-        select.innerHTML = '<option value="human">Mensch</option><option value="easy">KI: Leicht</option><option value="medium">KI: Mittel</option><option value="hard">KI: Schwer</option>';
-        if (prevValues[i]) select.value = prevValues[i];
-        container.appendChild(label);
-        container.appendChild(select);
+        if (!localPlayerColors[i]) localPlayerColors[i] = PLAYER_COLORS[i % PLAYER_COLORS.length];
+        if (prevNames[i] !== undefined && localPlayerNames[i] === undefined) localPlayerNames[i] = prevNames[i];
     }
+    resolveLocalColorConflicts(count);
+    for (let i = 0; i < count; i++) {
+        const card = document.createElement('div');
+        card.className = 'player-card';
+        card.id = `player-card-${i}`;
+
+        const head = document.createElement('div');
+        head.className = 'player-card-head';
+        const badge = document.createElement('div');
+        badge.className = 'player-card-badge';
+        badge.id = `player-badge-${i}`;
+        badge.innerText = String(i + 1);
+        const typeSelect = document.createElement('select');
+        typeSelect.className = 'player-type-select';
+        typeSelect.id = `player-type-${i}`;
+        typeSelect.innerHTML = '<option value="human">🧑 Mensch</option><option value="easy">🤖 KI: Leicht</option><option value="medium">🤖 KI: Mittel</option><option value="hard">🤖 KI: Schwer</option>';
+        if (prevTypes[i]) typeSelect.value = prevTypes[i];
+        head.appendChild(badge);
+        head.appendChild(typeSelect);
+
+        const row = document.createElement('div');
+        row.className = 'player-card-row';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'local-name-input lobby-input';
+        nameInput.id = `player-name-${i}`;
+        nameInput.maxLength = 24;
+        nameInput.placeholder = `Spieler ${i + 1}`;
+        nameInput.value = localPlayerNames[i] || '';
+        nameInput.oninput = () => { localPlayerNames[i] = nameInput.value; };
+
+        const colorWrap = document.createElement('div');
+        colorWrap.className = 'color-select-wrap';
+        const dot = document.createElement('span');
+        dot.className = 'color-dot';
+        const colorSelect = document.createElement('select');
+        colorSelect.className = 'local-color-select';
+        colorSelect.id = `player-color-${i}`;
+        colorWrap.appendChild(dot);
+        colorWrap.appendChild(colorSelect);
+
+        row.appendChild(nameInput);
+        row.appendChild(colorWrap);
+        card.appendChild(head);
+        card.appendChild(row);
+        container.appendChild(card);
+    }
+    for (let i = 0; i < count; i++) renderLocalColorSelect(i);
+}
+function applyPlayerCardColor(i, color) {
+    const card = document.getElementById(`player-card-${i}`);
+    if (card) card.style.setProperty('--pc-color', color);
+}
+function renderLocalColorSelect(i) {
+    const sel = document.getElementById(`player-color-${i}`);
+    if (!sel) return;
+    sel.innerHTML = '';
+    PLAYER_COLORS.forEach(c => {
+        const takenByOther = localPlayerColors.some((col, idx) => idx !== i && col === c);
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.innerText = (PLAYER_COLOR_LABELS[c] || c) + (takenByOther ? ' (vergeben)' : '');
+        opt.disabled = takenByOther;
+        sel.appendChild(opt);
+    });
+    sel.value = localPlayerColors[i];
+    applyPlayerCardColor(i, localPlayerColors[i]);
+    sel.onchange = () => {
+        localPlayerColors[i] = sel.value;
+        localPlayerColorsTouched[i] = true;
+        const count = parseInt(document.getElementById('player-count').value);
+        resolveLocalColorConflicts(count);
+        for (let j = 0; j < count; j++) renderLocalColorSelect(j);
+    };
 }
 
 async function loadStandardMap() {
@@ -861,9 +989,10 @@ async function loadStandardMap() {
             const sel = document.getElementById(`player-type-${i}`);
             const type = sel ? sel.value : 'human';
             const isNPC = type !== 'human';
+            const customName = (localPlayerNames[i] || '').trim();
             return {
-                id: i + 1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, netId: null,
-                name: isNPC ? `🤖 KI (${NPC_DIFF_LABELS[type]})` : null,
+                id: i + 1, color: localPlayerColors[i] || PLAYER_COLORS[i], units: [], inventory: [], skipped: false, netId: null,
+                name: customName ? customName : (isNPC ? `🤖 KI (${NPC_DIFF_LABELS[type]})` : null),
                 isNPC, npcDifficulty: isNPC ? type : null
             };
         });
