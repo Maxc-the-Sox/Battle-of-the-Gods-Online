@@ -2690,7 +2690,12 @@ function updateUI() {
             document.getElementById('turn-lock-msg').innerText = `${prefix}${label} ist am Zug…`;
         }
     } else {
+        // Weder Online-Modus noch KI dran, d.h. ein lokaler Mensch ist am Zug: alle Sperren aus
+        // dem vorherigen (KI-)Zug wieder aufheben - sonst bleiben Buttons/Hinweis faelschlich
+        // gesperrt haengen, sobald die Reihe wieder an den Menschen kommt (Bug: fehlte hier).
         document.getElementById('inventory-panel').classList.remove('locked');
+        document.getElementById('action-controls').classList.remove('locked');
+        document.getElementById('turn-lock-msg').classList.add('hidden');
     }
     if (net.active && !net.applyingRemote) sendStateUpdate();
     scheduleNpcCheck();
