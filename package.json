@@ -1,0 +1,15 @@
+{
+  "name": "battle-of-the-gods-server",
+  "version": "1.0.0",
+  "description": "Kleiner Relay-Server fuer den Online-Modus von Battle of the Gods (statische Dateien + WebSocket-Raeume)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
