@@ -607,14 +607,15 @@ const LOOT_BURST_DURATION = 0.85;
 // jedes betroffene Feld bekommt einen eigenen, leicht zufaelligen Einschlagszeitpunkt statt dass
 // alle Felder synchron auf einmal zu void werden.
 let pendingMeteors = [];
-const METEOR_DURATION = 0.45;     // Gesamtdauer EINES Einschlags (Anflug+Blitz+Rauch)
+const METEOR_DURATION = 0.7;     // Gesamtdauer EINES Einschlags (Anflug+Blitz+Rauch)
 const METEOR_IMPACT_FRACTION = 0.42; // Anteil der Dauer bis zum eigentlichen Einschlagsmoment (Anflugende)
 // Zeitfenster, ueber das die Einschlaege EINES Kollaps gestaffelt starten - bewusst mit einer Obergrenze
 // gedeckelt (statt z.B. "0.15s pro Feld"), weil ein Ring je nach Kartengroesse auch mehrere hundert
 // Felder umfassen kann - ohne Deckel wuerde die Kaskade dann viele Sekunden bis Minuten dauern statt,
 // wie gewuenscht, zuegig durchzulaufen. Kleine Ringe (wenige Felder) bekommen dadurch automatisch ein
-// kuerzeres, engeres Fenster; grosse Ringe laufen trotzdem in derselben Gesamtzeit durch.
-const METEOR_CASCADE_WINDOW_MAX = 0.6;
+// kuerzeres, engeres Fenster; grosse Ringe laufen trotzdem in derselben Gesamtzeit durch (Fenster +
+// Dauer eines einzelnen Einschlags = ca. 3s Gesamtdauer fuer einen grossen Ring).
+const METEOR_CASCADE_WINDOW_MAX = 2.3;
 let hexSize = 40, camera = { x: 0, y: 0, zoom: 0.8 }, iconCache = {};
 let players = [], currentPlayerIdx = 0, gameState = "SETUP";
 let drawPoints = 2, actionPoints = 2, collectedArtifacts = 0;
