@@ -662,7 +662,7 @@ function drawMountainPeaks(sctx, cx, cy, s, base, decor) {
         sctx.restore();
     });
 }
-function paintHexTerrain(sctx, cx, cy, s, terrain, decor) {
+function paintHexTerrain(sctx, cx, cy, s, terrain, decor, skipMountainPeaks) {
     const base = terrainColors[terrain] || '#2f3640';
     hexSpritePath(sctx, cx + 2, cy + 4, s); sctx.fillStyle = 'rgba(0,0,0,0.32)'; sctx.fill();
     hexSpritePath(sctx, cx, cy, s);
@@ -695,7 +695,12 @@ function paintHexTerrain(sctx, cx, cy, s, terrain, decor) {
     } else if (terrain === 'forest') {
         decor.slice().sort((a, b) => a.z - b.z).forEach(d => drawTree(sctx, cx, cy, s, d.ox, d.oy, d.scale));
     } else if (terrain === 'mountains') {
-        drawMountainPeaks(sctx, cx, cy, s, base, decor);
+        // Im echten Spiel werden die Gipfel NICHT hier (geclippt) gezeichnet, sondern hoeher und
+        // unclipped in einem eigenen Layer in render() - siehe drawMountainPeaksTall - damit sie
+        // sichtbar in das Nachbarfeld hineinragen koennen statt hart an der Hex-Kante abgeschnitten
+        // zu werden. Fuer eigenstaendige Vorschauen (z.B. tdDrawHex im Tutorial) bleibt diese
+        // geclippte Variante als Fallback erhalten.
+        if (!skipMountainPeaks) drawMountainPeaks(sctx, cx, cy, s, base, decor);
     } else if (terrain === 'hills') {
         sctx.strokeStyle = shade(base, 45); sctx.lineWidth = 2; sctx.globalAlpha = 0.6;
         for (let i = 0; i < 3; i++) { sctx.beginPath(); sctx.arc(cx, cy + s * 0.5 - i * s * 0.32, s * 0.55 + i * s * 0.1, Math.PI * 1.1, Math.PI * 1.9); sctx.stroke(); }
@@ -717,19 +722,127 @@ function paintHexTerrain(sctx, cx, cy, s, terrain, decor) {
     sctx.fillStyle = rim; sctx.fillRect(cx - s, cy - s, 2 * s, s);
     sctx.restore();
 
-    hexSpritePath(sctx, cx, cy, s); sctx.strokeStyle = 'rgba(0,0,0,0.45)'; sctx.lineWidth = 1.3; sctx.stroke();
+    // Statt einer harten schwarzen Rasterlinie nur ein dezenter, weicher Schatten zum Feldrand hin
+    // (Ambient Occlusion) - wirkt wie ein sanfter Tiefeneffekt statt eines Brettspiel-Gitters,
+    // die Feldform bleibt trotzdem klar erkennbar.
+    sctx.save(); hexSpritePath(sctx, cx, cy, s); sctx.clip();
+    const edgeShadow = sctx.createRadialGradient(cx, cy, s * 0.72, cx, cy, s);
+    edgeShadow.addColorStop(0, 'rgba(0,0,0,0)'); edgeShadow.addColorStop(1, 'rgba(0,0,0,0.28)');
+    sctx.fillStyle = edgeShadow; sctx.fillRect(cx - s, cy - s, 2 * s, 2 * s);
+    sctx.restore();
     if (terrain === 'swamp') {
         sctx.save(); sctx.shadowColor = 'rgba(0,0,0,0.6)'; sctx.shadowBlur = 5;
         sctx.font = `bold ${s * 0.85}px Arial`; sctx.textAlign = 'center'; sctx.textBaseline = 'middle'; sctx.fillStyle = 'white';
         sctx.fillText('🏰', cx, cy); sctx.restore();
     }
 }
+function groundTerrainOf(hex) {
+    // Strasse und Fluss ersetzen das Gelaende nicht - sie fuehren nur darueber. Fuer alles, was
+    // "wie sieht dieses Feld eigentlich aus" fragt (Uebergaenge zu Nachbarn eingeschlossen), zaehlt
+    // deshalb das Grundgelaende darunter, nicht die Strasse/der Fluss selbst.
+    return (hex.terrain === 'road' || hex.terrain === 'river') ? (hex.baseTerrain || 'plains') : hex.terrain;
+}
+function drawScreeRock(sctx, x, y, size, seed) {
+    const rnd = seededRandom(seed);
+    const pts = 6;
+    sctx.save(); sctx.translate(x, y);
+    sctx.beginPath();
+    for (let i = 0; i < pts; i++) {
+        const ang = (i / pts) * Math.PI * 2, r = size * (0.75 + rnd() * 0.4);
+        const px = Math.cos(ang) * r, py = Math.sin(ang) * r * 0.85;
+        i === 0 ? sctx.moveTo(px, py) : sctx.lineTo(px, py);
+    }
+    sctx.closePath();
+    const g = sctx.createLinearGradient(-size, -size, size, size);
+    g.addColorStop(0, '#6b6b6b'); g.addColorStop(1, '#3a3a3a');
+    sctx.fillStyle = g; sctx.fill();
+    sctx.strokeStyle = 'rgba(0,0,0,0.4)'; sctx.lineWidth = 0.8; sctx.stroke();
+    sctx.restore();
+}
+// Ausfransende Uebergangszonen zu Nachbarfeldern mit anderem Gelaende-Typ: ein paar Baeume, die
+// ueber die Waldgrenze ins Nachbarfeld ragen, Sand der in die Wiese verlaeuft, Raureif nahe der
+// Tundra, Geroell das vom Gebirge abgerutscht ist - macht die Karte "gewachsen" statt "gerastert",
+// jede Feldgrenze sieht dadurch ein bisschen anders aus statt eines exakten Farbflaechen-Schnitts.
+function paintEdgeBlend(sctx, cx, cy, s, hex, terrain) {
+    sctx.save(); hexSpritePath(sctx, cx, cy, s); sctx.clip();
+    hexDirections.forEach((d, i) => {
+        const n = mapData.hexes[`${hex.q + d.q},${hex.r + d.r}`];
+        if (!n) return;
+        const nTerrain = groundTerrainOf(n);
+        if (nTerrain === terrain) return;
+        const len = Math.hypot(1.5 * d.q, Math.sqrt(3) * (d.r + d.q / 2));
+        const ex = (1.5 * d.q) / len, ey = (Math.sqrt(3) * (d.r + d.q / 2)) / len;
+        const px = -ey, py = ex;
+        const rnd = seededRandom(((hex.q + 5000) * 100000 + (hex.r + 5000) + i * 17 + 3) >>> 0);
+        if (nTerrain === 'forest' && !['forest', 'mountains', 'water', 'river'].includes(terrain)) {
+            for (let k = 0; k < 2; k++) {
+                const t = 0.5 + rnd() * 0.3, spread = (rnd() - 0.5) * 0.8;
+                const bx = cx + ex * s * t + px * s * spread, by = cy + ey * s * t + py * s * spread;
+                sctx.save(); sctx.globalAlpha = 0.55 + rnd() * 0.2;
+                drawTree(sctx, bx, by, s, 0, 0, 0.34 + rnd() * 0.14);
+                sctx.restore();
+            }
+        }
+        if (nTerrain === 'desert' && !['desert', 'water', 'river', 'mountains'].includes(terrain)) {
+            const bx = cx + ex * s * 0.6, by = cy + ey * s * 0.6;
+            const g = sctx.createRadialGradient(bx, by, 0, bx, by, s * 0.8);
+            g.addColorStop(0, 'rgba(212,187,126,0.5)'); g.addColorStop(1, 'rgba(212,187,126,0)');
+            sctx.fillStyle = g; sctx.beginPath(); sctx.arc(bx, by, s * 0.8, 0, 7); sctx.fill();
+        }
+        if (nTerrain === 'tundra' && !['tundra', 'water', 'river', 'mountains'].includes(terrain)) {
+            for (let k = 0; k < 9; k++) {
+                const t = 0.45 + rnd() * 0.4, spread = (rnd() - 0.5) * 0.9;
+                const bx = cx + ex * s * t + px * s * spread, by = cy + ey * s * t + py * s * spread;
+                sctx.save(); sctx.globalAlpha = 0.4 + rnd() * 0.3; sctx.fillStyle = 'rgba(255,255,255,0.85)';
+                sctx.beginPath(); sctx.arc(bx, by, 1.1, 0, 7); sctx.fill(); sctx.restore();
+            }
+        }
+        if (nTerrain === 'mountains' && !['mountains', 'water', 'river'].includes(terrain)) {
+            const bx0 = cx + ex * s * 0.62, by0 = cy + ey * s * 0.62;
+            const wash = sctx.createRadialGradient(bx0, by0, 0, bx0, by0, s * 0.85);
+            wash.addColorStop(0, 'rgba(90,90,90,0.28)'); wash.addColorStop(1, 'rgba(90,90,90,0)');
+            sctx.fillStyle = wash; sctx.beginPath(); sctx.arc(bx0, by0, s * 0.85, 0, 7); sctx.fill();
+            for (let k = 0; k < 3; k++) {
+                const t = 0.35 + rnd() * 0.4, spread = (rnd() - 0.5) * 0.9;
+                const bx = cx + ex * s * t + px * s * spread, by = cy + ey * s * t + py * s * spread;
+                const size = s * (0.09 + rnd() * 0.07);
+                sctx.save(); sctx.shadowColor = 'rgba(0,0,0,0.5)'; sctx.shadowBlur = 3; sctx.shadowOffsetY = 1.5;
+                drawScreeRock(sctx, bx, by, size, ((hex.q + 5000) * 100000 + (hex.r + 5000) + i * 41 + k * 13) >>> 0);
+                sctx.restore();
+            }
+        }
+    });
+    sctx.restore();
+}
+// Hohe, UNCLIPPTE Gipfel-Variante fuers echte Spielfeld: wird nicht ins kleine Hex-Sprite gebacken
+// (das bekommt bei Bergen bewusst KEINE Gipfel, s. skipMountainPeaks in bakeHex), sondern direkt in
+// render() obendrauf gezeichnet, nachdem alle Feld-Sprites nach Bildschirm-Y sortiert gezeichnet
+// wurden - so darf die Bergspitze sichtbar ins Feld dahinter hineinragen (wirkt wie eine echte
+// Bergkette statt einzelner, hart abgeschnittener Kegel), waehrend ein naeher liegendes Feld sie bei
+// Bedarf trotzdem korrekt verdeckt.
+function drawMountainPeaksTall(ctx, cx, cy, s, base, decor) {
+    decor.forEach((p, i) => {
+        const x = cx + p.dx * s, w = p.w * s, h = p.h * s * 1.2, y = cy + s * 0.42;
+        ctx.save(); if (i === decor.length - 1) { ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4; }
+        ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x, y - h); ctx.lineTo(x + w / 2, y); ctx.closePath();
+        const g = ctx.createLinearGradient(x - w / 2, y, x + w / 2, y - h);
+        g.addColorStop(0, shade(base, -18)); g.addColorStop(1, shade(base, 22));
+        ctx.fillStyle = g; ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - w * 0.16, y - h * 0.68); ctx.lineTo(x, y - h); ctx.lineTo(x + w * 0.16, y - h * 0.68);
+        ctx.lineTo(x + w * 0.06, y - h * 0.56); ctx.lineTo(x - w * 0.06, y - h * 0.56); ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+        ctx.restore();
+    });
+}
 function bakeHex(hex) {
-    // Straße und Fluss ersetzen das Gelände nicht - sie führen nur darüber. Sprite zeigt also den Untergrund.
-    const groundTerrain = (hex.terrain === 'road' || hex.terrain === 'river') ? (hex.baseTerrain || 'plains') : hex.terrain;
+    const groundTerrain = groundTerrainOf(hex);
     hex.decor = makeDecor(groundTerrain, (hex.q + 5000) * 100000 + (hex.r + 5000));
     const c = document.createElement('canvas'); c.width = SPR_D; c.height = SPR_D;
-    paintHexTerrain(c.getContext('2d'), SPR_D / 2, SPR_D / 2, REF_S, groundTerrain, hex.decor);
+    const sctx = c.getContext('2d');
+    paintHexTerrain(sctx, SPR_D / 2, SPR_D / 2, REF_S, groundTerrain, hex.decor, groundTerrain === 'mountains');
+    paintEdgeBlend(sctx, SPR_D / 2, SPR_D / 2, REF_S, hex, groundTerrain);
     hex.sprite = c;
 }
 function roadDirOffset(i, s) { const d = hexDirections[i]; return { dx: s * 1.5 * d.q, dy: s * Math.sqrt(3) * (d.r + d.q / 2) }; }
@@ -3124,11 +3237,19 @@ function render() {
     // Pass 1: alle Terrain-Sprites zeichnen (undurchsichtig) - muss komplett fertig sein,
     // bevor Fluss-/Straßen-Verbindungen darübergelegt werden, sonst übermalt ein spaeter
     // gezeichnetes Nachbarfeld die Verbindung/Mündung des vorherigen Feldes wieder.
-    Object.values(mapData.hexes).forEach(hex => {
-        const x = (hexSize*1.5*hex.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(hex.r+hex.q/2))*camera.zoom+camera.y;
+    // Nach Bildschirm-Y sortiert (Painter's Algorithm), damit unclipped-hohe Elemente wie
+    // Berggipfel (siehe drawMountainPeaksTall weiter unten) korrekt von naeher liegenden
+    // Feldern ueberdeckt werden koennen, statt hart im eigenen Hex abgeschnitten zu sein.
+    const sortedHexes = Object.values(mapData.hexes).map(hex => ({
+        hex,
+        x: (hexSize*1.5*hex.q)*camera.zoom+camera.x,
+        y: (hexSize*Math.sqrt(3)*(hex.r+hex.q/2))*camera.zoom+camera.y
+    })).sort((a, b) => a.y - b.y);
+    sortedHexes.forEach(({ hex, x, y }) => {
         if (hex.terrain === 'void') { drawVoidHex(ctx, x, y, s); return; }
         if (!hex.sprite) bakeHex(hex);
         ctx.drawImage(hex.sprite, x - destSize/2, y - destSize/2, destSize, destSize);
+        if (hex.terrain === 'mountains') drawMountainPeaksTall(ctx, x, y, s, terrainColors.mountains, hex.decor);
     });
     // Pass 1.5: Seen (3+ zusammenhaengende Flussfelder) als verschmolzene Flaeche obendrauf -
     // muss vor Pass 2 kommen, damit einzelne Fluss-/Muendungs-Baender (fuer Muendungs-Felder und
