@@ -116,7 +116,7 @@
             padding: 18px 20px 20px;
             width: 280px;
             backdrop-filter: blur(6px);
-            transition: border-color 0.4s, box-shadow 0.4s;
+            transition: border-color 0.4s, box-shadow 0.4s, right 0.28s ease;
         }
         #ui-panel { top: 20px; left: 20px; --panel-color: var(--gold); z-index: 10; }
         #inventory-panel { bottom: 20px; right: 20px; --panel-color: #5dade2; z-index: 20; }
@@ -253,7 +253,7 @@
             display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-weight: 900; font-size: 1.15em;
             color: #241c08; background: radial-gradient(circle at 35% 30%, var(--gold-light), var(--gold-dim));
             border: 1px solid #fff2cf; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(212,175,55,0.4);
-            transition: transform 0.15s;
+            transition: transform 0.15s, right 0.28s ease;
         }
         #help-fab:hover { transform: scale(1.08); }
 
@@ -295,14 +295,14 @@
             display: flex; align-items: center; justify-content: center; font-size: 1.15em;
             color: #241c08; background: radial-gradient(circle at 35% 30%, var(--gold-light), var(--gold-dim));
             border: 1px solid #fff2cf; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(212,175,55,0.4);
-            transition: transform 0.15s;
+            transition: transform 0.15s, right 0.28s ease;
         }
         #feedback-fab:hover { transform: scale(1.08); }
         #sound-toggle-fab {
             position: fixed; top: 20px; right: 72px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center; font-size: 1.15em;
             color: var(--gold-light); background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
-            cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5); transition: transform 0.15s;
+            cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5); transition: transform 0.15s, right 0.28s ease;
         }
         #sound-toggle-fab:hover { transform: scale(1.08); }
         #feedback-overlay {
@@ -341,6 +341,54 @@
         #feedback-status { text-align: center; font-family: 'Cinzel', serif; font-size: 0.82em; letter-spacing: 0.5px; margin-top: 14px; min-height: 1.4em; }
         #feedback-status.ok { color: #8fd19e; }
         #feedback-status.err { color: #e57368; }
+
+        /* ---------- Chat / Verlauf (Seitenleiste) ---------- */
+        #chat-sidebar-tab {
+            position: fixed; top: 50%; right: 0; transform: translateY(-50%); z-index: 941;
+            writing-mode: vertical-rl; text-orientation: mixed;
+            background: linear-gradient(180deg, var(--gold-light), var(--gold-dim));
+            color: #241c08; font-family: 'Cinzel', serif; font-weight: bold; font-size: 0.8em;
+            letter-spacing: 1px; padding: 16px 7px; border-radius: 6px 0 0 6px; cursor: pointer;
+            box-shadow: -4px 0 14px rgba(0,0,0,0.5); transition: right 0.28s ease;
+        }
+        #chat-sidebar-tab.open { right: 300px; }
+        .chat-unread-dot {
+            display: none; position: absolute; top: -3px; right: -3px; width: 11px; height: 11px; border-radius: 50%;
+            background: #e74c3c; box-shadow: 0 0 6px rgba(231,76,60,0.9), 0 0 0 2px rgba(18,16,12,0.9);
+        }
+        .chat-unread-dot.show { display: block; }
+        #chat-sidebar-panel {
+            position: fixed; top: 0; right: 0; width: 300px; max-width: 85vw; height: 100%; z-index: 940;
+            background: linear-gradient(165deg, rgba(28,25,19,0.97), rgba(12,11,8,0.98));
+            border-left: 1px solid rgba(212,175,55,0.65);
+            box-shadow: -10px 0 40px rgba(0,0,0,0.6);
+            display: flex; flex-direction: column;
+            transform: translateX(100%); transition: transform 0.28s ease;
+        }
+        #chat-sidebar-panel.open { transform: translateX(0); }
+        #chat-sidebar-tabs { display: flex; border-bottom: 1px solid rgba(212,175,55,0.3); flex-shrink: 0; }
+        .chat-subtab { flex: 1; padding: 14px 0; text-align: center; font-family: 'Cinzel', serif; font-size: 0.8em; letter-spacing: 1px; text-transform: uppercase; color: #9a8f6f; cursor: pointer; }
+        .chat-subtab.active { color: var(--gold-light); border-bottom: 2px solid var(--gold); }
+        .chat-view { flex: 1; overflow-y: auto; padding: 14px 16px; font-family: 'Cormorant Garamond', serif; }
+        .chat-view.hidden { display: none; }
+        .chat-msg { margin-bottom: 12px; }
+        .chat-msg-name { font-family: 'Cinzel', serif; font-size: 0.78em; font-weight: bold; letter-spacing: 0.5px; margin-bottom: 2px; }
+        .chat-msg-text { color: #e8dcc0; font-size: 1.05em; line-height: 1.3; overflow-wrap: break-word; }
+        .chat-hist-row { display: flex; gap: 8px; margin-bottom: 10px; font-size: 0.92em; color: #c9b98a; align-items: baseline; }
+        .chat-hist-time { color: #7d7362; font-size: 0.78em; flex-shrink: 0; font-family: 'Cinzel', serif; }
+        .chat-empty-hint { color: #7d7362; font-style: italic; font-size: 0.9em; text-align: center; margin-top: 30px; }
+        #chat-input-row { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid rgba(212,175,55,0.3); flex-shrink: 0; }
+        #chat-input-row input { flex: 1; min-width: 0; background: #0c0b08; border: 1px solid rgba(212,175,55,0.5); color: #f3e2a9; padding: 9px 10px; font-family: 'Cormorant Garamond', serif; border-radius: 2px; }
+        #chat-input-row input:focus { outline: none; border-color: var(--gold-light); box-shadow: 0 0 8px rgba(212,175,55,0.4); }
+        #chat-input-row button { background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08; border: 1px solid #fff2cf; border-radius: 2px; padding: 0 16px; cursor: pointer; font-weight: bold; }
+        #chat-input-row.disabled input, #chat-input-row.disabled button { opacity: 0.4; pointer-events: none; }
+
+        /* Wenn die Leiste offen ist, den anderen rechten UI-Elementen Platz machen, damit die
+           Leiste nichts verdeckt (siehe Mockup-Hinweis zur Ueberschneidung mit dem Inventar). */
+        body.chat-open #inventory-panel { right: 340px; }
+        body.chat-open #feedback-fab { right: 340px; }
+        body.chat-open #help-fab { right: 340px; }
+        body.chat-open #sound-toggle-fab { right: 392px; }
 
         /* ---------- Online-Modus / Lobby ---------- */
         .menu-scroll { max-height: 90vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
@@ -588,6 +636,20 @@
         </div>
         <div id="feedback-status"></div>
         </div>
+    </div>
+</div>
+
+<div id="chat-sidebar-tab" class="hidden" onclick="toggleChatPanel()">💬 CHAT<span class="chat-unread-dot"></span></div>
+<div id="chat-sidebar-panel" class="hidden">
+    <div id="chat-sidebar-tabs">
+        <div class="chat-subtab active" data-tab="chat" onclick="switchChatTab('chat')">💬 Chat</div>
+        <div class="chat-subtab" data-tab="history" onclick="switchChatTab('history')">📜 Verlauf</div>
+    </div>
+    <div id="chat-messages-view" class="chat-view"></div>
+    <div id="chat-history-view" class="chat-view hidden"></div>
+    <div id="chat-input-row">
+        <input type="text" id="chat-input" maxlength="300" placeholder="Nachricht schreiben..." onkeydown="if (event.key === 'Enter') sendChatMessage();">
+        <button onclick="sendChatMessage()">➤</button>
     </div>
 </div>
 
@@ -1446,6 +1508,7 @@ function processLoadedMap(data, count, presetPlayers) {
     document.getElementById('inventory-panel').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
+    resetChatAndLogForNewGame();
     gameState = "PLACING"; currentPlayerIdx = 0; fitMapToScreen(); centerMap(); updateUI(); render(); updateApoUI();
 }
 
@@ -1704,6 +1767,8 @@ function handleNetMessage(msg) {
     } else if (msg.type === 'state') {
         net.active = true;
         applyRemoteState(msg.state);
+    } else if (msg.type === 'chat') {
+        addChatMessage(msg.name, msg.color, msg.text, false);
     }
 }
 
@@ -1856,7 +1921,12 @@ function serializeState() {
         boatLandingTargets: (boatLandingTargets || []).map(h => ({ q: h.q, r: h.r })),
         isGameOver,
         victoryWinnerId: isGameOver ? lastVictoryInfo.id : null,
-        victoryReason: isGameOver ? lastVictoryInfo.reason : null
+        victoryReason: isGameOver ? lastVictoryInfo.reason : null,
+        // Der Verlauf ("Wer hat wann was gemacht") wird mitgeschickt, weil im Online-Modus nur der
+        // jeweils aktive Client die Spiellogik (und damit showNotification()/addLogEntry()) wirklich
+        // ausfuehrt - andere Clients wuerden sonst nur ihre EIGENEN Zuege im Verlauf sehen, nie die
+        // der anderen. So bekommt jeder Client die vollstaendige, gemeinsame Historie.
+        gameLog: gameLog.slice(-150)
     };
 }
 
@@ -1890,6 +1960,7 @@ function applyRemoteState(state) {
     boatLandingTargets = state.boatLandingTargets || [];
     isGameOver = state.isGameOver;
     lastVictoryInfo = { id: state.victoryWinnerId, reason: state.victoryReason };
+    if (Array.isArray(state.gameLog)) { gameLog = state.gameLog; renderGameLog(); }
 
     document.getElementById('setup-overlay').style.display = 'none';
     document.getElementById('lobby-overlay').classList.add('hidden');
@@ -1899,6 +1970,7 @@ function applyRemoteState(state) {
     document.getElementById('help-fab').classList.remove('hidden');
     document.getElementById('room-badge').classList.remove('hidden');
     document.getElementById('room-badge-code').innerText = net.room || '';
+    revealChatSidebar();
     if (!net.centered) { fitMapToScreen(); centerMap(); net.centered = true; }
 
     updateUI(); render(); updateApoUI();
@@ -2653,6 +2725,7 @@ function deselectUnit() { selectedUnit = null; updateUI(); render(); }
 function checkTurnEnd() { if (pathDrawn && pathMoved) { currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); } else { gameState = "CHOOSING"; updateUI(); render(); } }
 
 function showNotification(text) {
+    addLogEntry(text);
     const el = document.getElementById('turn-toast');
     el.innerText = text;
     el.classList.remove('hidden');
@@ -3010,6 +3083,106 @@ function submitFeedback() {
 }
 
 // =====================================================================
+// CHAT & VERLAUF (Seitenleiste)
+// Chat funktioniert nur im Online-Modus (braucht den WebSocket-Server als
+// "Postboten"). Der Verlauf dagegen ist rein lokal - er schreibt einfach
+// jede showNotification()-Meldung zusaetzlich in eine Liste mit, funktioniert
+// also auch im lokalen Hotseat-Modus.
+// =====================================================================
+let chatPanelOpen = false;
+let chatActiveTab = 'chat';
+let chatMessages = [];
+let gameLog = [];
+let chatHasUnread = false;
+
+function toggleChatPanel() {
+    chatPanelOpen = !chatPanelOpen;
+    document.getElementById('chat-sidebar-tab').classList.toggle('open', chatPanelOpen);
+    document.getElementById('chat-sidebar-panel').classList.toggle('open', chatPanelOpen);
+    document.body.classList.toggle('chat-open', chatPanelOpen);
+    if (chatPanelOpen && chatActiveTab === 'chat') clearChatUnread();
+}
+function switchChatTab(tab) {
+    chatActiveTab = tab;
+    document.querySelectorAll('.chat-subtab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+    document.getElementById('chat-messages-view').classList.toggle('hidden', tab !== 'chat');
+    document.getElementById('chat-history-view').classList.toggle('hidden', tab !== 'history');
+    if (tab === 'chat') clearChatUnread();
+}
+function clearChatUnread() {
+    chatHasUnread = false;
+    const dot = document.querySelector('#chat-sidebar-tab .chat-unread-dot');
+    if (dot) dot.classList.remove('show');
+}
+
+function renderChatMessages() {
+    const view = document.getElementById('chat-messages-view');
+    if (!view) return;
+    if (!net.active) { view.innerHTML = '<div class="chat-empty-hint">Chat ist nur im Online-Modus verfügbar.</div>'; return; }
+    if (chatMessages.length === 0) { view.innerHTML = '<div class="chat-empty-hint">Noch keine Nachrichten - schreib was!</div>'; return; }
+    view.innerHTML = chatMessages.map(m =>
+        `<div class="chat-msg"><div class="chat-msg-name" style="color:${escapeHtml(m.color)};">${escapeHtml(m.name)}</div><div class="chat-msg-text">${escapeHtml(m.text)}</div></div>`
+    ).join('');
+    view.scrollTop = view.scrollHeight;
+}
+function addChatMessage(name, color, text, mine) {
+    chatMessages.push({ name, color, text });
+    if (chatMessages.length > 200) chatMessages.shift(); // nicht unbegrenzt wachsen lassen
+    renderChatMessages();
+    if (!mine && (!chatPanelOpen || chatActiveTab !== 'chat')) {
+        chatHasUnread = true;
+        const dot = document.querySelector('#chat-sidebar-tab .chat-unread-dot');
+        if (dot) dot.classList.add('show');
+    }
+}
+function sendChatMessage() {
+    if (!net.active) return;
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim().slice(0, 300);
+    if (!text) return;
+    input.value = '';
+    addChatMessage(net.name || 'Ich', net.color, text, true);
+    if (net.ws && net.ws.readyState === WebSocket.OPEN) {
+        net.ws.send(JSON.stringify({ type: 'chat', room: net.room, text }));
+    }
+}
+
+function addLogEntry(text) {
+    gameLog.push({ text, ts: Date.now() });
+    if (gameLog.length > 300) gameLog.shift();
+    renderGameLog();
+}
+function renderGameLog() {
+    const view = document.getElementById('chat-history-view');
+    if (!view) return;
+    if (gameLog.length === 0) { view.innerHTML = '<div class="chat-empty-hint">Noch nichts passiert.</div>'; return; }
+    view.innerHTML = gameLog.map(e => {
+        const t = new Date(e.ts);
+        const hh = String(t.getHours()).padStart(2, '0'), mm = String(t.getMinutes()).padStart(2, '0');
+        return `<div class="chat-hist-row"><span class="chat-hist-time">${hh}:${mm}</span><span>${escapeHtml(e.text)}</span></div>`;
+    }).join('');
+    view.scrollTop = view.scrollHeight;
+}
+// Macht die Leiste sichtbar und aktualisiert den Chat-Eingabe-Zustand je nach Modus - idempotent,
+// darf beliebig oft aufgerufen werden (z.B. bei JEDEM Online-Sync), OHNE bestehende Nachrichten
+// zu loeschen.
+function revealChatSidebar() {
+    document.getElementById('chat-sidebar-tab').classList.remove('hidden');
+    document.getElementById('chat-sidebar-panel').classList.remove('hidden');
+    const inputRow = document.getElementById('chat-input-row');
+    inputRow.classList.toggle('disabled', !net.active);
+    document.getElementById('chat-input').placeholder = net.active ? 'Nachricht schreiben...' : 'Nur im Online-Modus';
+    renderChatMessages();
+}
+// Wird NUR beim (Neu-)Start eines Spiels aufgerufen (nicht bei jedem Online-Sync!) - leert Chat/
+// Verlauf einer evtl. vorherigen Partie.
+function resetChatAndLogForNewGame() {
+    chatMessages = []; gameLog = []; chatHasUnread = false;
+    revealChatSidebar();
+    renderGameLog();
+}
+
+// =====================================================================
 // SOUND-EFFEKTE - alle Toene werden per Web Audio API direkt im Code
 // erzeugt (keine Audiodateien noetig, bleibt eine einzige HTML-Datei).
 // "ctx"/"fctx" sind schon die 2D-Canvas-Kontexte des Spiels - deshalb hier
@@ -3018,7 +3191,24 @@ function submitFeedback() {
 let soundMuted = false;
 try { soundMuted = localStorage.getItem('botg_sound_muted') === '1'; } catch (e) {}
 let sndCtx = null;
-function audioCtx() { if (!sndCtx) sndCtx = new (window.AudioContext || window.webkitAudioContext)(); return sndCtx; }
+function audioCtx() {
+    if (!sndCtx) sndCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Browser starten einen neuen AudioContext oft im Zustand "suspended", wenn er nicht WAEHREND
+    // einer echten Nutzer-Geste (Klick/Tastendruck) erzeugt wurde - z.B. wenn zufaellig zuerst ein
+    // KI-Spieler (per setTimeout, also OHNE echte Nutzer-Geste) rollDice()/prepareDraw() aufruft.
+    // Einmal "suspended" haengen geblieben, kaeme sonst NIE MEHR Ton, auch nicht bei spaeteren
+    // echten Klicks, weil der Context ja bereits (kaputt) im Cache haengt. Deshalb hier bei JEDEM
+    // Aufruf defensiv versuchen aufzuwecken - resume() auf einem bereits laufenden Context ist ein
+    // harmloses No-Op, und innerhalb eines echten Klick-Handlers darf der Browser es auch wirklich
+    // ausfuehren.
+    if (sndCtx.state === 'suspended') sndCtx.resume().catch(() => {});
+    return sndCtx;
+}
+// Zusaetzliches Sicherheitsnetz: beim allerersten echten Antippen/Klicken irgendwo auf der Seite
+// (z.B. schon im Hauptmenue) den AudioContext explizit erzeugen/aufwecken - damit er schon "warm"
+// und erlaubt ist, lange bevor ueberhaupt der erste Wuerfelwurf passiert.
+function unlockAudioOnce() { audioCtx(); }
+['pointerdown', 'keydown', 'touchstart'].forEach(evt => document.addEventListener(evt, unlockAudioOnce, { once: true, passive: true }));
 
 function sndNoiseBuffer(c, duration) {
     const n = Math.floor(c.sampleRate * duration);
@@ -3062,7 +3252,7 @@ function playSoundDice() {
             sndNoiseBurst(c, { duration: 0.025, filterFreq: 900 + Math.random() * 900, filterType: 'bandpass', filterQ: 3, gain: 0.22, startTime: t });
             t += 0.045 + Math.random() * 0.035;
         }
-    } catch (e) {}
+    } catch (e) { console.warn('Sound-Fehler:', e); }
 }
 function playSoundLoot() {
     if (soundMuted) return;
@@ -3073,7 +3263,7 @@ function playSoundLoot() {
             sndTone(c, { freq: f * 2, type: 'sine', duration: 0.35, gain: 0.06, startTime: i * 0.07 });
         });
         sndNoiseBurst(c, { duration: 0.4, filterFreq: 6000, filterType: 'highpass', filterQ: 0.7, gain: 0.05, startTime: 0.1 });
-    } catch (e) {}
+    } catch (e) { console.warn('Sound-Fehler:', e); }
 }
 function playSoundMeteor() {
     if (soundMuted) return;
@@ -3082,7 +3272,7 @@ function playSoundMeteor() {
         sndTone(c, { freq: 160, freqEnd: 38, type: 'sine', duration: 0.35, gain: 0.5, startTime: 0 });
         sndNoiseBurst(c, { duration: 0.3, filterFreq: 300, filterType: 'lowpass', filterQ: 0.8, gain: 0.35, startTime: 0 });
         sndNoiseBurst(c, { duration: 0.12, filterFreq: 2000, filterType: 'bandpass', filterQ: 1, gain: 0.12, startTime: 0.01 });
-    } catch (e) {}
+    } catch (e) { console.warn('Sound-Fehler:', e); }
 }
 function playSoundClick() {
     if (soundMuted) return;
@@ -3090,7 +3280,7 @@ function playSoundClick() {
         const c = audioCtx();
         sndNoiseBurst(c, { duration: 0.03, filterFreq: 2200, filterType: 'bandpass', filterQ: 4, gain: 0.2, startTime: 0 });
         sndTone(c, { freq: 900, type: 'square', duration: 0.02, gain: 0.05, startTime: 0 });
-    } catch (e) {}
+    } catch (e) { console.warn('Sound-Fehler:', e); }
 }
 function playSoundTurn() {
     if (soundMuted) return;
@@ -3100,7 +3290,7 @@ function playSoundTurn() {
         sndTone(c, { freq: 1760, type: 'sine', duration: 0.4, gain: 0.08, startTime: 0 });
         sndTone(c, { freq: 659.25, type: 'sine', duration: 0.6, gain: 0.2, startTime: 0.13 });
         sndTone(c, { freq: 1318.5, type: 'sine', duration: 0.45, gain: 0.07, startTime: 0.13 });
-    } catch (e) {}
+    } catch (e) { console.warn('Sound-Fehler:', e); }
 }
 
 function toggleSoundMute() {
