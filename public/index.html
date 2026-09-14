@@ -489,34 +489,54 @@
         <div class="frame-corner tl"></div><div class="frame-corner tr"></div>
         <div class="frame-corner bl"></div><div class="frame-corner br"></div>
         <div class="menu-scroll">
-        <div class="title-flourish">⚜ ✦ ⚜</div>
-        <h1>Battle of the Gods</h1>
-        <p class="menu-subtitle">Ein Zeitalter der Titanen bricht an</p>
-        <select id="player-count" onchange="updateDefaultSettings(); renderPlayerTypeSelectors();">
-            <option value="2">2 Spieler</option><option value="3">3 Spieler</option>
-            <option value="4">4 Spieler</option><option value="5">5 Spieler</option>
-            <option value="6">6 Spieler</option>
-        </select>
-        <div class="divider-orn">Spieler</div>
-        <div id="player-types" class="player-cards"></div>
-        <button type="button" id="local-settings-toggle" class="lobby-settings-toggle" onclick="toggleLocalSettings()">⚙ Erweiterte Einstellungen <span id="local-settings-caret">▾</span></button>
-        <div id="local-settings-body" class="hidden">
-            <div class="settings-grid">
-                <label>Ziel Artefakte:</label><input type="number" id="cfg-target" value="7">
-                <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1" value="3">
-                <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2" value="5">
-                <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3" value="7">
+
+        <!-- Schritt 1: nur noch die drei Grundentscheidungen - Spieleranzahl/Namen/Farben/KI kommen
+             erst nach "Lokal spielen" auf einem eigenen Screen (siehe setup-step-local), statt hier
+             alles auf einmal zu zeigen, egal ob man ueberhaupt lokal spielen will. Gleiches Prinzip
+             wie schon bei lobby-step-join/lobby-step-room im Online-Menue (showLobbyStep()). -->
+        <div id="setup-step-start">
+            <div class="title-flourish">⚜ ✦ ⚜</div>
+            <h1>Battle of the Gods</h1>
+            <p class="menu-subtitle">Ein Zeitalter der Titanen bricht an</p>
+            <div class="button-row">
+                <button class="menu-btn btn-start" onclick="showSetupStep('local')">⚔ Lokal spielen</button>
+                <button class="menu-btn btn-network" onclick="startNetworkMode()">🌐 Online spielen</button>
+            </div>
+            <button class="help-btn" onclick="openTutorial()">📖 Wie spielt man?</button>
+
+            <div class="dev-credits">
+                Dev: <span class="dev-name">Johannes K aka Maxc the Sox</span>
             </div>
         </div>
-        <div class="button-row">
-            <button class="menu-btn btn-start" onclick="loadStandardMap()">⚔ Lokal spielen</button>
-            <button class="menu-btn btn-network" onclick="startNetworkMode()">🌐 Online spielen</button>
-        </div>
-        <button class="help-btn" onclick="openTutorial()">📖 Wie spielt man?</button>
 
-        <div class="dev-credits">
-            Dev: <span class="dev-name">Johannes K aka Maxc the Sox</span>
+        <!-- Schritt 2: Spieleranzahl, Namen/Farben/KI-Stufe, erweiterte Einstellungen - alles was
+             vorher hier oben im Startbildschirm mitlief, jetzt erst nach bewusstem Klick auf
+             "Lokal spielen" sichtbar. -->
+        <div id="setup-step-local" class="hidden">
+            <button type="button" class="help-btn" style="margin-bottom:14px;" onclick="showSetupStep('start')">← Zurück</button>
+            <div class="title-flourish">⚜ ✦ ⚜</div>
+            <h1 style="font-size:1.35em;">Lokal spielen</h1>
+            <p class="menu-subtitle">Spieler, Farben und KI-Gegner einstellen</p>
+
+            <select id="player-count" onchange="updateDefaultSettings(); renderPlayerTypeSelectors();">
+                <option value="2">2 Spieler</option><option value="3">3 Spieler</option>
+                <option value="4">4 Spieler</option><option value="5">5 Spieler</option>
+                <option value="6">6 Spieler</option>
+            </select>
+            <div class="divider-orn">Spieler</div>
+            <div id="player-types" class="player-cards"></div>
+            <button type="button" id="local-settings-toggle" class="lobby-settings-toggle" onclick="toggleLocalSettings()">⚙ Erweiterte Einstellungen <span id="local-settings-caret">▾</span></button>
+            <div id="local-settings-body" class="hidden">
+                <div class="settings-grid">
+                    <label>Ziel Artefakte:</label><input type="number" id="cfg-target" value="7">
+                    <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1" value="3">
+                    <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2" value="5">
+                    <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3" value="7">
+                </div>
+            </div>
+            <button id="local-start-btn" class="menu-btn btn-start" style="width:100%; box-sizing:border-box;" onclick="loadStandardMap()">⚔ Los geht's!</button>
         </div>
+
         </div>
     </div>
 </div>
@@ -1366,6 +1386,13 @@ function drawMeteorImpact(fctx, cx, cy, s, lt) {
     }
 }
 
+// Analog zu showLobbyStep() im Online-Menue: schaltet zwischen dem kompakten Startbildschirm und dem
+// Lokal-Setup-Screen um, statt beides dauerhaft uebereinander anzuzeigen.
+function showSetupStep(step) {
+    document.getElementById('setup-step-start').classList.toggle('hidden', step !== 'start');
+    document.getElementById('setup-step-local').classList.toggle('hidden', step !== 'local');
+}
+
 function updateDefaultSettings() {
     const count = parseInt(document.getElementById('player-count').value);
     document.getElementById('cfg-target').value = (count == 2) ? 7 : (count <= 4 ? 8 : 9);
@@ -1484,7 +1511,9 @@ function renderLocalColorSelect(i) {
 }
 
 async function loadStandardMap() {
-    const btn = document.querySelector('.btn-start');
+    // Gezielt per ID statt .btn-start (Klasse existiert jetzt zweimal im DOM - Schritt-1-Button
+    // "Lokal spielen" navigiert nur weiter, Schritt-2-Button "Los geht's!" startet wirklich das Spiel).
+    const btn = document.getElementById('local-start-btn');
     try {
         if (btn) { btn.disabled = true; btn.innerText = 'KARTE WIRD VORBEREITET...'; }
         await new Promise(r => setTimeout(r, 30)); // Browser rendern lassen, bevor die schwere Arbeit startet
@@ -1688,6 +1717,7 @@ function backToMainMenu() {
     net.ws = null; net.active = false; net.room = null; net.connected = false; net.localNpcs = [];
     document.getElementById('lobby-overlay').classList.add('hidden');
     document.getElementById('setup-overlay').style.display = 'flex';
+    showSetupStep('start'); // zur Sicherheit immer auf dem kompakten Startbildschirm landen, nicht mitten im Lokal-Setup
 }
 
 function showLobbyStep(step) {
