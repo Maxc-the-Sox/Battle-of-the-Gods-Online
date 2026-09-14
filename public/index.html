@@ -417,48 +417,57 @@
         .color-swatch:hover { transform: scale(1.1); }
         .color-swatch.selected { border-color: var(--gold-light); box-shadow: 0 0 10px var(--gold); }
         .color-swatch.taken { opacity: 0.22; cursor: not-allowed; }
-        .player-cards { display: flex; flex-direction: column; gap: 10px; }
+        .player-cards { display: flex; flex-direction: column; gap: 8px; }
         .player-card {
             --pc-color: var(--gold);
+            display: flex; align-items: center; gap: 8px;
             border: 1px solid rgba(212,175,55,0.3);
             border-left: 4px solid var(--pc-color);
             border-radius: 3px;
             background: linear-gradient(160deg, color-mix(in srgb, var(--pc-color) 14%, rgba(0,0,0,0.3)), rgba(0,0,0,0.3));
-            padding: 12px 14px;
+            padding: 8px 10px;
             box-shadow: 0 3px 12px rgba(0,0,0,0.35);
             transition: border-color 0.25s ease, box-shadow 0.25s ease;
         }
-        .player-card-head { display: flex; align-items: center; gap: 10px; }
         .player-card-badge {
-            width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+            width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
             background: var(--pc-color); color: #1c1608;
-            font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.85em;
+            font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.8em;
             display: flex; align-items: center; justify-content: center;
             box-shadow: 0 0 10px color-mix(in srgb, var(--pc-color) 55%, transparent), inset 0 1px 2px rgba(255,255,255,0.4);
             border: 1px solid rgba(255,255,255,0.25);
             transition: background 0.2s ease, box-shadow 0.2s ease;
         }
-        .player-card-head .type-toggle {
-            display: flex; border: 1px solid rgba(212,175,55,0.35); border-radius: 3px; overflow: hidden;
-            font-family: 'Cinzel', serif; font-size: 0.72em; flex-shrink: 0;
+        /* Name/Mensch-KI-Umschalter/Schwierigkeit/Farbe stehen jetzt alle in EINER Zeile pro Spieler
+           (statt zwei Zeilen wie zuvor) - spart bei 5-6 Spielern spuerbar Hoehe im Setup-Screen. */
+        .player-card input.local-name-input {
+            flex: 1.3; min-width: 0; background: transparent; border: none; border-bottom: 1px solid rgba(212,175,55,0.25);
+            color: #f3e2a9; font-family: 'Cormorant Garamond', serif; font-size: 1.02em; padding: 4px 2px;
         }
-        .player-card-head .type-toggle span { padding: 8px 11px; cursor: pointer; color: #9a8f6f; transition: background 0.15s ease, color 0.15s ease; }
-        .player-card-head .type-toggle span.on { background: var(--gold-dim); color: #241c08; font-weight: bold; }
-        .player-card-head select.diff-select { flex: 1; min-width: 0; padding: 9px 8px; font-size: 0.82em; }
-        .player-card-row { display: flex; gap: 8px; margin-top: 9px; }
-        .player-card-row input.local-name-input { flex: 1.4; min-width: 0; padding: 9px 10px !important; }
-        .color-select-wrap { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; }
-        .color-select-wrap select.local-color-select { width: 100%; padding: 9px 8px 9px 26px; font-size: 0.85em; }
+        .player-card input.local-name-input::placeholder { color: #766c53; }
+        .player-card .type-toggle {
+            display: flex; border: 1px solid rgba(212,175,55,0.35); border-radius: 3px; overflow: hidden;
+            font-family: 'Cinzel', serif; font-size: 0.68em; flex-shrink: 0;
+        }
+        .player-card .type-toggle span { padding: 6px 8px; cursor: pointer; color: #9a8f6f; transition: background 0.15s ease, color 0.15s ease; }
+        .player-card .type-toggle span.on { background: var(--gold-dim); color: #241c08; font-weight: bold; }
+        .player-card select.diff-select {
+            flex-shrink: 0; width: 78px; background: #0c0b08; border: 1px solid rgba(212,175,55,0.4); color: var(--gold-light);
+            font-family: 'Cinzel', serif; font-size: 0.68em; padding: 6px 4px; border-radius: 2px; cursor: pointer;
+        }
+        /* Farbauswahl ganz am Ende der Zeile: nur ein farbiger Punkt sichtbar, das eigentliche <select>
+           liegt unsichtbar (opacity:0) darueber - beim Klick zeigt der Browser trotzdem die normale
+           Dropdown-Liste mit Farbnamen an, nur die geschlossene Ansicht ist auf den Punkt reduziert. */
+        .color-select-wrap { position: relative; flex-shrink: 0; width: 26px; height: 26px; }
+        .color-select-wrap select.local-color-select { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: none; padding: 0; }
         .color-dot {
-            position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-            width: 11px; height: 11px; border-radius: 50%; background: var(--pc-color);
+            display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--pc-color); margin: 3px auto;
             box-shadow: 0 0 6px color-mix(in srgb, var(--pc-color) 70%, transparent);
             border: 1px solid rgba(255,255,255,0.4);
-            pointer-events: none; z-index: 2;
+            pointer-events: none;
         }
-        .player-card-head select.diff-select:focus,
-        .player-card-row input.local-name-input:focus,
-        .color-select-wrap select.local-color-select:focus {
+        .player-card input.local-name-input:focus,
+        .player-card select.diff-select:focus {
             outline: none; border-color: var(--gold-light); box-shadow: 0 0 8px rgba(212,175,55,0.4);
         }
         .lobby-member { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid rgba(212,175,55,0.15); font-family: 'Cinzel', serif; font-size: 0.85em; }
@@ -1449,12 +1458,19 @@ function renderPlayerTypeSelectors() {
         card.className = 'player-card';
         card.id = `player-card-${i}`;
 
-        const head = document.createElement('div');
-        head.className = 'player-card-head';
         const badge = document.createElement('div');
         badge.className = 'player-card-badge';
         badge.id = `player-badge-${i}`;
         badge.innerText = String(i + 1);
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'local-name-input';
+        nameInput.id = `player-name-${i}`;
+        nameInput.maxLength = 24;
+        nameInput.placeholder = `Spieler ${i + 1}`;
+        nameInput.value = localPlayerNames[i] || '';
+        nameInput.oninput = () => { localPlayerNames[i] = nameInput.value; };
 
         // Mensch/KI-Umschalter (statt kombiniertem Dropdown) + eigenes Schwierigkeits-Dropdown,
         // das nur bei KI sichtbar ist - Interaktionsmuster wie im mit dem Nutzer abgestimmten Mockup.
@@ -1485,22 +1501,7 @@ function renderPlayerTypeSelectors() {
         aiSpan.onclick = () => setIsAI(true);
         setIsAI(prevIsAI[i] || false);
 
-        head.appendChild(badge);
-        head.appendChild(toggle);
-        head.appendChild(diffSelect);
-
-        const row = document.createElement('div');
-        row.className = 'player-card-row';
-
-        const nameInput = document.createElement('input');
-        nameInput.type = 'text';
-        nameInput.className = 'local-name-input lobby-input';
-        nameInput.id = `player-name-${i}`;
-        nameInput.maxLength = 24;
-        nameInput.placeholder = `Spieler ${i + 1}`;
-        nameInput.value = localPlayerNames[i] || '';
-        nameInput.oninput = () => { localPlayerNames[i] = nameInput.value; };
-
+        // Farbauswahl steht bewusst ganz am Ende der Zeile (Nutzerwunsch).
         const colorWrap = document.createElement('div');
         colorWrap.className = 'color-select-wrap';
         const dot = document.createElement('span');
@@ -1511,10 +1512,11 @@ function renderPlayerTypeSelectors() {
         colorWrap.appendChild(dot);
         colorWrap.appendChild(colorSelect);
 
-        row.appendChild(nameInput);
-        row.appendChild(colorWrap);
-        card.appendChild(head);
-        card.appendChild(row);
+        card.appendChild(badge);
+        card.appendChild(nameInput);
+        card.appendChild(toggle);
+        card.appendChild(diffSelect);
+        card.appendChild(colorWrap);
         container.appendChild(card);
     }
     for (let i = 0; i < count; i++) renderLocalColorSelect(i);
