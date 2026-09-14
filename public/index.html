@@ -599,6 +599,10 @@ const ctx = canvas.getContext('2d');
 const fxCanvas = document.getElementById('fxCanvas');
 const fctx = fxCanvas.getContext('2d');
 let mapData = { hexes: {}, landmarks: [] };
+// Kurze, einmalige "Beute-Blitz"-Effekte (Ring + Funken), die beim Pluendern einer Ruine kurz auf
+// dem fxCanvas ueber dem Badge abgefeuert werden - siehe triggerLootBurst()/drawLootBurst().
+let activeBursts = [];
+const LOOT_BURST_DURATION = 0.85;
 let hexSize = 40, camera = { x: 0, y: 0, zoom: 0.8 }, iconCache = {};
 let players = [], currentPlayerIdx = 0, gameState = "SETUP";
 let drawPoints = 2, actionPoints = 2, collectedArtifacts = 0;
@@ -1063,6 +1067,49 @@ function drawLandmarkBadge(dctx, cx, cy, s, kind, phase) {
             dctx.beginPath(); dctx.arc(cx + Math.cos(ang) * rr, cy + Math.sin(ang) * rr, 1.6, 0, 7);
             dctx.fillStyle = `rgba(255,240,180,${op})`; dctx.fill();
         }
+    }
+}
+
+// Startet einen kurzen Gold-Blitz (Ring + Funken) am angegebenen Hex - wird in checkLandmark()
+// genau in dem Moment ausgeloest, in dem eine Ruine tatsaechlich neu geplündert wird.
+function triggerLootBurst(q, r) { activeBursts.push({ q, r, start: performance.now() / 1000 }); }
+
+// Zeichnet einen einzelnen Beute-Blitz-Frame: heller Aufblitzer + expandierender Ring + nach aussen
+// fliegende Funken, im selben Gold-Stil wie das Tempel-Glitzern oben in drawLandmarkBadge - nur als
+// kurzer "Wumms"-Moment statt als Dauerschleife. t laeuft von 0 (Moment des Pluenderns) bis 1 (verblasst).
+function drawLootBurst(fctx, cx, cy, s, t) {
+    const easeOut = 1 - Math.pow(1 - t, 3);
+    const flashAlpha = Math.max(0, 1 - t * 4.5);
+    if (flashAlpha > 0) {
+        const g = fctx.createRadialGradient(cx, cy, 0, cx, cy, s * 1.1);
+        g.addColorStop(0, `rgba(255,250,220,${flashAlpha})`);
+        g.addColorStop(0.5, `rgba(255,225,140,${flashAlpha * 0.6})`);
+        g.addColorStop(1, 'rgba(255,225,140,0)');
+        fctx.fillStyle = g; fctx.beginPath(); fctx.arc(cx, cy, s * 1.1, 0, 7); fctx.fill();
+    }
+    const ringR = s * (0.5 + easeOut * 1.6);
+    const ringAlpha = Math.max(0, 1 - easeOut * 1.15);
+    if (ringAlpha > 0) {
+        fctx.save();
+        fctx.strokeStyle = `rgba(241,196,15,${ringAlpha})`; fctx.lineWidth = 3 * (1 - easeOut * 0.6);
+        fctx.shadowColor = 'rgba(241,196,15,0.8)'; fctx.shadowBlur = 10;
+        fctx.beginPath(); fctx.arc(cx, cy, ringR, 0, 7); fctx.stroke();
+        fctx.restore();
+    }
+    const sparkCount = 14;
+    for (let i = 0; i < sparkCount; i++) {
+        const ang = (i / sparkCount) * Math.PI * 2 + (i % 2 === 0 ? 0.15 : -0.1);
+        const dist = s * (0.3 + easeOut * 1.7);
+        const sx = cx + Math.cos(ang) * dist;
+        const sy = cy + Math.sin(ang) * dist + easeOut * easeOut * s * 0.35; // sacken
+        const sparkAlpha = Math.max(0, (1 - t) * (0.6 + 0.4 * Math.sin(i * 2.1)));
+        if (sparkAlpha <= 0) continue;
+        const size = s * 0.09 * (1 - easeOut * 0.5);
+        fctx.save();
+        fctx.shadowColor = 'rgba(255,235,180,0.9)'; fctx.shadowBlur = 6;
+        fctx.fillStyle = `rgba(255,235,180,${sparkAlpha})`;
+        fctx.beginPath(); fctx.arc(sx, sy, Math.max(0.4, size), 0, 7); fctx.fill();
+        fctx.restore();
     }
 }
 
@@ -2748,7 +2795,7 @@ function checkLandmark(q, r) {
             triggerVictory(players[currentPlayerIdx]); 
         } 
     }
-    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; checkApocalypse(); updateUI(); updateApoUI(); }
+    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; triggerLootBurst(q, r); checkApocalypse(); updateUI(); updateApoUI(); }
 }
 
 function handlePushFlow(unit) {
@@ -3401,6 +3448,17 @@ function renderFX() {
         const kind = isTemple ? 'temple' : (lm.looted ? 'looted' : 'ruin');
         drawLandmarkBadge(fctx, x, y, s, kind, now);
     });
+
+    // Beute-Blitz-Effekte: laufen unabhaengig von den Badges oben drueber (bereits abgelaufene werden
+    // rausgefiltert, damit die Liste nicht unbegrenzt waechst).
+    if (activeBursts.length > 0) {
+        activeBursts = activeBursts.filter(b => (now - b.start) < LOOT_BURST_DURATION);
+        activeBursts.forEach(b => {
+            const x = (hexSize*1.5*b.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(b.r+b.q/2))*camera.zoom+camera.y;
+            const t = Math.min(1, (now - b.start) / LOOT_BURST_DURATION);
+            drawLootBurst(fctx, x, y, s, t);
+        });
+    }
 
     let unitMap = {}; players.forEach(p => p.units.forEach(u => { const key = `${u.q},${u.r}`; if(!unitMap[key]) unitMap[key] = []; unitMap[key].push({ ...u, color: p.color, original: u }); }));
     Object.keys(unitMap).forEach(key => {
