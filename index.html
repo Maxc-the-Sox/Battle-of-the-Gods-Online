@@ -19,6 +19,22 @@
         .corner-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
         .corner-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
 
+        /* ---------- Antiker Gold-Rahmen ums Spielfeld (gleicher Stil wie Menüs/Panels) ----------
+           Liegt bewusst UNTER den UI-Panels (z-index 10+) und dem Raum-Badge (z-index 900), damit
+           diese ihn an ihren Ecken/oben mittig ganz normal ueberdecken statt zu konkurrieren. */
+        #board-frame-vignette { position: fixed; inset: 0; pointer-events: none; z-index: 4; box-shadow: inset 0 0 140px 40px rgba(10,8,4,0.75); }
+        #board-frame-border { position: fixed; inset: 14px; pointer-events: none; z-index: 5; border: 1px solid rgba(212,175,55,0.55); box-shadow: inset 0 0 0 6px rgba(212,175,55,0.22); }
+        .board-frame-corner { position: fixed; width: 46px; height: 46px; border: 2px solid var(--gold); opacity: 0.95; pointer-events: none; z-index: 6; }
+        .board-frame-corner.tl { top: 14px; left: 14px; border-right: none; border-bottom: none; }
+        .board-frame-corner.tr { top: 14px; right: 14px; border-left: none; border-bottom: none; }
+        .board-frame-corner.bl { bottom: 14px; left: 14px; border-right: none; border-top: none; }
+        .board-frame-corner.br { bottom: 14px; right: 14px; border-left: none; border-top: none; }
+        #board-frame-emblem {
+            position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 7;
+            font-family: 'Cinzel', serif; font-size: 20px; color: var(--gold-light); text-shadow: 0 0 12px rgba(212,175,55,0.7);
+            pointer-events: none; background: radial-gradient(ellipse at center, rgba(18,16,12,0.9) 0%, rgba(18,16,12,0) 75%); padding: 6px 24px;
+        }
+
         /* Setup Overlay */
         #setup-overlay, #lobby-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.75)), url('bg.jpg') no-repeat center center; background-size: cover; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
         #setup-overlay::before, #lobby-overlay::before { content:''; position:absolute; inset:0; background: repeating-linear-gradient(115deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 90px); pointer-events:none; }
@@ -273,6 +289,45 @@
         .tutorial-nav { display: flex; gap: 16px; }
         .tutorial-nav .btn { margin-top: 0; }
 
+        /* ---------- Feedback / Bug-Report ---------- */
+        #feedback-fab {
+            position: fixed; bottom: 20px; right: 20px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 1.15em;
+            color: #241c08; background: radial-gradient(circle at 35% 30%, var(--gold-light), var(--gold-dim));
+            border: 1px solid #fff2cf; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(212,175,55,0.4);
+            transition: transform 0.15s;
+        }
+        #feedback-fab:hover { transform: scale(1.08); }
+        #feedback-overlay {
+            position: fixed; inset: 0; z-index: 3002; display: flex; align-items: center; justify-content: center;
+            background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
+        }
+        .feedback-box {
+            position: relative; width: 460px; max-width: 90vw;
+            background: linear-gradient(165deg, rgba(28,25,19,0.96), rgba(12,11,8,0.98));
+            border: 1px solid rgba(212,175,55,0.65);
+            box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 60px rgba(212,175,55,0.1), inset 0 0 40px rgba(0,0,0,0.6);
+        }
+        /* Der eigentliche Inhalt scrollt in diesem inneren Wrapper - NICHT direkt in .feedback-box,
+           sonst zaehlen die dekorativen Ecken (die absichtlich ein paar px ueber den Rand
+           hinausragen) als "Inhalt" mit und erzeugen einen Scrollbalken, der optisch nicht
+           noetig waere (gleiches Prinzip wie bei .menu-scroll im Hauptmenue). */
+        .feedback-scroll { max-height: 88vh; overflow-y: auto; padding: 40px 42px 32px; box-sizing: border-box; }
+        .feedback-field { text-align: left; margin-bottom: 16px; }
+        .feedback-field label { display: block; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 0.5px; text-transform: uppercase; color: #b9a86c; margin-bottom: 6px; }
+        .feedback-field input, .feedback-field textarea {
+            width: 100%; background: #0c0b08; border: 1px solid rgba(212,175,55,0.5); color: #f3e2a9;
+            padding: 10px; font-family: 'Cormorant Garamond', serif; font-size: 1.02em; box-sizing: border-box;
+            border-radius: 2px; resize: vertical;
+        }
+        .feedback-field textarea { min-height: 90px; }
+        .feedback-field input:focus, .feedback-field textarea:focus { outline: none; border-color: var(--gold-light); box-shadow: 0 0 8px rgba(212,175,55,0.4); }
+        .feedback-nav { display: flex; gap: 16px; margin-top: 8px; }
+        .feedback-nav .btn { margin-top: 0; }
+        #feedback-status { text-align: center; font-family: 'Cinzel', serif; font-size: 0.82em; letter-spacing: 0.5px; margin-top: 14px; min-height: 1.4em; }
+        #feedback-status.ok { color: #8fd19e; }
+        #feedback-status.err { color: #e57368; }
+
         /* ---------- Online-Modus / Lobby ---------- */
         .menu-scroll { max-height: 90vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
         .menu-scroll::-webkit-scrollbar { width: 8px; }
@@ -392,6 +447,7 @@
 </div>
 
 <div id="help-fab" class="hidden" onclick="openTutorial()" title="Anleitung">?</div>
+<div id="feedback-fab" onclick="openFeedback()" title="Feedback / Bug melden">🐞</div>
 <div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
 
 <div id="lobby-overlay" class="hidden">
@@ -490,6 +546,36 @@
     </div>
 </div>
 
+<div id="feedback-overlay" class="hidden">
+    <div class="feedback-box">
+        <div class="corner-tl"></div><div class="corner-tr"></div>
+        <div class="corner-bl"></div><div class="corner-br"></div>
+        <button class="tutorial-close" onclick="closeFeedback()">✕</button>
+        <div class="feedback-scroll">
+        <div class="tutorial-icon">🐞</div>
+        <div class="tutorial-title">Feedback / Bug melden</div>
+        <div class="menu-subtitle" style="margin-bottom:22px;">Hilf mit, das Spiel besser zu machen</div>
+        <div class="feedback-field">
+            <label for="feedback-name">Dein Name</label>
+            <input type="text" id="feedback-name" maxlength="30" placeholder="Wie sollen wir dich nennen?">
+        </div>
+        <div class="feedback-field">
+            <label for="feedback-title">Kurzer Titel</label>
+            <input type="text" id="feedback-title" maxlength="80" placeholder='z.B. "Karte lässt sich nicht ziehen"'>
+        </div>
+        <div class="feedback-field">
+            <label for="feedback-desc">Was ist passiert?</label>
+            <textarea id="feedback-desc" maxlength="1000" placeholder="Beschreibe so genau wie möglich, was du gemacht hast und was passiert ist..."></textarea>
+        </div>
+        <div class="feedback-nav">
+            <button class="btn btn-secondary" onclick="closeFeedback()">Abbrechen</button>
+            <button id="feedback-submit-btn" class="btn btn-gold" onclick="submitFeedback()">Absenden</button>
+        </div>
+        <div id="feedback-status"></div>
+        </div>
+    </div>
+</div>
+
 <div id="victory-panel" class="hidden">
     <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
     <h1 class="victory-title">SIEG!</h1>
@@ -568,17 +654,49 @@
 <canvas id="gameCanvas"></canvas>
 <canvas id="fxCanvas"></canvas>
 
+<!-- Antiker Gold-Rahmen ums Spielfeld, im gleichen Stil wie die Menüs (siehe #board-frame-* CSS) -->
+<div id="board-frame-vignette"></div>
+<div id="board-frame-border"></div>
+<div class="board-frame-corner tl"></div>
+<div class="board-frame-corner tr"></div>
+<div class="board-frame-corner bl"></div>
+<div class="board-frame-corner br"></div>
+<div id="board-frame-emblem">❖</div>
+
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const fxCanvas = document.getElementById('fxCanvas');
 const fctx = fxCanvas.getContext('2d');
 let mapData = { hexes: {}, landmarks: [] };
+// Kurze, einmalige "Beute-Blitz"-Effekte (Ring + Funken), die beim Pluendern einer Ruine kurz auf
+// dem fxCanvas ueber dem Badge abgefeuert werden - siehe triggerLootBurst()/drawLootBurst().
+let activeBursts = [];
+const LOOT_BURST_DURATION = 0.85;
+// Gestaffelte Meteor-Einschlaege beim Ring-Kollaps (siehe triggerKollaps()/drawMeteorImpact()) -
+// jedes betroffene Feld bekommt einen eigenen, leicht zufaelligen Einschlagszeitpunkt statt dass
+// alle Felder synchron auf einmal zu void werden.
+let pendingMeteors = [];
+const METEOR_DURATION = 0.7;     // Gesamtdauer EINES Einschlags (Anflug+Blitz+Rauch)
+const METEOR_IMPACT_FRACTION = 0.42; // Anteil der Dauer bis zum eigentlichen Einschlagsmoment (Anflugende)
+// Zeitfenster, ueber das die Einschlaege EINES Kollaps gestaffelt starten - bewusst mit einer Obergrenze
+// gedeckelt (statt z.B. "0.15s pro Feld"), weil ein Ring je nach Kartengroesse auch mehrere hundert
+// Felder umfassen kann - ohne Deckel wuerde die Kaskade dann viele Sekunden bis Minuten dauern statt,
+// wie gewuenscht, zuegig durchzulaufen. Kleine Ringe (wenige Felder) bekommen dadurch automatisch ein
+// kuerzeres, engeres Fenster; grosse Ringe laufen trotzdem in derselben Gesamtzeit durch (Fenster +
+// Dauer eines einzelnen Einschlags = ca. 3s Gesamtdauer fuer einen grossen Ring).
+const METEOR_CASCADE_WINDOW_MAX = 2.3;
 let hexSize = 40, camera = { x: 0, y: 0, zoom: 0.8 }, iconCache = {};
 let players = [], currentPlayerIdx = 0, gameState = "SETUP";
 let drawPoints = 2, actionPoints = 2, collectedArtifacts = 0;
 let targetArtifacts = 7, ringThresholds = [3, 5, 7], closedRings = { outer: false, middle: false, inner: false };
 let pathDrawn = false, pathMoved = false, isDragging = false, lastMouse = { x: 0, y: 0 };
+// hasDragged bleibt (anders als isDragging) auch nach dem mouseup noch bis zum click-Event stehen -
+// so kann der click-Handler erkennen, ob die Maus zwischen mousedown und mouseup tatsaechlich bewegt
+// wurde (= Karte verschieben) statt nur draufgeklickt (= Feld setzen/Figur waehlen). Ohne das wuerde
+// jedes Verschieben der Karte am Loslasspunkt zusaetzlich einen Klick auf das Feld darunter ausloesen.
+let hasDragged = false, dragStartMouse = { x: 0, y: 0 };
+const DRAG_THRESHOLD_PX = 5;
 let currentCard = null, diceValue = 0, placementsRemaining = 0, pendingRiverHex = null, selectedUnit = null, riverEscapeHexes = [];
 // Regel "Straßenbonus": der erste Schritt auf/entlang einer Straße in einem Zug kostet keinen
 // Aktionspunkt - danach normal. Wird bei jedem Zugstart zurueckgesetzt (siehe startTurn()).
@@ -662,7 +780,7 @@ function drawMountainPeaks(sctx, cx, cy, s, base, decor) {
         sctx.restore();
     });
 }
-function paintHexTerrain(sctx, cx, cy, s, terrain, decor) {
+function paintHexTerrain(sctx, cx, cy, s, terrain, decor, skipMountainPeaks) {
     const base = terrainColors[terrain] || '#2f3640';
     hexSpritePath(sctx, cx + 2, cy + 4, s); sctx.fillStyle = 'rgba(0,0,0,0.32)'; sctx.fill();
     hexSpritePath(sctx, cx, cy, s);
@@ -695,7 +813,12 @@ function paintHexTerrain(sctx, cx, cy, s, terrain, decor) {
     } else if (terrain === 'forest') {
         decor.slice().sort((a, b) => a.z - b.z).forEach(d => drawTree(sctx, cx, cy, s, d.ox, d.oy, d.scale));
     } else if (terrain === 'mountains') {
-        drawMountainPeaks(sctx, cx, cy, s, base, decor);
+        // Im echten Spiel werden die Gipfel NICHT hier (geclippt) gezeichnet, sondern hoeher und
+        // unclipped in einem eigenen Layer in render() - siehe drawMountainPeaksTall - damit sie
+        // sichtbar in das Nachbarfeld hineinragen koennen statt hart an der Hex-Kante abgeschnitten
+        // zu werden. Fuer eigenstaendige Vorschauen (z.B. tdDrawHex im Tutorial) bleibt diese
+        // geclippte Variante als Fallback erhalten.
+        if (!skipMountainPeaks) drawMountainPeaks(sctx, cx, cy, s, base, decor);
     } else if (terrain === 'hills') {
         sctx.strokeStyle = shade(base, 45); sctx.lineWidth = 2; sctx.globalAlpha = 0.6;
         for (let i = 0; i < 3; i++) { sctx.beginPath(); sctx.arc(cx, cy + s * 0.5 - i * s * 0.32, s * 0.55 + i * s * 0.1, Math.PI * 1.1, Math.PI * 1.9); sctx.stroke(); }
@@ -717,19 +840,127 @@ function paintHexTerrain(sctx, cx, cy, s, terrain, decor) {
     sctx.fillStyle = rim; sctx.fillRect(cx - s, cy - s, 2 * s, s);
     sctx.restore();
 
-    hexSpritePath(sctx, cx, cy, s); sctx.strokeStyle = 'rgba(0,0,0,0.45)'; sctx.lineWidth = 1.3; sctx.stroke();
+    // Statt einer harten schwarzen Rasterlinie nur ein dezenter, weicher Schatten zum Feldrand hin
+    // (Ambient Occlusion) - wirkt wie ein sanfter Tiefeneffekt statt eines Brettspiel-Gitters,
+    // die Feldform bleibt trotzdem klar erkennbar.
+    sctx.save(); hexSpritePath(sctx, cx, cy, s); sctx.clip();
+    const edgeShadow = sctx.createRadialGradient(cx, cy, s * 0.72, cx, cy, s);
+    edgeShadow.addColorStop(0, 'rgba(0,0,0,0)'); edgeShadow.addColorStop(1, 'rgba(0,0,0,0.28)');
+    sctx.fillStyle = edgeShadow; sctx.fillRect(cx - s, cy - s, 2 * s, 2 * s);
+    sctx.restore();
     if (terrain === 'swamp') {
         sctx.save(); sctx.shadowColor = 'rgba(0,0,0,0.6)'; sctx.shadowBlur = 5;
         sctx.font = `bold ${s * 0.85}px Arial`; sctx.textAlign = 'center'; sctx.textBaseline = 'middle'; sctx.fillStyle = 'white';
         sctx.fillText('🏰', cx, cy); sctx.restore();
     }
 }
+function groundTerrainOf(hex) {
+    // Strasse und Fluss ersetzen das Gelaende nicht - sie fuehren nur darueber. Fuer alles, was
+    // "wie sieht dieses Feld eigentlich aus" fragt (Uebergaenge zu Nachbarn eingeschlossen), zaehlt
+    // deshalb das Grundgelaende darunter, nicht die Strasse/der Fluss selbst.
+    return (hex.terrain === 'road' || hex.terrain === 'river') ? (hex.baseTerrain || 'plains') : hex.terrain;
+}
+function drawScreeRock(sctx, x, y, size, seed) {
+    const rnd = seededRandom(seed);
+    const pts = 6;
+    sctx.save(); sctx.translate(x, y);
+    sctx.beginPath();
+    for (let i = 0; i < pts; i++) {
+        const ang = (i / pts) * Math.PI * 2, r = size * (0.75 + rnd() * 0.4);
+        const px = Math.cos(ang) * r, py = Math.sin(ang) * r * 0.85;
+        i === 0 ? sctx.moveTo(px, py) : sctx.lineTo(px, py);
+    }
+    sctx.closePath();
+    const g = sctx.createLinearGradient(-size, -size, size, size);
+    g.addColorStop(0, '#6b6b6b'); g.addColorStop(1, '#3a3a3a');
+    sctx.fillStyle = g; sctx.fill();
+    sctx.strokeStyle = 'rgba(0,0,0,0.4)'; sctx.lineWidth = 0.8; sctx.stroke();
+    sctx.restore();
+}
+// Ausfransende Uebergangszonen zu Nachbarfeldern mit anderem Gelaende-Typ: ein paar Baeume, die
+// ueber die Waldgrenze ins Nachbarfeld ragen, Sand der in die Wiese verlaeuft, Raureif nahe der
+// Tundra, Geroell das vom Gebirge abgerutscht ist - macht die Karte "gewachsen" statt "gerastert",
+// jede Feldgrenze sieht dadurch ein bisschen anders aus statt eines exakten Farbflaechen-Schnitts.
+function paintEdgeBlend(sctx, cx, cy, s, hex, terrain) {
+    sctx.save(); hexSpritePath(sctx, cx, cy, s); sctx.clip();
+    hexDirections.forEach((d, i) => {
+        const n = mapData.hexes[`${hex.q + d.q},${hex.r + d.r}`];
+        if (!n) return;
+        const nTerrain = groundTerrainOf(n);
+        if (nTerrain === terrain) return;
+        const len = Math.hypot(1.5 * d.q, Math.sqrt(3) * (d.r + d.q / 2));
+        const ex = (1.5 * d.q) / len, ey = (Math.sqrt(3) * (d.r + d.q / 2)) / len;
+        const px = -ey, py = ex;
+        const rnd = seededRandom(((hex.q + 5000) * 100000 + (hex.r + 5000) + i * 17 + 3) >>> 0);
+        if (nTerrain === 'forest' && !['forest', 'mountains', 'water', 'river'].includes(terrain)) {
+            for (let k = 0; k < 2; k++) {
+                const t = 0.5 + rnd() * 0.3, spread = (rnd() - 0.5) * 0.8;
+                const bx = cx + ex * s * t + px * s * spread, by = cy + ey * s * t + py * s * spread;
+                sctx.save(); sctx.globalAlpha = 0.55 + rnd() * 0.2;
+                drawTree(sctx, bx, by, s, 0, 0, 0.34 + rnd() * 0.14);
+                sctx.restore();
+            }
+        }
+        if (nTerrain === 'desert' && !['desert', 'water', 'river', 'mountains'].includes(terrain)) {
+            const bx = cx + ex * s * 0.6, by = cy + ey * s * 0.6;
+            const g = sctx.createRadialGradient(bx, by, 0, bx, by, s * 0.8);
+            g.addColorStop(0, 'rgba(212,187,126,0.5)'); g.addColorStop(1, 'rgba(212,187,126,0)');
+            sctx.fillStyle = g; sctx.beginPath(); sctx.arc(bx, by, s * 0.8, 0, 7); sctx.fill();
+        }
+        if (nTerrain === 'tundra' && !['tundra', 'water', 'river', 'mountains'].includes(terrain)) {
+            for (let k = 0; k < 9; k++) {
+                const t = 0.45 + rnd() * 0.4, spread = (rnd() - 0.5) * 0.9;
+                const bx = cx + ex * s * t + px * s * spread, by = cy + ey * s * t + py * s * spread;
+                sctx.save(); sctx.globalAlpha = 0.4 + rnd() * 0.3; sctx.fillStyle = 'rgba(255,255,255,0.85)';
+                sctx.beginPath(); sctx.arc(bx, by, 1.1, 0, 7); sctx.fill(); sctx.restore();
+            }
+        }
+        if (nTerrain === 'mountains' && !['mountains', 'water', 'river'].includes(terrain)) {
+            const bx0 = cx + ex * s * 0.62, by0 = cy + ey * s * 0.62;
+            const wash = sctx.createRadialGradient(bx0, by0, 0, bx0, by0, s * 0.85);
+            wash.addColorStop(0, 'rgba(90,90,90,0.28)'); wash.addColorStop(1, 'rgba(90,90,90,0)');
+            sctx.fillStyle = wash; sctx.beginPath(); sctx.arc(bx0, by0, s * 0.85, 0, 7); sctx.fill();
+            for (let k = 0; k < 3; k++) {
+                const t = 0.35 + rnd() * 0.4, spread = (rnd() - 0.5) * 0.9;
+                const bx = cx + ex * s * t + px * s * spread, by = cy + ey * s * t + py * s * spread;
+                const size = s * (0.09 + rnd() * 0.07);
+                sctx.save(); sctx.shadowColor = 'rgba(0,0,0,0.5)'; sctx.shadowBlur = 3; sctx.shadowOffsetY = 1.5;
+                drawScreeRock(sctx, bx, by, size, ((hex.q + 5000) * 100000 + (hex.r + 5000) + i * 41 + k * 13) >>> 0);
+                sctx.restore();
+            }
+        }
+    });
+    sctx.restore();
+}
+// Hohe, UNCLIPPTE Gipfel-Variante fuers echte Spielfeld: wird nicht ins kleine Hex-Sprite gebacken
+// (das bekommt bei Bergen bewusst KEINE Gipfel, s. skipMountainPeaks in bakeHex), sondern direkt in
+// render() obendrauf gezeichnet, nachdem alle Feld-Sprites nach Bildschirm-Y sortiert gezeichnet
+// wurden - so darf die Bergspitze sichtbar ins Feld dahinter hineinragen (wirkt wie eine echte
+// Bergkette statt einzelner, hart abgeschnittener Kegel), waehrend ein naeher liegendes Feld sie bei
+// Bedarf trotzdem korrekt verdeckt.
+function drawMountainPeaksTall(ctx, cx, cy, s, base, decor) {
+    decor.forEach((p, i) => {
+        const x = cx + p.dx * s, w = p.w * s, h = p.h * s * 1.2, y = cy + s * 0.42;
+        ctx.save(); if (i === decor.length - 1) { ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4; }
+        ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x, y - h); ctx.lineTo(x + w / 2, y); ctx.closePath();
+        const g = ctx.createLinearGradient(x - w / 2, y, x + w / 2, y - h);
+        g.addColorStop(0, shade(base, -18)); g.addColorStop(1, shade(base, 22));
+        ctx.fillStyle = g; ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - w * 0.16, y - h * 0.68); ctx.lineTo(x, y - h); ctx.lineTo(x + w * 0.16, y - h * 0.68);
+        ctx.lineTo(x + w * 0.06, y - h * 0.56); ctx.lineTo(x - w * 0.06, y - h * 0.56); ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+        ctx.restore();
+    });
+}
 function bakeHex(hex) {
-    // Straße und Fluss ersetzen das Gelände nicht - sie führen nur darüber. Sprite zeigt also den Untergrund.
-    const groundTerrain = (hex.terrain === 'road' || hex.terrain === 'river') ? (hex.baseTerrain || 'plains') : hex.terrain;
+    const groundTerrain = groundTerrainOf(hex);
     hex.decor = makeDecor(groundTerrain, (hex.q + 5000) * 100000 + (hex.r + 5000));
     const c = document.createElement('canvas'); c.width = SPR_D; c.height = SPR_D;
-    paintHexTerrain(c.getContext('2d'), SPR_D / 2, SPR_D / 2, REF_S, groundTerrain, hex.decor);
+    const sctx = c.getContext('2d');
+    paintHexTerrain(sctx, SPR_D / 2, SPR_D / 2, REF_S, groundTerrain, hex.decor, groundTerrain === 'mountains');
+    paintEdgeBlend(sctx, SPR_D / 2, SPR_D / 2, REF_S, hex, groundTerrain);
     hex.sprite = c;
 }
 function roadDirOffset(i, s) { const d = hexDirections[i]; return { dx: s * 1.5 * d.q, dy: s * Math.sqrt(3) * (d.r + d.q / 2) }; }
@@ -918,6 +1149,122 @@ function drawLandmarkBadge(dctx, cx, cy, s, kind, phase) {
             const op = 0.4 + 0.6 * Math.max(0, Math.sin(phase * 2.2 + i * 1.7));
             dctx.beginPath(); dctx.arc(cx + Math.cos(ang) * rr, cy + Math.sin(ang) * rr, 1.6, 0, 7);
             dctx.fillStyle = `rgba(255,240,180,${op})`; dctx.fill();
+        }
+    }
+}
+
+// Startet einen kurzen Gold-Blitz (Ring + Funken) am angegebenen Hex - wird in checkLandmark()
+// genau in dem Moment ausgeloest, in dem eine Ruine tatsaechlich neu geplündert wird.
+function triggerLootBurst(q, r) { activeBursts.push({ q, r, start: performance.now() / 1000 }); }
+
+// Zeichnet einen einzelnen Beute-Blitz-Frame: heller Aufblitzer + expandierender Ring + nach aussen
+// fliegende Funken, im selben Gold-Stil wie das Tempel-Glitzern oben in drawLandmarkBadge - nur als
+// kurzer "Wumms"-Moment statt als Dauerschleife. t laeuft von 0 (Moment des Pluenderns) bis 1 (verblasst).
+function drawLootBurst(fctx, cx, cy, s, t) {
+    const easeOut = 1 - Math.pow(1 - t, 3);
+    const flashAlpha = Math.max(0, 1 - t * 4.5);
+    if (flashAlpha > 0) {
+        const g = fctx.createRadialGradient(cx, cy, 0, cx, cy, s * 1.1);
+        g.addColorStop(0, `rgba(255,250,220,${flashAlpha})`);
+        g.addColorStop(0.5, `rgba(255,225,140,${flashAlpha * 0.6})`);
+        g.addColorStop(1, 'rgba(255,225,140,0)');
+        fctx.fillStyle = g; fctx.beginPath(); fctx.arc(cx, cy, s * 1.1, 0, 7); fctx.fill();
+    }
+    const ringR = s * (0.5 + easeOut * 1.6);
+    const ringAlpha = Math.max(0, 1 - easeOut * 1.15);
+    if (ringAlpha > 0) {
+        fctx.save();
+        fctx.strokeStyle = `rgba(241,196,15,${ringAlpha})`; fctx.lineWidth = 3 * (1 - easeOut * 0.6);
+        fctx.shadowColor = 'rgba(241,196,15,0.8)'; fctx.shadowBlur = 10;
+        fctx.beginPath(); fctx.arc(cx, cy, ringR, 0, 7); fctx.stroke();
+        fctx.restore();
+    }
+    const sparkCount = 14;
+    for (let i = 0; i < sparkCount; i++) {
+        const ang = (i / sparkCount) * Math.PI * 2 + (i % 2 === 0 ? 0.15 : -0.1);
+        const dist = s * (0.3 + easeOut * 1.7);
+        const sx = cx + Math.cos(ang) * dist;
+        const sy = cy + Math.sin(ang) * dist + easeOut * easeOut * s * 0.35; // sacken
+        const sparkAlpha = Math.max(0, (1 - t) * (0.6 + 0.4 * Math.sin(i * 2.1)));
+        if (sparkAlpha <= 0) continue;
+        const size = s * 0.09 * (1 - easeOut * 0.5);
+        fctx.save();
+        fctx.shadowColor = 'rgba(255,235,180,0.9)'; fctx.shadowBlur = 6;
+        fctx.fillStyle = `rgba(255,235,180,${sparkAlpha})`;
+        fctx.beginPath(); fctx.arc(sx, sy, Math.max(0.4, size), 0, 7); fctx.fill();
+        fctx.restore();
+    }
+}
+
+// Zeichnet einen einzelnen Meteor-Einschlag: Anflug (gluehender Punkt + Schweif von schraeg oben),
+// dann Einschlagsblitz + russige Schockwelle + Truemmer/Glut die rausspritzen und nach unten sacken,
+// zum Schluss etwas aufsteigender Rauch. lt = lokale Zeit 0..1 relativ zum EIGENEN Einschlag dieses
+// Feldes (0 = Anflug beginnt, 1 = komplett verklungen). Gleiche Technik wie drawLootBurst, nur
+// gewaltsamer/russiger statt golden, weil hier ein Feld dauerhaft zerstoert wird statt nur belohnt.
+function drawMeteorImpact(fctx, cx, cy, s, lt) {
+    const IN_END = METEOR_IMPACT_FRACTION;
+    if (lt < IN_END) {
+        const p = lt / IN_END;
+        const startX = cx + s * 2.2, startY = cy - s * 2.6;
+        const mx = startX + (cx - startX) * p, my = startY + (cy - startY) * p;
+        fctx.save();
+        const tailLen = 5;
+        for (let k = 0; k < tailLen; k++) {
+            const tp = Math.max(0, p - k * 0.05);
+            const tx = startX + (cx - startX) * tp, ty = startY + (cy - startY) * tp;
+            const a = (1 - k / tailLen) * 0.7 * (0.4 + p * 0.6);
+            fctx.fillStyle = `rgba(255,${140 - k * 12},60,${a})`;
+            fctx.beginPath(); fctx.arc(tx, ty, s * 0.1 * (1 - k / tailLen), 0, 7); fctx.fill();
+        }
+        fctx.shadowColor = 'rgba(255,200,80,0.9)'; fctx.shadowBlur = 14;
+        fctx.fillStyle = '#fff6d8';
+        fctx.beginPath(); fctx.arc(mx, my, s * 0.11, 0, 7); fctx.fill();
+        fctx.restore();
+        return;
+    }
+    const t2 = (lt - IN_END) / (1 - IN_END);
+    const easeOut = 1 - Math.pow(1 - t2, 3);
+    const flashAlpha = Math.max(0, 1 - t2 * 5);
+    if (flashAlpha > 0) {
+        const g = fctx.createRadialGradient(cx, cy, 0, cx, cy, s * 1.3);
+        g.addColorStop(0, `rgba(255,245,220,${flashAlpha})`);
+        g.addColorStop(0.4, `rgba(255,140,40,${flashAlpha * 0.75})`);
+        g.addColorStop(1, 'rgba(255,90,20,0)');
+        fctx.fillStyle = g; fctx.beginPath(); fctx.arc(cx, cy, s * 1.3, 0, 7); fctx.fill();
+    }
+    const ringR = s * (0.35 + easeOut * 1.5);
+    const ringAlpha = Math.max(0, 1 - easeOut * 1.1);
+    if (ringAlpha > 0) {
+        fctx.save();
+        fctx.strokeStyle = `rgba(90,60,40,${ringAlpha * 0.85})`; fctx.lineWidth = 5 * (1 - easeOut * 0.7);
+        fctx.shadowColor = 'rgba(255,120,30,0.6)'; fctx.shadowBlur = 8;
+        fctx.beginPath(); fctx.arc(cx, cy, ringR, 0, 7); fctx.stroke();
+        fctx.restore();
+    }
+    const debrisCount = 10;
+    for (let i = 0; i < debrisCount; i++) {
+        const ang = (i / debrisCount) * Math.PI * 2 + i * 0.37;
+        const outDist = s * (0.2 + Math.min(1, t2 * 2.2) * 1.3);
+        const fall = Math.pow(Math.min(1, t2 * 1.6), 2) * s * 0.6;
+        const dx = cx + Math.cos(ang) * outDist, dy = cy + Math.sin(ang) * outDist * 0.6 - (1 - t2) * s * 0.25 + fall;
+        const a = Math.max(0, (1 - t2) * (0.7 + 0.3 * Math.sin(i * 3.3)));
+        if (a <= 0) continue;
+        const isEmber = i % 3 === 0;
+        fctx.save();
+        if (isEmber) { fctx.shadowColor = 'rgba(255,140,40,0.9)'; fctx.shadowBlur = 6; fctx.fillStyle = `rgba(255,170,70,${a})`; }
+        else { fctx.fillStyle = `rgba(70,55,45,${a})`; }
+        fctx.beginPath(); fctx.arc(dx, dy, s * (isEmber ? 0.055 : 0.075), 0, 7); fctx.fill();
+        fctx.restore();
+    }
+    if (t2 > 0.25) {
+        const st = (t2 - 0.25) / 0.75;
+        for (let i = 0; i < 4; i++) {
+            const sx = cx + (i - 1.5) * s * 0.22;
+            const sy = cy - st * s * 1.1 - i * 4;
+            const a = Math.max(0, (1 - st) * 0.35);
+            if (a <= 0) continue;
+            fctx.fillStyle = `rgba(60,55,52,${a})`;
+            fctx.beginPath(); fctx.arc(sx, sy, s * (0.14 + st * 0.12), 0, 7); fctx.fill();
         }
     }
 }
@@ -1148,9 +1495,15 @@ function isValidTarget(hex) {
 
 function applyTerrain(hex, type) {
     hex.terrain = type;
-    // Fluss ersetzt den Untergrund nicht (genau wie eine Straße) - Original-Gelände bleibt
-    // für die Grafik und die Ring-Logik erhalten.
-    if (type !== 'river') hex.baseTerrain = type;
+    // baseTerrain (das urspruengliche Untergrund-Gelaende aus der geladenen Karte, z.B. Wueste/Wiese/
+    // Huegel) bleibt hier IMMER unangetastet - es wird schon in processLoadedMap() einmalig gesetzt und
+    // dient sowohl der Grafik unter Fluss/Straße als auch der Ring-Kollaps-Logik (triggerKollaps()),
+    // die genau anhand von baseTerrain entscheidet, welchem Ring ein Feld angehoert.
+    // Frueher wurde es hier fuer alles ausser 'river' ueberschrieben - dadurch verloren z.B. die rund um
+    // Wuesten-Ruinen von Anfang an platzierten Berge ihre Wueste-Zugehoerigkeit und wurden beim
+    // Aussenring-Kollaps nie zerstoert, egal wo sie auf der Karte standen. Das gleiche Verhalten (nie
+    // baseTerrain anfassen) hat auch der Kartenplatzierungs-Code fuer vom Spieler gezogene Landschafts-
+    // karten weiter unten in performHexClick(), diese Funktion war die einzige Ausnahme davon.
 }
 // -----------------
 
@@ -2014,10 +2367,14 @@ canvas.addEventListener('wheel', e => {
     camera.x = e.clientX - worldX * camera.zoom; camera.y = e.clientY - worldY * camera.zoom; render();
 }, { passive: false });
 
-canvas.addEventListener('mousedown', e => { if (e.button === 0) { isDragging = true; lastMouse = { x: e.clientX, y: e.clientY }; } });
+canvas.addEventListener('mousedown', e => { if (e.button === 0) { isDragging = true; hasDragged = false; lastMouse = { x: e.clientX, y: e.clientY }; dragStartMouse = { x: e.clientX, y: e.clientY }; } });
 window.addEventListener('mouseup', () => isDragging = false);
 window.addEventListener('mousemove', e => {
-    if (isDragging) { camera.x += (e.clientX - lastMouse.x); camera.y += (e.clientY - lastMouse.y); lastMouse = { x: e.clientX, y: e.clientY }; render(); }
+    if (isDragging) {
+        camera.x += (e.clientX - lastMouse.x); camera.y += (e.clientY - lastMouse.y); lastMouse = { x: e.clientX, y: e.clientY };
+        if (!hasDragged && Math.hypot(e.clientX - dragStartMouse.x, e.clientY - dragStartMouse.y) > DRAG_THRESHOLD_PX) hasDragged = true;
+        render();
+    }
     const x = (e.clientX-camera.x)/(hexSize*camera.zoom), y = (e.clientY-camera.y)/(hexSize*camera.zoom), q = (2/3*x), r = (-1/3*x + Math.sqrt(3)/3*y);
     let rx = Math.round(q), rz = Math.round(r), ry = Math.round(-q-r);
     if (Math.abs(rx-q)>Math.abs(ry-(-q-r)) && Math.abs(rx-q)>Math.abs(rz-r)) rx = -ry-rz; else if (Math.abs(ry-(-q-r))>Math.abs(rz-r)) ry = -rx-rz; else rz = -rx-ry;
@@ -2053,14 +2410,28 @@ function updateApoUI() {
 
 function triggerKollaps(baseTerrains, key) {
     closedRings[key] = true;
-    Object.values(mapData.hexes).forEach(hex => {
-        if (baseTerrains.includes(hex.baseTerrain) && hex.baseTerrain !== 'water' && hex.baseTerrain !== 'tundra') {
-            hex.terrain = 'void'; players.forEach(p => p.units = p.units.filter(u => !(u.q === hex.q && u.r === hex.r)));
-        }
+    const hexesToCollapse = Object.values(mapData.hexes).filter(hex =>
+        baseTerrains.includes(hex.baseTerrain) && hex.baseTerrain !== 'water' && hex.baseTerrain !== 'tundra');
+    // Das eigentliche Spielgeschehen (Ring geschlossen, Einheiten dort entfernt, Sieg-Check) passiert
+    // weiterhin sofort und synchron - nur die SICHTBARE Verwandlung der Felder zu void wird ab jetzt
+    // ueber gestaffelte Meteor-Einschlaege animiert (siehe pendingMeteors/renderFX/drawMeteorImpact),
+    // damit nicht mehr alle betroffenen Felder auf einen Schlag lautlos verschwinden.
+    hexesToCollapse.forEach(hex => {
+        players.forEach(p => p.units = p.units.filter(u => !(u.q === hex.q && u.r === hex.r)));
     });
-    render(); updateApoUI();
+    const now = performance.now() / 1000;
+    // Alle Einschlaege eines Kollaps starten zufaellig irgendwann INNERHALB desselben, gedeckelten
+    // Zeitfensters (statt jedes Feld einzeln um einen festen Betrag zu verzoegern) - ein Ring mit
+    // wenigen Feldern bekommt so automatisch ein kurzes, knackiges Fenster, waehrend ein Ring mit
+    // hunderten Feldern (z.B. ein grosser Wuesten-Ring) nicht ewig braucht, weil das Fenster gedeckelt ist.
+    const cascadeWindow = Math.min(METEOR_CASCADE_WINDOW_MAX, 0.05 + hexesToCollapse.length * 0.02);
+    hexesToCollapse.forEach(hex => {
+        const delay = Math.random() * cascadeWindow;
+        pendingMeteors.push({ q: hex.q, r: hex.r, impactAt: now + delay, voided: false });
+    });
+    updateApoUI();
     const activePlayers = players.filter(p => p.units.length > 0);
-    if (activePlayers.length === 1 && players.length > 1) { 
+    if (activePlayers.length === 1 && players.length > 1) {
         triggerVictory(activePlayers[0], "Einziger Überlebender!");
     }
 }
@@ -2555,6 +2926,69 @@ function renderTutorialPage() {
 }
 function openTutorial() { tutorialIdx = 0; renderTutorialPage(); document.getElementById('tutorial-overlay').classList.remove('hidden'); }
 function closeTutorial() { document.getElementById('tutorial-overlay').classList.add('hidden'); stopTutorialDemo(); }
+
+// ---------- Feedback / Bug-Report ----------
+// Diese URL bekommst du von Google, wenn du das beiliegende Apps-Script als Web-App bereitstellst
+// (siehe Anleitung). Bis die echte URL eingetragen ist, bleibt der Platzhalter drin und das
+// Formular zeigt einen ehrlichen Hinweis an, statt eine erfolgreiche Meldung nur vorzutäuschen.
+const FEEDBACK_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbx0nFsRpfasRjlKekdc5wvGfmKRXfLqzKKqXgAHlENAVxu23S4a0qwqnqz7AG2YxudG/exec';
+
+function openFeedback() {
+    const nameField = document.getElementById('feedback-name');
+    if (!nameField.value) {
+        nameField.value = (typeof net !== 'undefined' && net.name) ? net.name : (localStorage.getItem('botg_player_name') || '');
+    }
+    const statusEl = document.getElementById('feedback-status');
+    statusEl.textContent = ''; statusEl.className = '';
+    document.getElementById('feedback-overlay').classList.remove('hidden');
+}
+function closeFeedback() { document.getElementById('feedback-overlay').classList.add('hidden'); }
+
+function submitFeedback() {
+    const statusEl = document.getElementById('feedback-status');
+    const btn = document.getElementById('feedback-submit-btn');
+    const name = document.getElementById('feedback-name').value.trim();
+    const title = document.getElementById('feedback-title').value.trim();
+    const desc = document.getElementById('feedback-desc').value.trim();
+    if (!title || !desc) {
+        statusEl.textContent = 'Bitte Titel und Beschreibung ausfüllen.';
+        statusEl.className = 'err';
+        return;
+    }
+    if (!FEEDBACK_WEBHOOK_URL || FEEDBACK_WEBHOOK_URL.indexOf('BITTE_HIER') !== -1) {
+        statusEl.textContent = 'Feedback-System ist noch nicht eingerichtet (fehlende Webhook-URL).';
+        statusEl.className = 'err';
+        return;
+    }
+    btn.disabled = true;
+    statusEl.textContent = 'Wird gesendet...';
+    statusEl.className = '';
+    fetch(FEEDBACK_WEBHOOK_URL, {
+        method: 'POST',
+        mode: 'no-cors', // Apps-Script-Webhooks setzen keine CORS-Header - die Antwort koennen wir eh
+                          // nicht auslesen, aber die eigentliche Anfrage kommt trotzdem zuverlaessig an.
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // vermeidet einen CORS-Preflight
+        body: JSON.stringify({
+            name: name || 'Anonym',
+            title: title,
+            description: desc,
+            room: (typeof net !== 'undefined' && net.room) ? net.room : '',
+            url: location.href,
+            userAgent: navigator.userAgent
+        })
+    }).then(() => {
+        statusEl.textContent = 'Danke! Dein Feedback wurde gesendet.';
+        statusEl.className = 'ok';
+        document.getElementById('feedback-title').value = '';
+        document.getElementById('feedback-desc').value = '';
+        btn.disabled = false;
+        setTimeout(closeFeedback, 1800);
+    }).catch(() => {
+        statusEl.textContent = 'Senden fehlgeschlagen - bitte prüfe deine Internetverbindung.';
+        statusEl.className = 'err';
+        btn.disabled = false;
+    });
+}
 function tutorialStep(dir) {
     if (dir > 0 && tutorialIdx === tutorialPages.length - 1) { closeTutorial(); return; }
     tutorialIdx = Math.max(0, Math.min(tutorialPages.length - 1, tutorialIdx + dir));
@@ -2600,7 +3034,7 @@ function checkLandmark(q, r) {
             triggerVictory(players[currentPlayerIdx]); 
         } 
     }
-    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; checkApocalypse(); updateUI(); updateApoUI(); }
+    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; triggerLootBurst(q, r); checkApocalypse(); updateUI(); updateApoUI(); }
 }
 
 function handlePushFlow(unit) {
@@ -2776,7 +3210,10 @@ function performHexClick(rx, rz, hex) {
 
 canvas.addEventListener('click', e => {
     if (!isControllable()) return;
-    if (isDragging) return; const x = (e.clientX-camera.x)/(hexSize*camera.zoom), y = (e.clientY-camera.y)/(hexSize*camera.zoom), q = (2/3*x), r = (-1/3*x + Math.sqrt(3)/3*y);
+    // Wenn zwischen mousedown und mouseup tatsaechlich gezogen wurde (Karte verschieben), soll dieser
+    // Klick NICHT zusaetzlich noch ein Feld setzen/anklicken - siehe hasDragged weiter oben.
+    if (hasDragged) { hasDragged = false; return; }
+    const x = (e.clientX-camera.x)/(hexSize*camera.zoom), y = (e.clientY-camera.y)/(hexSize*camera.zoom), q = (2/3*x), r = (-1/3*x + Math.sqrt(3)/3*y);
     let rx = Math.round(q), rz = Math.round(r), ry = Math.round(-q-r);
     if (Math.abs(rx-q)>Math.abs(ry-(-q-r)) && Math.abs(rx-q)>Math.abs(rz-r)) rx = -ry-rz; else if (Math.abs(ry-(-q-r)) > Math.abs(rz-r)) ry = -rx-rz; else rz = -rx-ry;
     const hex = mapData.hexes[`${rx},${rz}`]; if (!hex || hex.terrain === 'void') return;
@@ -2885,26 +3322,26 @@ function updateUI() {
 // Sees per eigener Fliessrichtung an Land grenzt (= "Muendung", ergibt sich automatisch aus den
 // beim Platzieren gewaehlten Fluss-Richtungen), verjuengt sich das Ufer dort trichterfoermig und
 // geht in den bekannten Fluss-Spray-Effekt ueber, statt einfach nur aufzuhoeren.
-// Eine einfache Fluss-Kette (jedes Feld hoechstens 2 Fluss-Nachbarn INNERHALB der Gruppe, keine
-// Verzweigung, keine geschlossene Schleife) ist - egal wie lang - KEIN See, nur eine ganz normale,
-// evtl. laenger gewundene Fluss-Strecke. Erst wenn sich Felder verzweigen (ein Feld hat 3+
-// Fluss-Nachbarn in der Gruppe, ein echter Zusammenfluss) ODER die Gruppe eine geschlossene
-// Schleife/ein Dreiecks-Cluster bildet (dann gibt es genauso viele Kanten wie Felder statt Felder-1
-// wie bei einer reinen Kette), wirkt die Flaeche "breiter" als ein Fluss und wird zum See.
+// WICHTIG: hier zaehlt NUR die tatsaechliche Fliessrichtung (wer fliesst wohin), nicht die reine
+// geometrische Naehe der Felder. Bei einem scharfen (120 Grad) Fluss-Knick beruehren sich die 3
+// beteiligten Felder im Hex-Raster naemlich automatisch gegenseitig - das sieht geometrisch wie
+// ein "Dreiecks-Cluster" aus, ist aber trotzdem nur eine ganz normale Fluss-Kurve. Deshalb reicht
+// reine Nachbarschaft nicht als Kriterium. Ein See entsteht erst an einem ECHTEN Zusammenfluss:
+// einem Feld, in das 2 oder mehr andere Fluss-Felder derselben Gruppe tatsaechlich hineinfliessen
+// (ihre eigene, beim Platzieren gewaehlte Fliessrichtung zeigt auf genau dieses Feld). Eine
+// einfache Kette - und sei sie noch so lang oder kurvig - hat pro Feld immer nur einen einzigen
+// Zufluss und wird dadurch nie zum See.
 function isLakeShape(group) {
     if (group.length < 3) return false;
     const set = new Set(group.map(g => `${g.q},${g.r}`));
-    let edgeCount = 0, maxDegree = 0;
-    group.forEach(hex => {
-        let degree = 0;
-        hexDirections.forEach(d => { if (set.has(`${hex.q + d.q},${hex.r + d.r}`)) degree++; });
-        maxDegree = Math.max(maxDegree, degree);
-        edgeCount += degree;
+    const inflowCount = new Map();
+    group.forEach(g => {
+        const hex = mapData.hexes[`${g.q},${g.r}`];
+        const d = hexDirections[hex.direction || 0];
+        const targetKey = `${hex.q + d.q},${hex.r + d.r}`;
+        if (set.has(targetKey)) inflowCount.set(targetKey, (inflowCount.get(targetKey) || 0) + 1);
     });
-    edgeCount /= 2; // jede Nachbarschafts-Kante wird von beiden Seiten mitgezaehlt
-    if (maxDegree >= 3) return true; // Zusammenfluss-/Verzweigungspunkt
-    if (edgeCount >= group.length) return true; // geschlossene Schleife/Cluster statt reiner Kette
-    return false;
+    return Array.from(inflowCount.values()).some(v => v >= 2);
 }
 function getLakeGroups() {
     const processed = new Set();
@@ -3124,11 +3561,19 @@ function render() {
     // Pass 1: alle Terrain-Sprites zeichnen (undurchsichtig) - muss komplett fertig sein,
     // bevor Fluss-/Straßen-Verbindungen darübergelegt werden, sonst übermalt ein spaeter
     // gezeichnetes Nachbarfeld die Verbindung/Mündung des vorherigen Feldes wieder.
-    Object.values(mapData.hexes).forEach(hex => {
-        const x = (hexSize*1.5*hex.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(hex.r+hex.q/2))*camera.zoom+camera.y;
+    // Nach Bildschirm-Y sortiert (Painter's Algorithm), damit unclipped-hohe Elemente wie
+    // Berggipfel (siehe drawMountainPeaksTall weiter unten) korrekt von naeher liegenden
+    // Feldern ueberdeckt werden koennen, statt hart im eigenen Hex abgeschnitten zu sein.
+    const sortedHexes = Object.values(mapData.hexes).map(hex => ({
+        hex,
+        x: (hexSize*1.5*hex.q)*camera.zoom+camera.x,
+        y: (hexSize*Math.sqrt(3)*(hex.r+hex.q/2))*camera.zoom+camera.y
+    })).sort((a, b) => a.y - b.y);
+    sortedHexes.forEach(({ hex, x, y }) => {
         if (hex.terrain === 'void') { drawVoidHex(ctx, x, y, s); return; }
         if (!hex.sprite) bakeHex(hex);
         ctx.drawImage(hex.sprite, x - destSize/2, y - destSize/2, destSize, destSize);
+        if (hex.terrain === 'mountains') drawMountainPeaksTall(ctx, x, y, s, terrainColors.mountains, hex.decor);
     });
     // Pass 1.5: Seen (3+ zusammenhaengende Flussfelder) als verschmolzene Flaeche obendrauf -
     // muss vor Pass 2 kommen, damit einzelne Fluss-/Muendungs-Baender (fuer Muendungs-Felder und
@@ -3242,6 +3687,37 @@ function renderFX() {
         const kind = isTemple ? 'temple' : (lm.looted ? 'looted' : 'ruin');
         drawLandmarkBadge(fctx, x, y, s, kind, now);
     });
+
+    // Beute-Blitz-Effekte: laufen unabhaengig von den Badges oben drueber (bereits abgelaufene werden
+    // rausgefiltert, damit die Liste nicht unbegrenzt waechst).
+    if (activeBursts.length > 0) {
+        activeBursts = activeBursts.filter(b => (now - b.start) < LOOT_BURST_DURATION);
+        activeBursts.forEach(b => {
+            const x = (hexSize*1.5*b.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(b.r+b.q/2))*camera.zoom+camera.y;
+            const t = Math.min(1, (now - b.start) / LOOT_BURST_DURATION);
+            drawLootBurst(fctx, x, y, s, t);
+        });
+    }
+
+    // Gestaffelte Meteor-Einschlaege beim Ring-Kollaps: genau im Einschlagsmoment wird das jeweilige
+    // Feld auf void umgestellt und einmal neu gebacken/gerendert (siehe triggerKollaps()) - danach
+    // laeuft der Effekt (Rauch/Glut) noch kurz auf dem fxCanvas weiter aus, bevor er entfernt wird.
+    if (pendingMeteors.length > 0) {
+        pendingMeteors.forEach(m => {
+            if (!m.voided && (now - m.impactAt) / METEOR_DURATION >= METEOR_IMPACT_FRACTION) {
+                const hex = mapData.hexes[`${m.q},${m.r}`];
+                if (hex && hex.terrain !== 'void') { hex.terrain = 'void'; bakeHex(hex); render(); }
+                m.voided = true;
+            }
+        });
+        pendingMeteors = pendingMeteors.filter(m => (now - m.impactAt) / METEOR_DURATION < 1);
+        pendingMeteors.forEach(m => {
+            const lt = (now - m.impactAt) / METEOR_DURATION;
+            if (lt < 0) return; // noch nicht dran (naechster in der Kaskade)
+            const x = (hexSize*1.5*m.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(m.r+m.q/2))*camera.zoom+camera.y;
+            drawMeteorImpact(fctx, x, y, s, lt);
+        });
+    }
 
     let unitMap = {}; players.forEach(p => p.units.forEach(u => { const key = `${u.q},${u.r}`; if(!unitMap[key]) unitMap[key] = []; unitMap[key].push({ ...u, color: p.color, original: u }); }));
     Object.keys(unitMap).forEach(key => {
