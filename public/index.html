@@ -19,6 +19,22 @@
         .corner-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
         .corner-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
 
+        /* ---------- Antiker Gold-Rahmen ums Spielfeld (gleicher Stil wie Menüs/Panels) ----------
+           Liegt bewusst UNTER den UI-Panels (z-index 10+) und dem Raum-Badge (z-index 900), damit
+           diese ihn an ihren Ecken/oben mittig ganz normal ueberdecken statt zu konkurrieren. */
+        #board-frame-vignette { position: fixed; inset: 0; pointer-events: none; z-index: 4; box-shadow: inset 0 0 140px 40px rgba(10,8,4,0.75); }
+        #board-frame-border { position: fixed; inset: 14px; pointer-events: none; z-index: 5; border: 1px solid rgba(212,175,55,0.55); box-shadow: inset 0 0 0 6px rgba(212,175,55,0.22); }
+        .board-frame-corner { position: fixed; width: 46px; height: 46px; border: 2px solid var(--gold); opacity: 0.95; pointer-events: none; z-index: 6; }
+        .board-frame-corner.tl { top: 14px; left: 14px; border-right: none; border-bottom: none; }
+        .board-frame-corner.tr { top: 14px; right: 14px; border-left: none; border-bottom: none; }
+        .board-frame-corner.bl { bottom: 14px; left: 14px; border-right: none; border-top: none; }
+        .board-frame-corner.br { bottom: 14px; right: 14px; border-left: none; border-top: none; }
+        #board-frame-emblem {
+            position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 7;
+            font-family: 'Cinzel', serif; font-size: 20px; color: var(--gold-light); text-shadow: 0 0 12px rgba(212,175,55,0.7);
+            pointer-events: none; background: radial-gradient(ellipse at center, rgba(18,16,12,0.9) 0%, rgba(18,16,12,0) 75%); padding: 6px 24px;
+        }
+
         /* Setup Overlay */
         #setup-overlay, #lobby-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.75)), url('bg.jpg') no-repeat center center; background-size: cover; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
         #setup-overlay::before, #lobby-overlay::before { content:''; position:absolute; inset:0; background: repeating-linear-gradient(115deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 90px); pointer-events:none; }
@@ -567,6 +583,15 @@
 
 <canvas id="gameCanvas"></canvas>
 <canvas id="fxCanvas"></canvas>
+
+<!-- Antiker Gold-Rahmen ums Spielfeld, im gleichen Stil wie die Menüs (siehe #board-frame-* CSS) -->
+<div id="board-frame-vignette"></div>
+<div id="board-frame-border"></div>
+<div class="board-frame-corner tl"></div>
+<div class="board-frame-corner tr"></div>
+<div class="board-frame-corner bl"></div>
+<div class="board-frame-corner br"></div>
+<div id="board-frame-emblem">❖</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
