@@ -222,8 +222,18 @@ function handleDisconnect(ws) {
             const next = room.members.keys().next();
             room.hostId = next.done ? null : next.value;
         }
-        if (room.members.size === 0) room.emptyAt = Date.now();
-        else broadcastLobby(code, room);
+        if (room.members.size === 0) {
+            room.emptyAt = Date.now();
+        } else {
+            broadcastLobby(code, room);
+            // Nur waehrend eines schon laufenden Spiels benachrichtigen (room.latestState existiert erst
+            // ab dem ersten Spielstand-Broadcast) - vorher, im reinen Lobby-Warten, ist ein Beitritts-/
+            // Verlassen-Wechsel normal und braucht keine Extra-Meldung im (noch gar nicht existierenden) Verlauf.
+            if (room.latestState) {
+                const payload = JSON.stringify({ type: 'player_left', name: member.name });
+                room.members.forEach(m => safeSend(m.ws, payload));
+            }
+        }
     }
 }
 
