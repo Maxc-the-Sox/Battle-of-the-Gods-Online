@@ -20,20 +20,24 @@
         .corner-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
 
         /* Setup Overlay */
-        #setup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.75)), url('bg.jpg') no-repeat center center; background-size: cover; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
-        #setup-overlay::before { content:''; position:absolute; inset:0; background: repeating-linear-gradient(115deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 90px); pointer-events:none; }
+        #setup-overlay, #lobby-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.75)), url('bg.jpg') no-repeat center center; background-size: cover; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+        #setup-overlay::before, #lobby-overlay::before { content:''; position:absolute; inset:0; background: repeating-linear-gradient(115deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 90px); pointer-events:none; }
 
         /* --- MENÜ DESIGN --- */
         .menu-box {
             position: relative;
             background: linear-gradient(165deg, rgba(28,25,19,0.93), rgba(12,11,8,0.97));
-            padding: 46px 44px 32px;
             border: 1px solid rgba(212,175,55,0.65);
             text-align: center;
             box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 60px rgba(212,175,55,0.08), inset 0 0 40px rgba(0,0,0,0.6);
             width: 500px;
             backdrop-filter: blur(5px);
         }
+        /* Der eigentliche Inhalt scrollt in diesem inneren Wrapper - NICHT direkt in .menu-box,
+           sonst zaehlen die dekorativen Ecken (die absichtlich ein paar px ueber den Rand
+           hinausragen) als "Inhalt" mit und erzeugen einen Scrollbalken, der optisch nicht
+           noetig waere. */
+        .menu-scroll { padding: 46px 44px 32px; box-sizing: border-box; }
         .frame-corner { position: absolute; width: 36px; height: 36px; border: 2px solid var(--gold); opacity: 0.95; }
         .frame-corner.tl { top: -10px; left: -10px; border-right: none; border-bottom: none; }
         .frame-corner.tr { top: -10px; right: -10px; border-left: none; border-bottom: none; }
@@ -115,7 +119,10 @@
             text-shadow: 0 0 12px color-mix(in srgb, var(--panel-color) 70%, transparent), 0 1px 2px rgba(0,0,0,0.8);
             box-shadow: 0 0 16px color-mix(in srgb, var(--panel-color) 30%, transparent), inset 0 0 12px rgba(0,0,0,0.35);
         }
-        #guide-text { font-family: 'Cinzel', serif; background: linear-gradient(180deg, var(--gold-light), var(--gold)); color: #241c08; padding: 9px; font-size: 0.82em; font-weight: bold; text-align: center; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 8px rgba(212,175,55,0.35); }
+        #guide-text { font-family: 'Cinzel', serif; background: linear-gradient(180deg, var(--gold-light), var(--gold)); color: #241c08; padding: 9px; font-size: 0.82em; font-weight: bold; text-align: center; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 8px rgba(212,175,55,0.35); }
+        #guide-hint { font-family: 'Cormorant Garamond', serif; text-align: center; color: #d8c9a3; font-size: 0.92em; font-style: italic; margin-bottom: 14px; padding: 0 2px; line-height: 1.35; }
+        #guide-hint b { color: #f1c40f; font-style: normal; }
+        #guide-hint .hint-select { color: #85c1e9; font-style: normal; font-weight: bold; }
         #artifact-display { font-family: 'Cinzel', serif; text-align: center; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(241,196,15,0.5); color: var(--gold-light); padding: 10px; margin-bottom: 14px; font-weight: bold; font-size: 1.02em; letter-spacing: 0.5px; }
 
         .inv-header { font-family: 'Cinzel', serif; color: #5dade2; font-weight: bold; text-transform: uppercase; text-align: center; padding-bottom: 9px; margin-bottom: 12px; letter-spacing: 2px; font-size: 0.88em; position: relative; }
@@ -180,6 +187,43 @@
         }
         #turn-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+        /* ---------- Wirbelsturm: kurzer, spuerbarer Effekt statt nur einer stillen Text-Notification ---------- */
+        @keyframes screenShake {
+            0%, 100% { transform: translate(0, 0); }
+            10% { transform: translate(-10px, -6px) rotate(-0.4deg); }
+            20% { transform: translate(12px, 4px) rotate(0.5deg); }
+            30% { transform: translate(-14px, 8px) rotate(-0.6deg); }
+            40% { transform: translate(10px, -8px) rotate(0.4deg); }
+            50% { transform: translate(-8px, 6px) rotate(-0.3deg); }
+            60% { transform: translate(8px, -4px) rotate(0.3deg); }
+            70% { transform: translate(-6px, 4px) rotate(-0.2deg); }
+            80% { transform: translate(6px, -3px) rotate(0.2deg); }
+            90% { transform: translate(-3px, 2px) rotate(-0.1deg); }
+        }
+        body.screen-shake { animation: screenShake 0.5s ease-in-out 2; }
+        #tornado-overlay {
+            position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: radial-gradient(circle at 50% 50%, rgba(60,50,20,0.35), rgba(5,5,8,0.88) 75%);
+            opacity: 0; transition: opacity 0.35s; pointer-events: none;
+        }
+        #tornado-overlay.show { opacity: 1; }
+        #tornado-overlay .twister { font-size: 7em; animation: twisterSpin 0.9s linear infinite; filter: drop-shadow(0 0 30px rgba(0,0,0,0.7)); }
+        @keyframes twisterSpin { 0% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(180deg) scale(1.15); } 100% { transform: rotate(360deg) scale(1); } }
+        #tornado-overlay .twister-label { margin-top: 18px; font-family: 'Cinzel', serif; font-weight: 800; letter-spacing: 3px; font-size: 1.6em; color: #fff2cf; text-transform: uppercase; text-shadow: 0 0 18px rgba(0,0,0,0.9), 0 0 30px rgba(212,175,55,0.5); }
+
+        /* ---------- Zug-Checkliste: zeigt auf einen Blick, was diesen Zug schon erledigt ist ---------- */
+        #turn-checklist { display: flex; gap: 8px; margin-bottom: 10px; }
+        .check-item {
+            flex: 1; text-align: center; font-family: 'Cinzel', serif; font-size: 0.72em; letter-spacing: 0.5px; text-transform: uppercase;
+            padding: 7px 4px; border-radius: 3px; border: 1px solid rgba(212,175,55,0.3); background: rgba(0,0,0,0.3); color: #c9b98a;
+        }
+        .check-item.pending { border-color: rgba(241,196,15,0.6); color: #f1c40f; animation: checkPulse 1.6s ease-in-out infinite; }
+        .check-item.done { color: #6fcf97; border-color: rgba(111,207,151,0.5); background: rgba(111,207,151,0.08); }
+        @keyframes checkPulse { 0%, 100% { box-shadow: 0 0 0 rgba(241,196,15,0); } 50% { box-shadow: 0 0 10px rgba(241,196,15,0.5); } }
+
+        /* ---------- Karten-/Inventar-Erklaerung: direkt sichtbarer Text statt nur Tooltip ---------- */
+        #card-desc { font-family: 'Cormorant Garamond', serif; font-size: 0.9em; color: #d8c9a3; text-align: center; margin-top: 6px; font-style: italic; line-height: 1.3; }
+
         /* ---------- Anleitung / Tutorial ---------- */
         .help-btn {
             font-family: 'Cinzel', serif; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-size: 0.8em;
@@ -215,6 +259,10 @@
         .tutorial-icon { font-size: 2.4em; text-align: center; margin-bottom: 6px; filter: drop-shadow(0 0 10px rgba(212,175,55,0.4)); }
         .tutorial-title { font-family: 'Cinzel', serif; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; text-align: center; font-size: 1.25em; color: var(--gold-light); margin-bottom: 4px; }
         .tutorial-step-label { text-align: center; font-family: 'Cinzel', serif; font-size: 0.72em; letter-spacing: 2px; color: var(--gold); opacity: 0.75; text-transform: uppercase; margin-bottom: 18px; }
+        .tutorial-demo-wrap { margin-bottom: 16px; }
+        .tutorial-demo-canvas { width: 100%; height: 176px; display: block; border: 1px solid rgba(212,175,55,0.4); border-radius: 4px; background: radial-gradient(ellipse at center, #223244 0%, #0a1018 100%); box-shadow: inset 0 0 30px rgba(0,0,0,0.55); }
+        .tutorial-demo-caption { text-align: center; font-family: 'Cinzel', serif; font-size: 0.76em; letter-spacing: 0.3px; color: #f3e2a9; margin-top: 9px; min-height: 2.5em; line-height: 1.45; opacity: 0.95; }
+        .tutorial-demo-caption b { color: var(--gold-light); }
         .tutorial-body { font-family: 'Cormorant Garamond', serif; font-size: 1.15em; line-height: 1.55; color: #e8dcc0; min-height: 160px; }
         .tutorial-body b { color: var(--gold-light); }
         .tutorial-body ul { margin: 10px 0 0; padding-left: 22px; }
@@ -226,16 +274,25 @@
         .tutorial-nav .btn { margin-top: 0; }
 
         /* ---------- Online-Modus / Lobby ---------- */
-        .menu-box { max-height: 90vh; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
-        .menu-box::-webkit-scrollbar { width: 8px; }
-        .menu-box::-webkit-scrollbar-track { background: transparent; }
-        .menu-box::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 4px; }
-        .menu-box::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+        .menu-scroll { max-height: 90vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
+        .menu-scroll::-webkit-scrollbar { width: 8px; }
+        .menu-scroll::-webkit-scrollbar-track { background: transparent; }
+        .menu-scroll::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 4px; }
+        .menu-scroll::-webkit-scrollbar-thumb:hover { background: var(--gold); }
         .lobby-hint { font-size: 0.78em; color: #9a8f6f; font-family: 'Cormorant Garamond', serif; text-align: center; margin: 14px 0 4px; line-height: 1.4; font-style: italic; }
         /* Der Lobby-Raum-Schritt hat viel Inhalt (Code, Farbe, Mitglieder, Einstellungen) - kompakter als das Hauptmenü */
         #lobby-overlay .divider-orn { margin: 13px 0; }
         #lobby-overlay .settings-grid { gap: 9px 14px; padding: 14px 18px; }
         #lobby-room-code { font-size: 1.7em; letter-spacing: 4px; margin-bottom: 2px; }
+        /* Zusaetzliche Sicherheitsmarge fuer den Raum-Schritt (viel Inhalt) - nicht knapp am Limit bauen,
+           damit es auch bei anderer Bildschirmskalierung/Zoomstufe zuverlaessig ohne Scroll passt. */
+        #lobby-overlay .menu-scroll { padding: 30px 40px 22px; }
+        #lobby-overlay h1 { font-size: 1.6em; margin: 0 0 2px; }
+        #lobby-overlay .menu-subtitle { font-size: 0.9em; margin: 0 0 14px; }
+        #lobby-overlay .glow-orb { height: 120px; }
+        .lobby-settings-toggle { display: block; width: 100%; background: none; border: none; cursor: pointer; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1px; text-transform: uppercase; color: #c9b98a; padding: 4px 0; text-align: center; }
+        .lobby-settings-toggle:hover { color: var(--gold-light); }
+        .lobby-settings-toggle.open #lobby-settings-caret, .lobby-settings-toggle.open #local-settings-caret { display: inline-block; transform: rotate(180deg); }
         .menu-btn.btn-secondary-menu { background: linear-gradient(180deg, #5c6266, #34383a); color: #f2f2f2; border: 1px solid #95a5a6; }
         .menu-btn.btn-secondary-menu:hover { background: linear-gradient(180deg, #7c8286, #454a4c); transform: translateY(-2px); }
         .color-picker { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 2px; }
@@ -243,6 +300,44 @@
         .color-swatch:hover { transform: scale(1.1); }
         .color-swatch.selected { border-color: var(--gold-light); box-shadow: 0 0 10px var(--gold); }
         .color-swatch.taken { opacity: 0.22; cursor: not-allowed; }
+        .player-cards { display: flex; flex-direction: column; gap: 10px; }
+        .player-card {
+            --pc-color: var(--gold);
+            border: 1px solid rgba(212,175,55,0.3);
+            border-left: 4px solid var(--pc-color);
+            border-radius: 3px;
+            background: linear-gradient(160deg, color-mix(in srgb, var(--pc-color) 14%, rgba(0,0,0,0.3)), rgba(0,0,0,0.3));
+            padding: 12px 14px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.35);
+            transition: border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+        .player-card-head { display: flex; align-items: center; gap: 10px; }
+        .player-card-badge {
+            width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+            background: var(--pc-color); color: #1c1608;
+            font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.85em;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 10px color-mix(in srgb, var(--pc-color) 55%, transparent), inset 0 1px 2px rgba(255,255,255,0.4);
+            border: 1px solid rgba(255,255,255,0.25);
+            transition: background 0.2s ease, box-shadow 0.2s ease;
+        }
+        .player-card-head select.player-type-select { flex: 1; padding: 9px 10px; font-size: 0.92em; }
+        .player-card-row { display: flex; gap: 8px; margin-top: 9px; }
+        .player-card-row input.local-name-input { flex: 1.4; min-width: 0; padding: 9px 10px !important; }
+        .color-select-wrap { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; }
+        .color-select-wrap select.local-color-select { width: 100%; padding: 9px 8px 9px 26px; font-size: 0.85em; }
+        .color-dot {
+            position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+            width: 11px; height: 11px; border-radius: 50%; background: var(--pc-color);
+            box-shadow: 0 0 6px color-mix(in srgb, var(--pc-color) 70%, transparent);
+            border: 1px solid rgba(255,255,255,0.4);
+            pointer-events: none; z-index: 2;
+        }
+        .player-card-head select.player-type-select:focus,
+        .player-card-row input.local-name-input:focus,
+        .color-select-wrap select.local-color-select:focus {
+            outline: none; border-color: var(--gold-light); box-shadow: 0 0 8px rgba(212,175,55,0.4);
+        }
         .lobby-member { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid rgba(212,175,55,0.15); font-family: 'Cinzel', serif; font-size: 0.85em; }
         .lobby-swatch { width: 16px; height: 16px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
         .lobby-member-name { flex: 1; color: #f3e2a9; text-transform: none; letter-spacing: 0; }
@@ -252,7 +347,7 @@
         .settings-grid input.lobby-input { width: 100%; text-align: left; }
         #room-badge { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 900; font-family: 'Cinzel', serif; font-size: 0.8em; letter-spacing: 1px; color: #c9b98a; background: rgba(18,16,12,0.85); border: 1px solid rgba(212,175,55,0.4); padding: 6px 18px; border-radius: 2px; }
         #room-badge-code { color: var(--gold-light); font-weight: bold; letter-spacing: 3px; }
-        #action-controls.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
+        #action-controls.locked, #inventory-panel.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
         #turn-lock-msg { text-align: center; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1px; color: #e57368; margin-bottom: 10px; text-transform: uppercase; }
     </style>
 </head>
@@ -263,20 +358,25 @@
         <div class="glow-orb"></div>
         <div class="frame-corner tl"></div><div class="frame-corner tr"></div>
         <div class="frame-corner bl"></div><div class="frame-corner br"></div>
+        <div class="menu-scroll">
         <div class="title-flourish">⚜ ✦ ⚜</div>
         <h1>Battle of the Gods</h1>
         <p class="menu-subtitle">Ein Zeitalter der Titanen bricht an</p>
-        <select id="player-count" onchange="updateDefaultSettings()">
+        <select id="player-count" onchange="updateDefaultSettings(); renderPlayerTypeSelectors();">
             <option value="2">2 Spieler</option><option value="3">3 Spieler</option>
             <option value="4">4 Spieler</option><option value="5">5 Spieler</option>
             <option value="6">6 Spieler</option>
         </select>
-        <div class="divider-orn">Einstellungen</div>
-        <div class="settings-grid">
-            <label>Ziel Artefakte:</label><input type="number" id="cfg-target" value="7">
-            <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1" value="3">
-            <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2" value="5">
-            <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3" value="7">
+        <div class="divider-orn">Spieler</div>
+        <div id="player-types" class="player-cards"></div>
+        <button type="button" id="local-settings-toggle" class="lobby-settings-toggle" onclick="toggleLocalSettings()">⚙ Erweiterte Einstellungen <span id="local-settings-caret">▾</span></button>
+        <div id="local-settings-body" class="hidden">
+            <div class="settings-grid">
+                <label>Ziel Artefakte:</label><input type="number" id="cfg-target" value="7">
+                <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1" value="3">
+                <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2" value="5">
+                <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3" value="7">
+            </div>
         </div>
         <div class="button-row">
             <button class="menu-btn btn-start" onclick="loadStandardMap()">⚔ Lokal spielen</button>
@@ -287,7 +387,7 @@
         <div class="dev-credits">
             Dev: <span class="dev-name">Johannes K aka Maxc the Sox</span>
         </div>
-
+        </div>
     </div>
 </div>
 
@@ -299,8 +399,9 @@
         <div class="glow-orb"></div>
         <div class="frame-corner tl"></div><div class="frame-corner tr"></div>
         <div class="frame-corner bl"></div><div class="frame-corner br"></div>
+        <div class="menu-scroll">
         <div class="title-flourish">⚜ ✦ ⚜</div>
-        <h1 style="font-size:2em;">Online Spielen</h1>
+        <h1>Online Spielen</h1>
         <p class="menu-subtitle">Kein Account, keine Installation — nur ein Raum-Code</p>
 
         <div id="lobby-step-join">
@@ -341,17 +442,29 @@
             <p id="lobby-count-hint" style="text-align:center; font-size:0.8em; color:#c9b98a; margin-top:6px;"></p>
 
             <div id="lobby-host-settings" class="hidden">
-                <div class="divider-orn">Einstellungen (Host)</div>
-                <div class="settings-grid">
-                    <label>Ziel Artefakte:</label><input type="number" id="cfg-target-online" value="7">
-                    <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1-online" value="3">
-                    <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2-online" value="5">
-                    <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3-online" value="7">
+                <div class="divider-orn">KI-Spieler</div>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:4px;">
+                    <select id="lobby-npc-difficulty" style="flex:1;">
+                        <option value="easy">KI: Leicht</option>
+                        <option value="medium" selected>KI: Mittel</option>
+                        <option value="hard">KI: Schwer</option>
+                    </select>
+                    <button type="button" class="btn" style="width:auto; margin:0; white-space:nowrap;" onclick="addLocalNpc()">+ Hinzufügen</button>
                 </div>
-                <button id="lobby-start-btn" class="menu-btn btn-start" style="width:100%; margin-top:16px;" onclick="startOnlineGame()" disabled>⚔ SPIEL STARTEN</button>
+                <button type="button" class="lobby-settings-toggle" onclick="toggleOnlineSettings()">⚙ Erweiterte Einstellungen <span id="lobby-settings-caret">▾</span></button>
+                <div id="lobby-settings-body" class="hidden">
+                    <div class="settings-grid">
+                        <label>Ziel Artefakte:</label><input type="number" id="cfg-target-online" value="7" oninput="markOnlineSettingsTouched()">
+                        <label>Ring 1 (Außen):</label><input type="number" id="cfg-ring1-online" value="3" oninput="markOnlineSettingsTouched()">
+                        <label>Ring 2 (Mitte):</label><input type="number" id="cfg-ring2-online" value="5" oninput="markOnlineSettingsTouched()">
+                        <label>Ring 3 (Innen):</label><input type="number" id="cfg-ring3-online" value="7" oninput="markOnlineSettingsTouched()">
+                    </div>
+                </div>
+                <button id="lobby-start-btn" class="menu-btn btn-start" style="width:100%; margin-top:12px;" onclick="startOnlineGame()" disabled>⚔ SPIEL STARTEN</button>
             </div>
             <p id="lobby-wait-msg" class="hidden" style="text-align:center; font-family:'Cinzel',serif; color:#c9b98a; margin-top:16px;">Warte, bis der Host das Spiel startet…</p>
             <button class="help-btn" style="margin-top:14px;" onclick="backToMainMenu()">← Raum verlassen</button>
+        </div>
         </div>
     </div>
 </div>
@@ -364,6 +477,10 @@
         <div id="tutorial-icon" class="tutorial-icon">📖</div>
         <div id="tutorial-title" class="tutorial-title">Titel</div>
         <div id="tutorial-step-label" class="tutorial-step-label">Schritt 1 / 8</div>
+        <div id="tutorial-demo-wrap" class="tutorial-demo-wrap hidden">
+            <canvas id="tutorial-demo-canvas" class="tutorial-demo-canvas"></canvas>
+            <div id="tutorial-demo-caption" class="tutorial-demo-caption"></div>
+        </div>
         <div id="tutorial-body" class="tutorial-body">...</div>
         <div id="tutorial-dots" class="tutorial-dots"></div>
         <div class="tutorial-nav">
@@ -385,8 +502,13 @@
     <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
     <div id="player-turn-display" class="player-header">Spieler X</div>
     <div id="guide-text">BITTE WARTEN...</div>
+    <div id="guide-hint"></div>
     <div id="artifact-display">🏆 Artefakte: 0 / ?</div>
     <div id="turn-lock-msg" class="hidden">⏳ Warte auf anderen Spieler…</div>
+    <div id="turn-checklist">
+        <div id="check-draw" class="check-item pending">⬜ Karten ziehen</div>
+        <div id="check-move" class="check-item pending">⬜ Bewegen</div>
+    </div>
     <div id="action-controls">
         <div id="choice-area">
             <button id="btn-choice-draw" class="btn btn-gold" onclick="handleChoice('DRAWING')">⚔ 2x Karte ziehen</button>
@@ -403,6 +525,7 @@
                     <span id="card-icon"></span>
                     <span id="card-name"></span>
                 </div>
+                <div id="card-desc"></div>
                 <div id="dice-section" class="hidden">
                     <div id="dice-display"><span id="dice-symbol">?</span></div>
                     <button id="btn-roll-dice" class="btn btn-gold" onclick="rollDice()">Würfeln</button>
@@ -440,6 +563,7 @@
 </div>
 
 <div id="turn-toast" class="hidden"></div>
+<div id="tornado-overlay" class="hidden"><div class="twister">🌪️</div><div class="twister-label">Wirbelsturm!</div></div>
 
 <canvas id="gameCanvas"></canvas>
 <canvas id="fxCanvas"></canvas>
@@ -456,6 +580,9 @@ let drawPoints = 2, actionPoints = 2, collectedArtifacts = 0;
 let targetArtifacts = 7, ringThresholds = [3, 5, 7], closedRings = { outer: false, middle: false, inner: false };
 let pathDrawn = false, pathMoved = false, isDragging = false, lastMouse = { x: 0, y: 0 };
 let currentCard = null, diceValue = 0, placementsRemaining = 0, pendingRiverHex = null, selectedUnit = null, riverEscapeHexes = [];
+// Regel "Straßenbonus": der erste Schritt auf/entlang einer Straße in einem Zug kostet keinen
+// Aktionspunkt - danach normal. Wird bei jedem Zugstart zurueckgesetzt (siehe startTurn()).
+let roadBonusUsedThisTurn = false;
 let pendingCardSlot = null, pushRemaining = 0, currentPushUnit = null;
 let boatLandingTargets = []; 
 let isGameOver = false;
@@ -643,7 +770,7 @@ function drawRoadConnections(ctx, hex, x, y, s) {
     ctx.restore();
 }
 function opposite(i) { return (i + 3) % 6; }
-function drawRiverConnections(ctx, hex, x, y, s) {
+function drawRiverConnections(ctx, hex, x, y, s, skipInboundSet) {
     const deep = '#2f8fa8', light = '#9beef0';
     const spokes = [];
     const outDir = hex.direction || 0;
@@ -651,7 +778,10 @@ function drawRiverConnections(ctx, hex, x, y, s) {
     const isEndOut = !outNeighbor || outNeighbor.terrain !== 'river';
     spokes.push({ dir: outDir, out: true, isEnd: isEndOut });
     hexDirections.forEach((d, i) => {
-        const n = mapData.hexes[`${hex.q + d.q},${hex.r + d.r}`];
+        const nKey = `${hex.q + d.q},${hex.r + d.r}`;
+        if (skipInboundSet && skipInboundSet.has(nKey)) return; // See-Muendung: die Verbindung zum
+        // eigenen See-Innenfeld traegt schon der organische See-Trichter, kein zusaetzliches Flussband noetig.
+        const n = mapData.hexes[nKey];
         if (n && n.terrain === 'river' && (n.direction || 0) === opposite(i)) spokes.push({ dir: i, out: false, isEnd: false });
     });
     function band(x1, y1, x2, y2, out, isEnd, seed) {
@@ -777,7 +907,10 @@ function drawLandmarkBadge(dctx, cx, cy, s, kind, phase) {
     if (kind === 'looted') dctx.globalAlpha = 0.65;
     dctx.save(); dctx.shadowColor = 'rgba(0,0,0,0.7)'; dctx.shadowBlur = 6;
     dctx.font = `${s * 0.95}px serif`; dctx.textAlign = 'center'; dctx.textBaseline = 'middle';
-    dctx.fillText(icon, cx, cy); dctx.restore(); dctx.globalAlpha = 1;
+    // Emoji-Glyphen sitzen bei textBaseline "middle" browserbedingt optisch zu hoch (die
+    // Schriftmetrik-Mitte stimmt nicht mit der tatsaechlichen Bildmitte des Symbols ueberein) -
+    // deshalb hier leicht nach unten korrigieren, damit es wirklich mittig im Badge sitzt.
+    dctx.fillText(icon, cx, cy + s * 0.075); dctx.restore(); dctx.globalAlpha = 1;
     if (gold) {
         for (let i = 0; i < 5; i++) {
             const ang = phase * 0.8 + i * (Math.PI * 2 / 5);
@@ -798,6 +931,114 @@ function updateDefaultSettings() {
     document.getElementById('cfg-ring3').value = rings[2];
 }
 
+const NPC_DIFF_LABELS = { easy: 'Leicht', medium: 'Mittel', hard: 'Schwer' };
+// Muss dieselbe Reihenfolge wie PLAYER_COLORS haben - fuer die Beschriftung im Dropdown.
+const PLAYER_COLOR_LABELS = { "#ff4757": "Rot", "#2e86de": "Blau", "#2ecc71": "Grün", "#f1c40f": "Gelb", "#9b59b6": "Lila", "#e67e22": "Orange" };
+let localPlayerColors = [];
+let localPlayerColorsTouched = []; // true = der Mensch hat diese Farbe selbst gewaehlt (nicht mehr automatisch aendern)
+let localPlayerNames = [];
+
+// Loest Kollisionen auf, OHNE eine vom Menschen bewusst gewaehlte Farbe anzutasten - genau wie
+// resolveColor() im Server fuer den Online-Modus, nur lokal ohne Server-Rundreise.
+function resolveLocalColorConflicts(count) {
+    for (let i = 0; i < count; i++) {
+        if (localPlayerColorsTouched[i]) continue;
+        const usedByOthers = new Set();
+        for (let j = 0; j < count; j++) { if (j !== i) usedByOthers.add(localPlayerColors[j]); }
+        if (usedByOthers.has(localPlayerColors[i])) {
+            const free = PLAYER_COLORS.find(c => !usedByOthers.has(c));
+            if (free) localPlayerColors[i] = free;
+        }
+    }
+}
+
+function renderPlayerTypeSelectors() {
+    const count = parseInt(document.getElementById('player-count').value);
+    const container = document.getElementById('player-types');
+    const prevTypes = Array.from(container.querySelectorAll('select.player-type-select')).map(s => s.value);
+    const prevNames = Array.from(container.querySelectorAll('input.local-name-input')).map(inp => inp.value);
+    container.innerHTML = '';
+    for (let i = 0; i < count; i++) {
+        if (!localPlayerColors[i]) localPlayerColors[i] = PLAYER_COLORS[i % PLAYER_COLORS.length];
+        if (prevNames[i] !== undefined && localPlayerNames[i] === undefined) localPlayerNames[i] = prevNames[i];
+    }
+    resolveLocalColorConflicts(count);
+    for (let i = 0; i < count; i++) {
+        const card = document.createElement('div');
+        card.className = 'player-card';
+        card.id = `player-card-${i}`;
+
+        const head = document.createElement('div');
+        head.className = 'player-card-head';
+        const badge = document.createElement('div');
+        badge.className = 'player-card-badge';
+        badge.id = `player-badge-${i}`;
+        badge.innerText = String(i + 1);
+        const typeSelect = document.createElement('select');
+        typeSelect.className = 'player-type-select';
+        typeSelect.id = `player-type-${i}`;
+        typeSelect.innerHTML = '<option value="human">🧑 Mensch</option><option value="easy">🤖 KI: Leicht</option><option value="medium">🤖 KI: Mittel</option><option value="hard">🤖 KI: Schwer</option>';
+        if (prevTypes[i]) typeSelect.value = prevTypes[i];
+        head.appendChild(badge);
+        head.appendChild(typeSelect);
+
+        const row = document.createElement('div');
+        row.className = 'player-card-row';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'local-name-input lobby-input';
+        nameInput.id = `player-name-${i}`;
+        nameInput.maxLength = 24;
+        nameInput.placeholder = `Spieler ${i + 1}`;
+        nameInput.value = localPlayerNames[i] || '';
+        nameInput.oninput = () => { localPlayerNames[i] = nameInput.value; };
+
+        const colorWrap = document.createElement('div');
+        colorWrap.className = 'color-select-wrap';
+        const dot = document.createElement('span');
+        dot.className = 'color-dot';
+        const colorSelect = document.createElement('select');
+        colorSelect.className = 'local-color-select';
+        colorSelect.id = `player-color-${i}`;
+        colorWrap.appendChild(dot);
+        colorWrap.appendChild(colorSelect);
+
+        row.appendChild(nameInput);
+        row.appendChild(colorWrap);
+        card.appendChild(head);
+        card.appendChild(row);
+        container.appendChild(card);
+    }
+    for (let i = 0; i < count; i++) renderLocalColorSelect(i);
+}
+function applyPlayerCardColor(i, color) {
+    const card = document.getElementById(`player-card-${i}`);
+    if (card) card.style.setProperty('--pc-color', color);
+}
+function renderLocalColorSelect(i) {
+    const sel = document.getElementById(`player-color-${i}`);
+    if (!sel) return;
+    sel.innerHTML = '';
+    PLAYER_COLORS.forEach(c => {
+        const takenByOther = localPlayerColors.some((col, idx) => idx !== i && col === c);
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.innerText = (PLAYER_COLOR_LABELS[c] || c) + (takenByOther ? ' (vergeben)' : '');
+        opt.disabled = takenByOther;
+        sel.appendChild(opt);
+    });
+    sel.value = localPlayerColors[i];
+    applyPlayerCardColor(i, localPlayerColors[i]);
+    sel.onchange = () => {
+        localPlayerColors[i] = sel.value;
+        localPlayerColorsTouched[i] = true;
+        const count = parseInt(document.getElementById('player-count').value);
+        resolveLocalColorConflicts(count);
+        for (let j = 0; j < count; j++) renderLocalColorSelect(j);
+    };
+}
+
 async function loadStandardMap() {
     const btn = document.querySelector('.btn-start');
     try {
@@ -807,7 +1048,19 @@ async function loadStandardMap() {
         const data = await response.json();
         targetArtifacts = parseInt(document.getElementById('cfg-target').value);
         ringThresholds = [parseInt(document.getElementById('cfg-ring1').value), parseInt(document.getElementById('cfg-ring2').value), parseInt(document.getElementById('cfg-ring3').value)];
-        processLoadedMap(data, parseInt(document.getElementById('player-count').value));
+        const count = parseInt(document.getElementById('player-count').value);
+        const presetPlayers = Array.from({ length: count }, (_, i) => {
+            const sel = document.getElementById(`player-type-${i}`);
+            const type = sel ? sel.value : 'human';
+            const isNPC = type !== 'human';
+            const customName = (localPlayerNames[i] || '').trim();
+            return {
+                id: i + 1, color: localPlayerColors[i] || PLAYER_COLORS[i], units: [], inventory: [], skipped: false, netId: null,
+                name: customName ? customName : (isNPC ? `🤖 KI (${NPC_DIFF_LABELS[type]})` : null),
+                isNPC, npcDifficulty: isNPC ? type : null
+            };
+        });
+        processLoadedMap(data, count, presetPlayers);
     } catch (e) {
         alert("Ladefehler: " + e.message);
         if (btn) { btn.disabled = false; btn.innerText = 'LOKAL SPIELEN'; }
@@ -824,14 +1077,14 @@ function processLoadedMap(data, count, presetPlayers) {
 
     Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
 
-    players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, name: null, netId: null }));
+    players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, name: null, netId: null, isNPC: false, npcDifficulty: null }));
     document.getElementById('setup-overlay').style.display = 'none';
     document.getElementById('ui-panel').classList.remove('hidden');
     document.getElementById('apo-panel').classList.remove('hidden');
     document.getElementById('inventory-panel').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
-    gameState = "PLACING"; currentPlayerIdx = 0; centerMap(); updateUI(); render(); updateApoUI();
+    gameState = "PLACING"; currentPlayerIdx = 0; fitMapToScreen(); centerMap(); updateUI(); render(); updateApoUI();
 }
 
 // --- GENERATOR ---
@@ -942,11 +1195,22 @@ let net = {
     lobbyMembers: [],
     applyingRemote: false,
     connected: false,
-    centered: false
+    centered: false,
+    localNpcs: [],   // nur beim Host: KI-Spieler, die noch NICHT beim Server angemeldet sind (siehe addLocalNpc)
+    started: false
 };
 
 function playerLabel(p) { return p ? (p.name || `Spieler ${p.id}`) : '?'; }
 function isMyTurn() { return !net.active || net.myIndex === currentPlayerIdx; }
+// Darf GERADE ein Mensch an der Maus/Tastatur etwas tun? (blockt sowohl "nicht mein Online-Zug"
+// als auch "gerade ist eine KI am Zug" - die KI selbst umgeht diese Funktion und ruft ihre
+// Aktionen direkt auf, siehe NPC-Modul weiter unten.)
+function isControllable() {
+    if (isGameOver) return false;
+    const p = players[currentPlayerIdx];
+    if (p && p.isNPC) return false;
+    return isMyTurn();
+}
 
 function escapeHtml(s) { const d = document.createElement('div'); d.innerText = (s === null || s === undefined) ? '' : String(s); return d.innerHTML; }
 
@@ -970,7 +1234,7 @@ function startNetworkMode() {
 
 function backToMainMenu() {
     if (net.ws) { try { net.ws.close(); } catch (e) {} }
-    net.ws = null; net.active = false; net.room = null; net.connected = false;
+    net.ws = null; net.active = false; net.room = null; net.connected = false; net.localNpcs = [];
     document.getElementById('lobby-overlay').classList.add('hidden');
     document.getElementById('setup-overlay').style.display = 'flex';
 }
@@ -1059,12 +1323,36 @@ function handleNetMessage(msg) {
     } else if (msg.type === 'lobby') {
         net.hostId = msg.hostId;
         net.lobbyMembers = msg.members;
+        net.started = !!msg.started;
+        // Der Server ist die Autoritaet bei Farbkonflikten (z.B. zwei Klicks im selben Moment) -
+        // falls er meine Farbe korrigiert hat, das hier uebernehmen statt zu ueberschreiben.
+        const me = msg.members.find(m => m.clientId === net.clientId);
+        if (me && me.color !== net.color) {
+            net.color = me.color;
+            try { localStorage.setItem('botg_player_color', me.color); } catch (e) {}
+        }
         renderLobbyMembers(msg.started);
         renderColorPicker();
     } else if (msg.type === 'state') {
         net.active = true;
         applyRemoteState(msg.state);
     }
+}
+
+function npcDifficultyLabel(d) { return NPC_DIFF_LABELS[d] || d; }
+
+function addLocalNpc() {
+    if (net.clientId !== net.hostId) return;
+    if (net.lobbyMembers.length + net.localNpcs.length >= 6) { alert('Maximal 6 Spieler pro Raum.'); return; }
+    const diff = document.getElementById('lobby-npc-difficulty').value;
+    const usedColors = net.lobbyMembers.map(m => m.color).concat(net.localNpcs.map(n => n.color));
+    const color = PLAYER_COLORS.find(c => !usedColors.includes(c)) || PLAYER_COLORS[0];
+    net.localNpcs.push({ localId: uuid4(), name: `🤖 KI (${npcDifficultyLabel(diff)})`, color, difficulty: diff });
+    renderLobbyMembers(net.started);
+}
+function removeLocalNpc(localId) {
+    net.localNpcs = net.localNpcs.filter(n => n.localId !== localId);
+    renderLobbyMembers(net.started);
 }
 
 function renderLobbyMembers(started) {
@@ -1078,11 +1366,56 @@ function renderLobbyMembers(started) {
         list.appendChild(row);
     });
     const isHost = net.clientId === net.hostId;
+    if (isHost) {
+        net.localNpcs.forEach(n => {
+            const row = document.createElement('div');
+            row.className = 'lobby-member';
+            row.innerHTML = `<span class="lobby-swatch" style="background:${n.color}"></span><span class="lobby-member-name">${escapeHtml(n.name)}</span><span class="lobby-host-tag" style="border-color:#5dade2;color:#5dade2;">KI</span>`;
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button'; removeBtn.className = 'help-btn';
+            removeBtn.style.cssText = 'width:auto; padding:2px 8px; margin-left:6px; font-size:0.7em;';
+            removeBtn.innerText = '✕';
+            removeBtn.onclick = () => removeLocalNpc(n.localId);
+            row.appendChild(removeBtn);
+            list.appendChild(row);
+        });
+    }
     document.getElementById('lobby-host-settings').classList.toggle('hidden', !isHost);
     document.getElementById('lobby-wait-msg').classList.toggle('hidden', isHost);
+    const totalCount = net.lobbyMembers.length + (isHost ? net.localNpcs.length : 0);
     const startBtn = document.getElementById('lobby-start-btn');
-    startBtn.disabled = net.lobbyMembers.length < 2 || net.lobbyMembers.length > 6 || started;
-    document.getElementById('lobby-count-hint').innerText = started ? 'Das Spiel läuft bereits…' : `${net.lobbyMembers.length} / 6 Spieler verbunden (mind. 2)`;
+    startBtn.disabled = totalCount < 2 || totalCount > 6 || started;
+    const npcHint = (isHost && net.localNpcs.length) ? ` (davon ${net.localNpcs.length} KI)` : '';
+    document.getElementById('lobby-count-hint').innerText = started ? 'Das Spiel läuft bereits…' : `${totalCount} / 6 Spieler${npcHint} (mind. 2)`;
+    if (isHost) updateOnlineDefaults();
+}
+
+// Wie updateDefaultSettings() im lokalen Menü, nur automatisch nach aktueller Spielerzahl -
+// solange der Host die Werte nicht selbst angefasst hat (siehe markOnlineSettingsTouched).
+let onlineSettingsTouched = false;
+function markOnlineSettingsTouched() { onlineSettingsTouched = true; }
+function updateOnlineDefaults() {
+    if (onlineSettingsTouched) return;
+    const count = Math.max(net.lobbyMembers.length + net.localNpcs.length, 2); // vor dem 2. Beitritt schon die 2-Spieler-Defaults zeigen
+    document.getElementById('cfg-target-online').value = (count == 2) ? 7 : (count <= 4 ? 8 : 9);
+    const rings = (count == 2) ? [3, 5, 7] : (count <= 4 ? [4, 6, 8] : [5, 7, 9]);
+    document.getElementById('cfg-ring1-online').value = rings[0];
+    document.getElementById('cfg-ring2-online').value = rings[1];
+    document.getElementById('cfg-ring3-online').value = rings[2];
+}
+
+function toggleOnlineSettings() {
+    const body = document.getElementById('lobby-settings-body');
+    const btn = document.querySelector('#lobby-step-room .lobby-settings-toggle');
+    const open = body.classList.toggle('hidden') === false;
+    btn.classList.toggle('open', open);
+}
+
+function toggleLocalSettings() {
+    const body = document.getElementById('local-settings-body');
+    const btn = document.getElementById('local-settings-toggle');
+    const open = body.classList.toggle('hidden') === false;
+    btn.classList.toggle('open', open);
 }
 
 function copyShareLink() {
@@ -1109,7 +1442,10 @@ async function startOnlineGame() {
             parseInt(document.getElementById('cfg-ring2-online').value) || 5,
             parseInt(document.getElementById('cfg-ring3-online').value) || 7
         ];
-        const presetPlayers = net.lobbyMembers.map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false }));
+        const presetPlayers = net.lobbyMembers.map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false, isNPC: false, npcDifficulty: null }));
+        net.localNpcs.forEach(n => {
+            presetPlayers.push({ id: presetPlayers.length + 1, netId: null, name: n.name, color: n.color, units: [], inventory: [], skipped: false, isNPC: true, npcDifficulty: n.difficulty });
+        });
         net.active = true;
         net.myIndex = presetPlayers.findIndex(pl => pl.netId === net.clientId);
         document.getElementById('lobby-overlay').classList.add('hidden');
@@ -1135,6 +1471,7 @@ function serializeState() {
         landmarks: mapData.landmarks.map(l => ({ ...l })),
         players: players.map(p => ({
             id: p.id, netId: p.netId, name: p.name, color: p.color, skipped: p.skipped,
+            isNPC: !!p.isNPC, npcDifficulty: p.npcDifficulty || null,
             units: p.units.map(u => ({ q: u.q, r: u.r })),
             inventory: p.inventory.map(c => ({ ...c }))
         })),
@@ -1194,7 +1531,7 @@ function applyRemoteState(state) {
     document.getElementById('help-fab').classList.remove('hidden');
     document.getElementById('room-badge').classList.remove('hidden');
     document.getElementById('room-badge-code').innerText = net.room || '';
-    if (!net.centered) { centerMap(); net.centered = true; }
+    if (!net.centered) { fitMapToScreen(); centerMap(); net.centered = true; }
 
     updateUI(); render(); updateApoUI();
     if (isGameOver && lastVictoryInfo.id != null) {
@@ -1204,6 +1541,461 @@ function applyRemoteState(state) {
     net.applyingRemote = false;
 }
 
+// =====================================================================
+// KI-SPIELER (NPCs) - lokal UND online
+// =====================================================================
+// Prinzip: Die KI ruft exakt dieselben Funktionen auf, die auch ein Klick
+// ausloesen wuerde (performHexClick, handleChoice, prepareDraw, rollDice,
+// handleInventoryClick, confirmRiver, cancelCurrentCard, finishPath, ...).
+// Dadurch kann die Spiellogik selbst niemals von KI und Mensch abweichen.
+// Im Online-Modus fuehrt NUR der Host die KI-Zuege aus (siehe isHostOrLocal) -
+// alle anderen Clients bekommen das Ergebnis ganz normal per State-Broadcast
+// (das passiert automatisch, weil updateUI() bei jeder Aenderung sendet).
+const NPC_TICK_MS = 650;
+const NPC_CARD_TYPES = ['tool_hook', 'tool_boat']; // "passive" Karten, die die KI nie aktiv anklickt
+let npcTickTimer = null;
+
+function isHostOrLocal() { return !net.active || net.clientId === net.hostId; }
+
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function scheduleNpcCheck(delay = NPC_TICK_MS) {
+    clearTimeout(npcTickTimer);
+    npcTickTimer = setTimeout(runNpcStepIfNeeded, delay);
+}
+
+function runNpcStepIfNeeded() {
+    if (isGameOver || !players.length) return;
+    const p = players[currentPlayerIdx];
+    if (!p || !p.isNPC) return;
+    if (!isHostOrLocal()) return; // nur der Host "denkt" im Online-Modus
+    try {
+        npcStep(p);
+    } catch (e) {
+        console.error('KI-Fehler, versuche sauber weiterzumachen:', e);
+        npcSafetyBailout();
+    }
+    scheduleNpcCheck();
+}
+
+function npcStep(p) {
+    const diff = p.npcDifficulty || 'medium';
+    switch (gameState) {
+        case 'PLACING': return npcDoPlacing(p, diff);
+        case 'CHOOSING': return npcDoChoosing(p, diff);
+        case 'DRAWING': return npcDoDrawing(p, diff);
+        case 'DICE_ROLL': rollDice(); return;
+        case 'PLACING_TERRAIN': return npcDoPlacingTerrain(p, diff);
+        case 'ROTATING_RIVER': return npcDoRotatingRiver(p, diff);
+        case 'ACTION_VIEW': return; // loest sich nach 1.5s von selbst auf
+        case 'TORNADO_FX': return; // loest sich von selbst auf, sobald die Sturm-Animation fertig ist
+        case 'DRAWING_DONE': cancelCurrentCard(); return;
+        case 'SWAP_CARD': return npcDoSwapCard(p, diff);
+        case 'MOVING': return npcDoMoving(p, diff);
+        case 'RIVER_ESCAPE': case 'RIVER_ESCAPE_PUSH': return npcDoRiverEscape(p, diff);
+        case 'BOAT_LANDING': return npcDoBoatLanding(p, diff);
+        case 'SELECT_SKIP': return npcDoSelectSkip(p, diff);
+        case 'SELECT_TELEPORT_UNIT': return npcDoSelectTeleportUnit(p, diff);
+        case 'SELECT_TELEPORT_TARGET': return npcDoSelectTeleportTarget(p, diff);
+        case 'SELECT_PUSH_TARGET_1': case 'SELECT_PUSH_TARGET_2': return npcDoSelectPushTarget(p, diff);
+        case 'SELECT_PUSH_DESTINATION': return npcDoSelectPushDestination(p, diff);
+        default: return; // unbekannter/kurzlebiger Zustand - beim naechsten Tick erneut schauen
+    }
+}
+
+// Sicherheitsnetz: falls die KI irgendwo in einen unerwarteten Zustand laeuft (z.B. durch eine
+// Kartenkombination, die wir nicht bedacht haben), lieber die aktuelle Teil-Aktion sauber
+// abbrechen als den Zug fuer immer haengen zu lassen.
+function npcSafetyBailout() {
+    try {
+        if (['SELECT_SKIP', 'SELECT_TELEPORT_UNIT', 'SELECT_TELEPORT_TARGET', 'SELECT_PUSH_TARGET_1', 'SELECT_PUSH_TARGET_2', 'SELECT_PUSH_DESTINATION'].includes(gameState)) {
+            npcCancelPendingCard();
+        } else if (['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE', 'SWAP_CARD'].includes(gameState)) {
+            cancelCurrentCard();
+        } else if (['MOVING', 'RIVER_ESCAPE', 'RIVER_ESCAPE_PUSH', 'BOAT_LANDING'].includes(gameState)) {
+            finishPath();
+        } else if (gameState === 'CHOOSING') {
+            pathMoved = true; pathDrawn = true; checkTurnEnd();
+        }
+    } catch (e2) { console.error('KI-Sicherheitsnetz fehlgeschlagen:', e2); }
+}
+
+function npcCancelPendingCard() {
+    if (pendingCardSlot != null) { handleInventoryClick(pendingCardSlot); }
+    else { gameState = 'CHOOSING'; updateUI(); render(); }
+}
+
+// ---------- Zielfindung (gemeinsam fuer mehrere Entscheidungen genutzt) ----------
+function templeLandmark() { return mapData.landmarks.find(l => l.icon && l.icon.toLowerCase().includes('temple')); }
+function unlootedLandmarks() { return mapData.landmarks.filter(l => !l.looted && !(l.icon && l.icon.toLowerCase().includes('temple'))); }
+function objectiveHexFor(unit) {
+    if (!unit) return null;
+    const temple = templeLandmark();
+    if (collectedArtifacts >= targetArtifacts && temple) return temple;
+    const list = unlootedLandmarks();
+    if (list.length === 0) return temple || null;
+    let best = null, bestD = Infinity;
+    list.forEach(l => { const d = getHexDistance(unit.q, unit.r, l.q, l.r); if (d < bestD) { bestD = d; best = l; } });
+    return best;
+}
+function npcOpponentUnits(p) {
+    const list = [];
+    players.forEach(pl => { if (pl.id !== p.id) pl.units.forEach(u => list.push({ unit: u, owner: pl })); });
+    return list;
+}
+function npcLeadingOpponentTargetUnit(p) {
+    const list = npcOpponentUnits(p);
+    if (list.length === 0) return null;
+    const temple = templeLandmark();
+    if (!temple) return pickRandom(list).unit;
+    let best = list[0], bestD = Infinity;
+    list.forEach(entry => { const d = getHexDistance(entry.unit.q, entry.unit.r, temple.q, temple.r); if (d < bestD) { bestD = d; best = entry; } });
+    return best.unit;
+}
+
+// ---------- Anfangsaufstellung ----------
+function npcDoPlacing(p, diff) {
+    const candidates = Object.values(mapData.hexes).filter(h => h.terrain === 'swamp' && !players.some(pl => pl.units.some(u => u.q === h.q && u.r === h.r)));
+    if (candidates.length === 0) return; // sollte nicht vorkommen
+    let hex;
+    if (diff === 'easy') { hex = pickRandom(candidates); }
+    else {
+        const temple = templeLandmark();
+        const sorted = candidates.slice().sort((a, b) => {
+            const da = temple ? getHexDistance(a.q, a.r, temple.q, temple.r) : 0;
+            const db = temple ? getHexDistance(b.q, b.r, temple.q, temple.r) : 0;
+            return da - db;
+        });
+        const poolSize = diff === 'hard' ? 3 : 6;
+        hex = pickRandom(sorted.slice(0, Math.min(poolSize, sorted.length)));
+    }
+    performHexClick(hex.q, hex.r, hex);
+}
+
+// ---------- Zug-Wahl (Ziehen vs. Bewegen) ----------
+function npcDoChoosing(p, diff) {
+    if (npcMaybeUseInventoryCard(p, diff)) return;
+    let choice;
+    if (pathDrawn && !pathMoved) choice = 'MOVING';
+    else if (!pathDrawn && pathMoved) choice = 'DRAWING';
+    else choice = (diff === 'easy') ? (Math.random() < 0.5 ? 'DRAWING' : 'MOVING') : 'DRAWING';
+    handleChoice(choice);
+}
+
+// ---------- Karten ziehen ----------
+function npcDoDrawing(p, diff) {
+    let type;
+    if (diff === 'easy') type = Math.random() < 0.5 ? 'LANDSCAPE' : 'ACTION';
+    else type = (p.inventory.length < 3 || Math.random() < 0.3) ? 'ACTION' : 'LANDSCAPE';
+    prepareDraw(type);
+}
+
+function npcValidTerrainPlacementHexes() {
+    return Object.values(mapData.hexes).filter(h => h.terrain !== 'void' && !['mountains', 'forest', 'river', 'road'].includes(h.terrain));
+}
+function npcDoPlacingTerrain(p, diff) {
+    const candidates = npcValidTerrainPlacementHexes();
+    if (candidates.length === 0) { cancelCurrentCard(); return; }
+    let hex;
+    if (diff === 'easy' || p.units.length === 0) { hex = pickRandom(candidates); }
+    else {
+        const sorted = candidates.slice().sort((a, b) => {
+            const da = Math.min(...p.units.map(u => getHexDistance(u.q, u.r, a.q, a.r)));
+            const db = Math.min(...p.units.map(u => getHexDistance(u.q, u.r, b.q, b.r)));
+            return da - db;
+        });
+        const poolSize = diff === 'hard' ? 3 : 6;
+        hex = pickRandom(sorted.slice(0, Math.min(poolSize, sorted.length)));
+    }
+    performHexClick(hex.q, hex.r, hex);
+}
+
+// Prueft (ohne echten Spielzustand zu beschaedigen), ob eine Flussrichtung einen geschlossenen
+// Kreislauf erzeugen wuerde - so vermeiden wir, dass die KI den blockierenden "KREISLAUF ERKANNT"-
+// Dialog ausloest und dann für immer haengen bleibt.
+function npcSafeRiverDirection(preferredDir) {
+    const order = [preferredDir, 0, 1, 2, 3, 4, 5].filter((d, i, arr) => arr.indexOf(d) === i);
+    for (const dir of order) {
+        pendingRiverHex.direction = dir;
+        let checkQ = pendingRiverHex.q, checkR = pendingRiverHex.r, safety = 0, cyclic = false;
+        while (safety < 50) {
+            const cur = mapData.hexes[`${checkQ},${checkR}`]; if (!cur || cur.terrain !== 'river') break;
+            checkQ += hexDirections[cur.direction || 0].q; checkR += hexDirections[cur.direction || 0].r;
+            if (checkQ === pendingRiverHex.q && checkR === pendingRiverHex.r) { cyclic = true; break; }
+            safety++;
+        }
+        if (!cyclic) return dir;
+    }
+    return null;
+}
+function npcDoRotatingRiver(p, diff) {
+    let preferredDir = pendingRiverHex.direction || 0;
+    if (diff === 'hard') {
+        const obj = objectiveHexFor(p.units[0] || { q: pendingRiverHex.q, r: pendingRiverHex.r });
+        let bestDir = preferredDir, bestD = Infinity;
+        for (let d = 0; d < 6; d++) {
+            const nq = pendingRiverHex.q + hexDirections[d].q, nr = pendingRiverHex.r + hexDirections[d].r;
+            const dist = obj ? getHexDistance(nq, nr, obj.q, obj.r) : 0;
+            if (dist < bestD) { bestD = dist; bestDir = d; }
+        }
+        preferredDir = bestDir;
+    } else {
+        preferredDir = Math.floor(Math.random() * 6);
+    }
+    const safeDir = npcSafeRiverDirection(preferredDir);
+    if (safeDir !== null) {
+        pendingRiverHex.direction = safeDir;
+        confirmRiver();
+    } else {
+        // Extrem seltener Sonderfall: alle 6 Richtungen zyklisch. Karte trotzdem sauber
+        // abschliessen, statt den blockierenden Dialog auszuloesen.
+        pendingRiverHex = null; placementsRemaining--;
+        if (placementsRemaining <= 0) finishCard(); else gameState = "PLACING_TERRAIN";
+        updateUI(); render();
+    }
+}
+
+const NPC_CARD_VALUE = { tool_hook: 3, tool_boat: 3, teleport: 4, extra_move: 2, push_enemy: 2, skip_turn: 1 };
+function npcDoSwapCard(p, diff) {
+    let slotIdx;
+    if (diff === 'easy') { slotIdx = Math.floor(Math.random() * 3); }
+    else {
+        let worst = 0, worstVal = Infinity;
+        p.inventory.forEach((c, i) => { const v = NPC_CARD_VALUE[c.type] ?? 2; if (v < worstVal) { worstVal = v; worst = i; } });
+        slotIdx = worst;
+    }
+    handleInventoryClick(slotIdx);
+}
+
+// ---------- Aktionskarten aus dem Inventar einsetzen (Extra-Zug/Teleport/Schubsen/Aussetzen) ----------
+function npcCardUsefulness(p, card) {
+    if (card.type === 'extra_move') return 1.5;
+    if (card.type === 'teleport') {
+        const options = mapData.landmarks.filter(l => l.looted);
+        if (options.length === 0 || p.units.length === 0) return 0;
+        let bestGain = 0;
+        p.units.forEach(u => {
+            const obj = objectiveHexFor(u); if (!obj) return;
+            const curD = getHexDistance(u.q, u.r, obj.q, obj.r);
+            options.forEach(l => { const gain = curD - getHexDistance(l.q, l.r, obj.q, obj.r); if (gain > bestGain) bestGain = gain; });
+        });
+        return bestGain;
+    }
+    if (card.type === 'push_enemy' || card.type === 'skip_turn') {
+        const leader = npcLeadingOpponentTargetUnit(p);
+        const temple = templeLandmark();
+        if (!leader || !temple) return 0;
+        const d = getHexDistance(leader.q, leader.r, temple.q, temple.r);
+        return Math.max(0, 8 - d) * (card.type === 'skip_turn' ? 0.6 : 0.8);
+    }
+    return 0;
+}
+function npcMaybeUseInventoryCard(p, diff) {
+    const usable = [];
+    p.inventory.forEach((c, i) => { if (!NPC_CARD_TYPES.includes(c.type)) usable.push({ idx: i, card: c }); });
+    if (usable.length === 0) return false;
+    if (diff === 'easy') {
+        if (Math.random() < 0.75) return false;
+        handleInventoryClick(pickRandom(usable).idx);
+        return true;
+    }
+    let best = null, bestScore = -Infinity;
+    usable.forEach(entry => { const score = npcCardUsefulness(p, entry.card); if (score > bestScore) { bestScore = score; best = entry; } });
+    const threshold = diff === 'hard' ? 0.8 : 1.5;
+    if (!best || bestScore < threshold) return false;
+    handleInventoryClick(best.idx);
+    return true;
+}
+
+// ---------- Bewegung ----------
+function npcCandidateStepsForUnit(unit, player) {
+    const out = [];
+    hexDirections.forEach(d => {
+        const hex = mapData.hexes[`${unit.q + d.q},${unit.r + d.r}`];
+        if (!hex || ['void', 'water'].includes(hex.terrain)) return;
+        if (hex.terrain === 'mountains') {
+            const oldHex = mapData.hexes[`${unit.q},${unit.r}`];
+            if ((!oldHex || oldHex.terrain !== 'mountains') && !(player.inventory || []).some(c => c.type === 'tool_hook')) return;
+        }
+        out.push(hex);
+    });
+    return out;
+}
+function npcScoreHexForUnit(unit, hex, diff, lookahead) {
+    const obj = objectiveHexFor(unit);
+    if (!obj) return 0;
+    let score = getHexDistance(unit.q, unit.r, obj.q, obj.r) - getHexDistance(hex.q, hex.r, obj.q, obj.r);
+    if (hex.terrain === 'forest') score -= 0.4;
+    if (diff === 'hard' && lookahead !== false) {
+        const virtualUnit = { q: hex.q, r: hex.r };
+        let bestNext = 0;
+        npcCandidateStepsForUnit(virtualUnit, { inventory: [] }).forEach(h2 => {
+            const s2 = npcScoreHexForUnit(virtualUnit, h2, diff, false);
+            if (s2 > bestNext) bestNext = s2;
+        });
+        score += bestNext * 0.5;
+    }
+    return score;
+}
+function npcBestStepForUnit(p, unit, diff) {
+    const steps = npcCandidateStepsForUnit(unit, p);
+    if (steps.length === 0) return null;
+    if (diff === 'easy') return pickRandom(steps);
+    let best = null, bestScore = -Infinity;
+    steps.forEach(hex => { const s = npcScoreHexForUnit(unit, hex, diff); if (s > bestScore) { bestScore = s; best = hex; } });
+    return best;
+}
+function npcBestMovePlan(p, diff) {
+    if (diff === 'easy') {
+        const withMoves = p.units.filter(u => npcCandidateStepsForUnit(u, p).length > 0);
+        if (withMoves.length === 0) return null;
+        const unit = pickRandom(withMoves);
+        return { unit, hex: pickRandom(npcCandidateStepsForUnit(unit, p)) };
+    }
+    let best = null, bestScore = -Infinity;
+    p.units.forEach(unit => {
+        npcCandidateStepsForUnit(unit, p).forEach(hex => {
+            const score = npcScoreHexForUnit(unit, hex, diff);
+            if (score > bestScore) { bestScore = score; best = { unit, hex }; }
+        });
+    });
+    return best;
+}
+function npcDoMoving(p, diff) {
+    if (actionPoints <= 0) { finishPath(); return; }
+    if (npcMaybeUseInventoryCard(p, diff)) return;
+    if (!selectedUnit || !p.units.includes(selectedUnit)) {
+        const plan = npcBestMovePlan(p, diff);
+        if (!plan) { finishPath(); return; }
+        performHexClick(plan.unit.q, plan.unit.r, mapData.hexes[`${plan.unit.q},${plan.unit.r}`]);
+        return;
+    }
+    const step = npcBestStepForUnit(p, selectedUnit, diff);
+    if (!step) { finishPath(); return; }
+    performHexClick(step.q, step.r, step);
+}
+
+// ---------- Fluss-/Boot-Sonderfaelle ----------
+function npcDoRiverEscape(p, diff) {
+    if (!riverEscapeHexes || riverEscapeHexes.length === 0) return;
+    let target;
+    if (diff === 'easy') { target = pickRandom(riverEscapeHexes); }
+    else {
+        const unit = selectedUnit || currentPushUnit;
+        const forSelf = gameState === 'RIVER_ESCAPE';
+        const obj = unit ? objectiveHexFor(unit) : null;
+        let best = null, bestScore = -Infinity;
+        riverEscapeHexes.forEach(h => {
+            const d = obj ? getHexDistance(h.q, h.r, obj.q, obj.r) : 0;
+            const score = forSelf ? -d : d;
+            if (score > bestScore) { bestScore = score; best = h; }
+        });
+        target = best || pickRandom(riverEscapeHexes);
+    }
+    performHexClick(target.q, target.r, mapData.hexes[`${target.q},${target.r}`]);
+}
+function npcDoBoatLanding(p, diff) {
+    if (!boatLandingTargets || boatLandingTargets.length === 0) { finishPath(); return; }
+    const hasHook = p.inventory.some(c => c.type === 'tool_hook');
+    const valid = boatLandingTargets.filter(h => { const hex = mapData.hexes[`${h.q},${h.r}`]; return hex && (hex.terrain !== 'mountains' || hasHook); });
+    if (valid.length === 0) { boatLandingTargets = []; actionPoints = 0; finishPath(); return; }
+    let target;
+    if (diff === 'easy') { target = pickRandom(valid); }
+    else {
+        const obj = objectiveHexFor(selectedUnit || p.units[0]);
+        let best = valid[0], bestD = Infinity;
+        valid.forEach(h => { const d = obj ? getHexDistance(h.q, h.r, obj.q, obj.r) : 0; if (d < bestD) { bestD = d; best = h; } });
+        target = best;
+    }
+    performHexClick(target.q, target.r, mapData.hexes[`${target.q},${target.r}`]);
+}
+
+// ---------- Zielauswahl fuer Aktionskarten (Aussetzen/Schubsen/Teleport) ----------
+function npcDoSelectSkip(p, diff) {
+    const list = npcOpponentUnits(p);
+    if (list.length === 0) { npcCancelPendingCard(); return; }
+    const unit = (diff === 'easy') ? pickRandom(list).unit : npcLeadingOpponentTargetUnit(p);
+    performHexClick(unit.q, unit.r, mapData.hexes[`${unit.q},${unit.r}`]);
+}
+function npcDoSelectTeleportUnit(p, diff) {
+    if (p.units.length === 0) { npcCancelPendingCard(); return; }
+    let unit;
+    if (diff === 'easy') { unit = pickRandom(p.units); }
+    else {
+        let best = p.units[0], bestD = -Infinity;
+        p.units.forEach(u => { const obj = objectiveHexFor(u); const d = obj ? getHexDistance(u.q, u.r, obj.q, obj.r) : 0; if (d > bestD) { bestD = d; best = u; } });
+        unit = best;
+    }
+    performHexClick(unit.q, unit.r, mapData.hexes[`${unit.q},${unit.r}`]);
+}
+function npcDoSelectTeleportTarget(p, diff) {
+    const options = mapData.landmarks.filter(l => l.looted);
+    if (options.length === 0) { npcCancelPendingCard(); return; }
+    let target;
+    if (diff === 'easy') { target = pickRandom(options); }
+    else {
+        const obj = objectiveHexFor(selectedUnit || p.units[0]);
+        let best = options[0], bestD = Infinity;
+        options.forEach(l => { const d = obj ? getHexDistance(l.q, l.r, obj.q, obj.r) : 0; if (d < bestD) { bestD = d; best = l; } });
+        target = best;
+    }
+    performHexClick(target.q, target.r, mapData.hexes[`${target.q},${target.r}`]);
+}
+function npcDoSelectPushTarget(p, diff) {
+    const list = npcOpponentUnits(p);
+    if (list.length === 0) { npcCancelPendingCard(); return; }
+    const unit = (diff === 'easy') ? pickRandom(list).unit : npcLeadingOpponentTargetUnit(p);
+    performHexClick(unit.q, unit.r, mapData.hexes[`${unit.q},${unit.r}`]);
+}
+function npcDoSelectPushDestination(p, diff) {
+    if (!currentPushUnit) { npcCancelPendingCard(); return; }
+    const candidates = [];
+    hexDirections.forEach(d => {
+        const hex = mapData.hexes[`${currentPushUnit.q + d.q},${currentPushUnit.r + d.r}`];
+        if (hex && !['mountains', 'void', 'water'].includes(hex.terrain)) candidates.push(hex);
+    });
+    if (candidates.length === 0) { npcCancelPendingCard(); return; }
+    let target;
+    if (diff === 'easy') { target = pickRandom(candidates); }
+    else {
+        const obj = objectiveHexFor(currentPushUnit);
+        let best = candidates[0], bestD = -Infinity;
+        candidates.forEach(h => { const d = obj ? getHexDistance(h.q, h.r, obj.q, obj.r) : 0; if (d > bestD) { bestD = d; best = h; } });
+        target = best;
+    }
+    performHexClick(target.q, target.r, target);
+}
+
+// Zoomt so weit raus, dass die KOMPLETTE Karte ins Fenster passt - wichtig direkt beim
+// Spielstart, damit man z.B. alle Sumpf-Felder zum Platzieren sofort sieht (mit Rand markiert,
+// siehe computeHighlightTargets()), statt erst raus-/hinscrollen zu muessen um sie zu finden.
+function fitMapToScreen() {
+    const hexes = Object.values(mapData.hexes); if (hexes.length === 0) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    hexes.forEach(hex => {
+        const x = hexSize * 1.5 * hex.q, y = hexSize * Math.sqrt(3) * (hex.r + hex.q / 2);
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    });
+    const mapW = (maxX - minX) + hexSize * 2.5, mapH = (maxY - minY) + hexSize * 2.5;
+    const fitZoom = Math.min(canvas.width / mapW, canvas.height / mapH);
+    camera.zoom = Math.min(Math.max(fitZoom, 0.2), 3);
+}
+// Zentriert die Kamera auf die eigenen Figuren eines Spielers (normaler Zoom) - wird bei jedem
+// Zugwechsel aufgerufen, damit man beim Bewegen IMMER seine eigenen (blau umrandeten) Figuren im
+// Blick hat, egal in welcher Ecke der Karte sie stehen. Ohne das bliebe die Kamera z.B. nach dem
+// Platzieren (wo bewusst auf die ganze Karte rausgezoomt wird) mittig auf der Karte stehen, waehrend
+// die eigenen Figuren an einer Ecke ausserhalb des sichtbaren Bereichs liegen.
+function focusOnPlayerUnits(p, zoom = 0.8) {
+    camera.zoom = zoom;
+    if (!p || !p.units.length) { centerMap(); return; }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    p.units.forEach(u => {
+        const x = hexSize * 1.5 * u.q, y = hexSize * Math.sqrt(3) * (u.r + u.q / 2);
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    });
+    camera.x = canvas.width / 2 - ((minX + maxX) / 2) * camera.zoom;
+    camera.y = canvas.height / 2 - ((minY + maxY) / 2) * camera.zoom;
+}
 function centerMap() {
     const hexes = Object.values(mapData.hexes); if (hexes.length === 0) return;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -1237,6 +2029,13 @@ window.addEventListener('mousemove', e => {
         if (lm && lm.icon && lm.icon.toLowerCase().includes('temple')) extraText = "✨ TEMPEL";
         document.getElementById('hover-extra').innerText = extraText;
     } else hInfo.style.display = 'none';
+    // Maus-Cursor als Zeiger-Hand ueber jedem Feld, das gerade anklickbar ist (siehe
+    // computeHighlightTargets()) - kleines, aber wirksames Signal "hier kannst du klicken".
+    if (!isDragging && typeof computeHighlightTargets === 'function') {
+        const hl = computeHighlightTargets();
+        const clickable = hl.go.some(t => t.q === rx && t.r === rz) || hl.select.some(t => t.q === rx && t.r === rz);
+        canvas.style.cursor = clickable ? 'pointer' : 'default';
+    }
 });
 
 function updateApoUI() {
@@ -1272,7 +2071,23 @@ function checkApocalypse() {
     if (collectedArtifacts >= ringThresholds[2] && !closedRings.inner) triggerKollaps(['hills'], 'inner');
 }
 
-function handleChoice(choice) { 
+// Klartext-Erklaerung jeder Aktionskarte/jedes Werkzeugs - wird beim Ziehen direkt unter der Karte
+// angezeigt (#card-desc) UND als Tooltip auf jedem Inventar-Slot, damit man auch spaeter noch
+// nachschauen kann, was eine bereits eingesammelte Karte im Inventar eigentlich macht.
+const CARD_INFO = {
+    extra_move: "Sofort +1 Aktionspunkt für diesen Zug.",
+    skip_turn: "Eine gegnerische Figur deiner Wahl setzt die nächste Runde aus.",
+    teleport: "Versetzt eine eigene Figur sofort auf eine bereits geplünderte Ruine.",
+    push_enemy: "Wirft bis zu 2 gegnerische Figuren je ein Feld zurück.",
+    tornado: "Wirkt sofort: bläst alle eigenen Figuren an den Kartenrand und beendet deinen Zug.",
+    tool_hook: "Passives Werkzeug: wird automatisch verbraucht, sobald du auf ein Bergfeld ziehst.",
+    tool_boat: "Passives Werkzeug: wird automatisch verbraucht, sobald du auf einen Fluss ziehst.",
+    mountains: "Landschaftskarte: platziert Bergfelder auf der Karte.",
+    forest: "Landschaftskarte: platziert Waldfelder auf der Karte.",
+    river: "Landschaftskarte: platziert einen Fluss - danach ausrichten und bestätigen.",
+    road: "Landschaftskarte: platziert eine Straße - der erste Straßen-Schritt pro Zug ist kostenlos."
+};
+function handleChoice(choice) {
     if (choice === 'DRAWING') { drawPoints = 2; gameState = "DRAWING"; } else if (choice === 'MOVING') { gameState = "MOVING"; } 
     updateUI(); render(); 
 }
@@ -1306,7 +2121,32 @@ function prepareDraw(type) {
     updateUI();
 }
 
+// Wirbelsturm ist die einzige Karte, die "sofort wirkt" und den Zug erzwungen beendet - das soll
+// man auch koerperlich spueren, nicht nur an einem kurzen Toast-Text ablesen. Deshalb erst ein
+// kurzer, dramatischer Effekt (Screen-Shake + Sturm-Overlay), DANACH die eigentliche Verschiebung,
+// und danach noch ein kurzer Moment mit rausgezoomter Kamera, damit man sieht, wohin alle Figuren
+// verweht wurden, bevor der Zug an den naechsten Spieler uebergeht.
 function executeTornado() {
+    // Eigener, kurzlebiger Zustand waehrend der Sturm-Animation laeuft: blendet Kartenauswahl/
+    // Zug-Buttons aus (sonst koennte man z.B. waehrend der Animation eine zweite Karte ziehen) und
+    // sorgt dafuer, dass die KI-Zug-Schleife in dieser Zeit brav nichts tut (siehe npcStep()).
+    gameState = "TORNADO_FX"; updateUI();
+    playTornadoFX(() => resolveTornado());
+}
+function playTornadoFX(callback) {
+    const overlay = document.getElementById('tornado-overlay');
+    overlay.classList.remove('hidden');
+    void overlay.offsetWidth;
+    overlay.classList.add('show');
+    document.body.classList.add('screen-shake');
+    setTimeout(() => document.body.classList.remove('screen-shake'), 1000);
+    setTimeout(() => {
+        overlay.classList.remove('show');
+        setTimeout(() => overlay.classList.add('hidden'), 400);
+        callback();
+    }, 1100);
+}
+function resolveTornado() {
     const p = players[currentPlayerIdx];
     let candidates = [];
     Object.values(mapData.hexes).forEach(h => {
@@ -1322,7 +2162,7 @@ function executeTornado() {
     });
 
     if (candidates.length === 0) {
-        alert("🌪️ Der Sturm tobt, aber es gibt keinen sicheren Rand mehr!");
+        showNotification("🌪️ Der Sturm tobt, aber es gibt keinen sicheren Rand mehr!");
         currentCard = null; pathDrawn = true; pathMoved = true; checkTurnEnd(); render(); return;
     }
 
@@ -1344,8 +2184,11 @@ function executeTornado() {
         }
     });
 
-    alert("🌪️ WIRBELSTURM! Deine Figuren wurden an den Rand geweht (sofern sie nicht schon dort waren)! Zug vorbei.");
-    currentCard = null; pathDrawn = true; pathMoved = true; checkTurnEnd(); render();
+    showNotification("🌪️ WIRBELSTURM! Figuren wurden an den Rand geweht (sofern sie nicht schon dort waren)!");
+    currentCard = null; pathDrawn = true; pathMoved = true;
+    focusOnPlayerUnits(p, 0.55); // etwas rausgezoomt, damit man sieht, wohin alle verweht wurden
+    render(); updateUI();
+    setTimeout(() => checkTurnEnd(), 1400);
 }
 
 function rollDice() {
@@ -1445,14 +2288,245 @@ const tutorialPages = [
         <li>🌪️ <b>Wirbelsturm</b>: wirkt sofort — bläst alle eigenen Figuren an den Kartenrand und beendet den Zug</li>
         <li>🪢 <b>Seil & Haken</b> / 🛶 <b>Schlauchboot</b>: passive Werkzeuge, die sich automatisch verbrauchen, sobald du auf Berge bzw. einen Fluss ziehst</li>
     </ul>` },
-    { icon: '🧭', title: 'Bewegen im Gelände', html: `Du hast <b>2 Aktionspunkte</b> pro Zug, jedes Feld kostet normalerweise 1 Punkt.<ul>
+    { icon: '🧭', title: 'Bewegen im Gelände', demo: 'movement', html: `Du hast <b>2 Aktionspunkte</b> pro Zug, jedes Feld kostet normalerweise 1 Punkt.<ul>
         <li>🌲 <b>Wald</b> verbraucht sofort <b>alle</b> restlichen Punkte</li>
         <li>⛰️ <b>Berge</b> sind nur begehbar, wenn du schon auf einem Berg stehst oder eine Karte <b>Seil & Haken</b> einsetzt</li>
         <li>🌊 Ein <b>Fluss</b> reißt dich ohne <b>Schlauchboot</b> automatisch die Fließrichtung entlang mit, bis du an Land gespült wirst oder ein Ufer wählen musst</li>
+        <li>🛤️ <b>Straßen</b>: der <b>erste</b> Schritt auf oder entlang einer Straße ist in jedem Zug <b>kostenlos</b> (kein Aktionspunkt) — danach kostet auch die Straße wieder normal</li>
     </ul>` },
-    { icon: '🏺', title: 'Ruinen & Tempel', html: `Ruinen (Krug-Symbol) sind ein <b>gemeinsamer Vorrat</b>: Die erste Figur — egal von wem — die eine ungeplünderte Ruine erreicht, sammelt 1 Artefakt für <b>alle Spieler zusammen</b>.<br><br>Der <b>Tempel</b> in der Mitte ist das eigentliche Ziel: Sobald genug Artefakte gesammelt sind, gewinnt, wer als Erster dort ankommt.` },
-    { icon: '☄️', title: 'Die Apokalypse', html: `Bei den drei eingestellten Artefakt-Ständen (Standard 3 / 5 / 7) kollabiert jeweils ein <b>Ring</b> der Karte — von außen nach innen — zu Leere.<br><br>Figuren auf einbrechenden Feldern gehen <b>verloren</b>. Bleibt danach nur noch ein Spieler mit Figuren übrig, gewinnt er automatisch als „Einziger Überlebender".` },
+    { icon: '🏺', title: 'Ruinen & Tempel', demo: 'ruins', html: `Ruinen (Krug-Symbol) sind ein <b>gemeinsamer Vorrat</b>: Die erste Figur — egal von wem — die eine ungeplünderte Ruine erreicht, sammelt 1 Artefakt für <b>alle Spieler zusammen</b>.<br><br>Der <b>Tempel</b> in der Mitte ist das eigentliche Ziel: Sobald genug Artefakte gesammelt sind, gewinnt, wer als Erster dort ankommt.` },
+    { icon: '☄️', title: 'Die Apokalypse', demo: 'apocalypse', html: `Bei den drei eingestellten Artefakt-Ständen (Standard 3 / 5 / 7) kollabiert jeweils ein <b>Ring</b> der Karte — von außen nach innen — zu Leere.<br><br>Figuren auf einbrechenden Feldern gehen <b>verloren</b>. Bleibt danach nur noch ein Spieler mit Figuren übrig, gewinnt er automatisch als „Einziger Überlebender".` },
 ];
+
+// ---------- Tutorial-Demos: kleine animierte Hexfeld-Szenen fuer einzelne Tutorial-Seiten ----------
+// Nutzen bewusst dieselben Zeichenfunktionen wie das echte Spiel (paintHexTerrain, drawShieldToken,
+// drawLandmarkBadge, drawVoidHex) - sehen dadurch identisch zum echten Spiel aus, laufen aber
+// komplett unabhaengig vom echten Spielzustand auf einer eigenen kleinen Mini-Karte.
+let tutorialDemoRAF = null;
+function stopTutorialDemo() { if (tutorialDemoRAF) cancelAnimationFrame(tutorialDemoRAF); tutorialDemoRAF = null; }
+function startTutorialDemo(drawFn) {
+    stopTutorialDemo();
+    const canvas = document.getElementById('tutorial-demo-canvas');
+    const dctx = canvas.getContext('2d');
+    canvas.width = Math.round(canvas.clientWidth);
+    canvas.height = Math.round(canvas.clientHeight);
+    const t0 = performance.now();
+    function loop(now) {
+        drawFn(dctx, canvas, (now - t0) / 1000);
+        tutorialDemoRAF = requestAnimationFrame(loop);
+    }
+    tutorialDemoRAF = requestAnimationFrame(loop);
+}
+function tdRowPositions(count, s, cw, ch) {
+    const raw = Array.from({ length: count }, (_, i) => ({ x: 1.5 * s * i, y: Math.sqrt(3) * s * (i / 2) }));
+    const minX = raw[0].x, maxX = raw[count - 1].x;
+    const minY = Math.min(...raw.map(p => p.y)), maxY = Math.max(...raw.map(p => p.y));
+    const ox = cw / 2 - (minX + maxX) / 2, oy = ch / 2 - (minY + maxY) / 2;
+    return raw.map(p => ({ x: p.x + ox, y: p.y + oy }));
+}
+function tdCaption(html) { document.getElementById('tutorial-demo-caption').innerHTML = html; }
+function tdEase(x) { x = Math.max(0, Math.min(1, x)); return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+const tdDecorCache = {};
+function tdDecor(terrain, seed) { const k = terrain + ':' + seed; if (!tdDecorCache[k]) tdDecorCache[k] = makeDecor(terrain, seed) || []; return tdDecorCache[k]; }
+function tdDrawHex(ctx, pos, terrain, seed, s) {
+    if (terrain === 'void') { drawVoidHex(ctx, pos.x, pos.y, s); return; }
+    paintHexTerrain(ctx, pos.x, pos.y, s, terrain, tdDecor(terrain, seed));
+}
+function tdDrawCollapsingHex(ctx, pos, terrain, seed, s, p) {
+    if (p <= 0) { tdDrawHex(ctx, pos, terrain, seed, s); return; }
+    if (p >= 1) { drawVoidHex(ctx, pos.x, pos.y, s); return; }
+    ctx.save(); ctx.globalAlpha = 1 - p; tdDrawHex(ctx, pos, terrain, seed, s); ctx.restore();
+    ctx.save(); ctx.globalAlpha = p; drawVoidHex(ctx, pos.x, pos.y, s); ctx.restore();
+}
+function tdLerp(a, b, p) { return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p }; }
+
+function drawMovementDemo(ctx, canvas, tAbs) {
+    const cw = canvas.width, ch = canvas.height, s = Math.min(34, cw / 9);
+    const cycle = 10.5, t = tAbs % cycle;
+    ctx.clearRect(0, 0, cw, ch);
+    if (t < 3.5) {
+        const pos = tdRowPositions(3, s, cw, ch);
+        ['plains', 'forest', 'plains'].forEach((terr, i) => tdDrawHex(ctx, pos[i], terr, i + 1, s));
+        const pt = tdLerp(pos[0], pos[1], tdEase(t / 1.2));
+        if (t > 1.2) {
+            const pulse = 0.5 + 0.5 * Math.sin((t - 1.2) * 5);
+            ctx.save(); ctx.beginPath(); ctx.arc(pt.x, pt.y, s * 0.95 + pulse * 4, 0, 7);
+            ctx.strokeStyle = `rgba(231,115,104,${0.5 + pulse * 0.4})`; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
+        }
+        drawShieldToken(ctx, pt.x, pt.y, s * 0.78, '#2e86de', false);
+        tdCaption('🌲 <b>Wald</b> verbraucht sofort <b>alle</b> restlichen Aktionspunkte – hier ist für diesen Zug Schluss.');
+    } else if (t < 7) {
+        const lt = t - 3.5;
+        const pos = tdRowPositions(3, s, cw, ch);
+        ['plains', 'mountains', 'plains'].forEach((terr, i) => tdDrawHex(ctx, pos[i], terr, i + 10, s));
+        const p = lt < 0.8 ? tdEase(lt / 0.8) : tdEase(1 - (lt - 0.8) / 0.8);
+        const pt = tdLerp(pos[0], pos[1], Math.max(0, p) * 0.55);
+        drawShieldToken(ctx, pt.x, pt.y, s * 0.78, '#2e86de', false);
+        if (lt > 1.6) {
+            ctx.save(); ctx.font = `bold ${s * 0.9}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(231,115,104,0.9)'; ctx.fillText('✗', pos[1].x, pos[1].y - s * 1.1); ctx.restore();
+        }
+        tdCaption('⛰️ <b>Berge</b> sind nur begehbar, wenn du schon auf einem Berg stehst oder eine Karte <b>Seil &amp; Haken</b> einsetzt.');
+    } else {
+        const lt = t - 7;
+        const pos = tdRowPositions(4, s, cw, ch);
+        // Ein Fluss ersetzt das Gelaende nicht - er fliesst nur als Band DARueBER (genau wie im
+        // echten Spiel: bakeHex zeichnet das Grundgelaende, drawRiverConnections das Wasser-Band
+        // obendrauf). Deshalb hier dieselbe echte Zeichenfunktion wiederverwenden statt eines
+        // flachen "Fluss"-Hexfelds, sonst sieht die Demo anders aus als das echte Spiel.
+        [0, 1, 2, 3].forEach(i => tdDrawHex(ctx, pos[i], 'plains', i + 20, s));
+        const demoRiverHexes = {
+            '0,0': { q: 0, r: 0, terrain: 'plains' },
+            '1,0': { q: 1, r: 0, terrain: 'river', direction: 0 },
+            '2,0': { q: 2, r: 0, terrain: 'river', direction: 0 },
+            '3,0': { q: 3, r: 0, terrain: 'plains' },
+        };
+        const savedHexes = mapData.hexes;
+        mapData.hexes = demoRiverHexes;
+        drawRiverConnections(ctx, demoRiverHexes['1,0'], pos[1].x, pos[1].y, s);
+        drawRiverConnections(ctx, demoRiverHexes['2,0'], pos[2].x, pos[2].y, s);
+        mapData.hexes = savedHexes;
+        let pt;
+        if (lt < 1) pt = tdLerp(pos[0], pos[1], tdEase(lt / 1));
+        else if (lt < 1.8) pt = tdLerp(pos[1], pos[2], tdEase((lt - 1) / 0.8));
+        else pt = tdLerp(pos[2], pos[3], tdEase((lt - 1.8) / 0.8));
+        drawShieldToken(ctx, pt.x, pt.y, s * 0.78, '#2e86de', false);
+        tdCaption('🌊 Ohne <b>Schlauchboot</b> reißt dich ein <b>Fluss</b> automatisch die Fließrichtung entlang mit.');
+    }
+}
+
+function drawRuinsDemo(ctx, canvas, tAbs) {
+    const cw = canvas.width, ch = canvas.height, s = Math.min(32, cw / 10);
+    const cycle = 9, t = tAbs % cycle;
+    ctx.clearRect(0, 0, cw, ch);
+    const pos = tdRowPositions(4, s, cw, ch);
+    ['plains', 'plains', 'plains', 'plains'].forEach((terr, i) => tdDrawHex(ctx, pos[i], terr, i + 30, s));
+    const looted = t > 2.6;
+    drawLandmarkBadge(ctx, pos[1].x, pos[1].y, s, looted ? 'looted' : 'ruin', tAbs);
+    drawLandmarkBadge(ctx, pos[3].x, pos[3].y, s, 'temple', tAbs);
+
+    let pt;
+    if (t < 1.6) pt = tdLerp(pos[0], pos[1], tdEase(t / 1.6));
+    else if (t < 5.4) pt = pos[1];
+    else if (t < 6.4) pt = tdLerp(pos[1], pos[2], tdEase(t - 5.4));
+    else if (t < 7.4) pt = tdLerp(pos[2], pos[3], tdEase(t - 6.4));
+    else pt = pos[3];
+    drawShieldToken(ctx, pt.x, pt.y, s * 0.78, '#f1c40f', t > 7.4);
+
+    if (t >= 1.6 && t < 2.6) {
+        const p = (t - 1.6) / 1;
+        ctx.save(); ctx.globalAlpha = 1 - p; ctx.font = `bold ${Math.max(12, s * 0.6)}px 'Cinzel', serif`; ctx.textAlign = 'center';
+        ctx.fillStyle = '#f1c40f'; ctx.fillText('+1 🏆', pos[1].x, pos[1].y - s * 1.3 - p * 22); ctx.restore();
+    }
+    const artifacts = t < 2.6 ? 0 : 1;
+    ctx.save(); ctx.font = `bold ${Math.max(11, s * 0.42)}px 'Cinzel', serif`; ctx.textAlign = 'left'; ctx.fillStyle = '#f3e2a9';
+    ctx.fillText(`🏆 Artefakte: ${artifacts} / 7`, 10, 20); ctx.restore();
+
+    if (t < 5.4) tdCaption('🏺 Die erste Figur an einer <b>Ruine</b> sammelt 1 Artefakt – für <b>alle Spieler gemeinsam</b>!');
+    else tdCaption('🏛️ Der <b>Tempel</b> ist das Ziel: Sobald genug Artefakte gesammelt sind, gewinnt, wer zuerst dort ankommt.');
+}
+
+// Echtes konzentrisches Hexfeld-Cluster (Radius 2 -> 1 Zentrum + 6 Mitte + 12 Aussen = 19 Felder),
+// damit die Demo wirklich wie schrumpfende KONZENTRISCHE RINGE aussieht statt wie eine Reihe -
+// die reine Kachel-Anzahl je Ring (12/6/1) spiegelt auch die echten Groessenverhaeltnisse
+// deutlich besser wider (aussen am groessten, Zentrum am kleinsten).
+const tdApocCluster = (() => {
+    const hexes = [];
+    for (let q = -2; q <= 2; q++) for (let r = -2; r <= 2; r++) {
+        const d = getHexDistance(0, 0, q, r);
+        if (d <= 2) hexes.push({ q, r, ring: d }); // ring: 0 = Zentrum, 1 = Mitte, 2 = Aussen
+    }
+    return hexes;
+})();
+const tdApocSpan = (() => {
+    const raw = tdApocCluster.map(h => ({ x: 1.5 * h.q, y: Math.sqrt(3) * (h.r + h.q / 2) }));
+    return {
+        minX: Math.min(...raw.map(p => p.x)), maxX: Math.max(...raw.map(p => p.x)),
+        minY: Math.min(...raw.map(p => p.y)), maxY: Math.max(...raw.map(p => p.y)),
+    };
+})();
+
+function drawApocalypseDemo(ctx, canvas, tAbs) {
+    const cw = canvas.width, ch = canvas.height;
+    const cycle = 10, t = tAbs % cycle;
+    ctx.clearRect(0, 0, cw, ch);
+
+    // s so waehlen, dass das ganze Cluster (inkl. Rand fuer Hex-eigene Ausdehnung, Platz oben
+    // links fuer den Artefakt-Zaehler und einer Legende unten) sicher hineinpasst.
+    const marginTop = 44, marginBottom = 20;
+    const spanX = tdApocSpan.maxX - tdApocSpan.minX, spanY = tdApocSpan.maxY - tdApocSpan.minY;
+    const s = Math.max(8, Math.min((cw - 20) / (spanX + 2.2), (ch - marginTop - marginBottom) / (spanY + 2.2)));
+    const ox = cw / 2 - (tdApocSpan.minX + tdApocSpan.maxX) / 2 * s;
+    const availCenterY = marginTop + (ch - marginTop - marginBottom) / 2;
+    const oy = availCenterY - (tdApocSpan.minY + tdApocSpan.maxY) / 2 * s;
+    const cells = tdApocCluster.map(h => ({ ...h, x: 1.5 * s * h.q + ox, y: Math.sqrt(3) * s * (h.r + h.q / 2) + oy }));
+
+    const collapseP = (from, dur) => Math.min(1, Math.max(0, (t - from) / dur));
+    // Die beiden Kollaps-Wellen sind an die Artefakt-Schwellen 3 und 5 gekoppelt (siehe artifacts
+    // unten) - Zeitpunkte hier so gewaehlt, dass Zaehler und Kollaps sichtbar zusammen passieren.
+    const p1 = collapseP(3.2, 0.7), p2 = collapseP(6.6, 0.7);
+    const stage = t > 6.6 ? 2 : (t > 3.2 ? 1 : 0);
+
+    // Artefakt-Zaehler steigt kontinuierlich und ueberschreitet dabei die Kollaps-Schwellen -
+    // macht den Ausloeser sichtbar (im echten Spiel: "Naechster Kollaps bei X Artefakten").
+    let artifacts;
+    if (t < 3.2) artifacts = Math.round((t / 3.2) * 3);
+    else if (t < 6.6) artifacts = 3 + Math.round(((t - 3.2) / 3.4) * 2);
+    else artifacts = Math.min(7, 5 + Math.round(((t - 6.6) / 3.4) * 2));
+
+    // Jeder Ring bekommt eine dezente Farbtoenung (aussen rot, mitte gelb, zentrum gruen) - dieselben
+    // Farben wie die Figuren und die Legende unten, damit die Zuordnung ohne Text am Hexfeld klar ist.
+    const ringColor = ring => ring === 2 ? '#e57368' : ring === 1 ? '#f1c40f' : '#2ecc71';
+    cells.forEach(c => {
+        const p = c.ring === 2 ? p1 : c.ring === 1 ? p2 : 0;
+        tdDrawCollapsingHex(ctx, c, 'plains', (c.q + 10) * 100 + (c.r + 10), s, p);
+        if (p < 1) {
+            ctx.save(); ctx.globalAlpha = (1 - p) * 0.28; hexSpritePath(ctx, c.x, c.y, s); ctx.fillStyle = ringColor(c.ring); ctx.fill(); ctx.restore();
+        }
+    });
+
+    // Figuren: eine im Aussenring (geht zuerst verloren), eine im Mittelring (folgt spaeter),
+    // eine im Zentrum (bleibt am laengsten sicher) - versetzt platziert, damit sie sich nicht ueberlappen.
+    const outerUnit = cells.find(c => c.q === 0 && c.r === -2);
+    const middleUnit = cells.find(c => c.q === -1 && c.r === 0);
+    const centerUnit = cells.find(c => c.ring === 0);
+    if (p1 < 1) { ctx.save(); ctx.globalAlpha = 1 - p1; drawShieldToken(ctx, outerUnit.x, outerUnit.y, s * 0.78, ringColor(2), false); ctx.restore(); }
+    if (p2 < 1) { ctx.save(); ctx.globalAlpha = 1 - p2; drawShieldToken(ctx, middleUnit.x, middleUnit.y, s * 0.78, ringColor(1), false); ctx.restore(); }
+    drawShieldToken(ctx, centerUnit.x, centerUnit.y, s * 0.78, ringColor(0), stage === 2);
+
+    // Farbcodierte Legende unten - verbindet Ring-Farbe und Name eindeutig, ohne die engen
+    // Hexfelder selbst mit Text vollzustopfen.
+    const legend = [[ringColor(2), 'Ring 1'], [ringColor(1), 'Ring 2'], [ringColor(0), 'Ring 3']];
+    const legendFont = Math.max(10, Math.min(13, s * 0.5));
+    ctx.save(); ctx.font = `bold ${legendFont}px 'Cinzel', serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const dotR = legendFont * 0.3, gap = 16;
+    const widths = legend.map(([, label]) => ctx.measureText(label).width);
+    const totalW = widths.reduce((sum, w) => sum + dotR * 2 + 6 + w, 0) + gap * (legend.length - 1);
+    let lx = cw / 2 - totalW / 2;
+    const ly = ch - marginBottom / 2 - 2;
+    legend.forEach(([color, label], i) => {
+        ctx.beginPath(); ctx.arc(lx + dotR, ly, dotR, 0, 7); ctx.fillStyle = color; ctx.fill();
+        lx += dotR * 2 + 6;
+        ctx.fillStyle = 'rgba(243,226,169,0.9)'; ctx.fillText(label, lx, ly);
+        lx += widths[i] + gap;
+    });
+    ctx.restore();
+
+    ctx.save(); ctx.font = `bold ${Math.max(11, s * 0.5)}px 'Cinzel', serif`; ctx.textAlign = 'left'; ctx.fillStyle = '#f3e2a9';
+    ctx.fillText(`🏆 Artefakte: ${artifacts} / 7`, 10, 18); ctx.restore();
+    const nextThreshold = stage === 0 ? 3 : stage === 1 ? 5 : null;
+    ctx.save(); ctx.font = `${Math.max(10, s * 0.42)}px 'Cormorant Garamond', serif`; ctx.textAlign = 'left';
+    ctx.fillStyle = nextThreshold ? 'rgba(241,196,15,0.9)' : 'rgba(143,230,172,0.9)';
+    ctx.fillText(nextThreshold ? `☄️ Nächster Kollaps bei ${nextThreshold} Artefakten` : '✅ Ring 3 bleibt bestehen', 10, 18 + Math.max(11, s * 0.5) + 4);
+    ctx.restore();
+
+    if (stage === 0) tdCaption('☄️ Sammelt ihr Artefakte, kollabiert die Karte bei bestimmten Ständen ringweise – von außen nach innen.');
+    else if (stage === 1) tdCaption('Bei 3 Artefakten bricht <b>Ring 1</b> (außen) weg – Figuren darauf gehen <b>verloren</b>!');
+    else tdCaption('Bei 5 Artefakten folgt <b>Ring 2</b> – <b>Ring 3</b> im Zentrum bleibt am längsten sicher.');
+}
+
+const tutorialDemos = { movement: drawMovementDemo, ruins: drawRuinsDemo, apocalypse: drawApocalypseDemo };
+
 let tutorialIdx = 0;
 function renderTutorialPage() {
     const p = tutorialPages[tutorialIdx];
@@ -1460,6 +2534,14 @@ function renderTutorialPage() {
     document.getElementById('tutorial-title').innerText = p.title;
     document.getElementById('tutorial-step-label').innerText = `Schritt ${tutorialIdx + 1} / ${tutorialPages.length}`;
     document.getElementById('tutorial-body').innerHTML = p.html;
+    const demoWrap = document.getElementById('tutorial-demo-wrap');
+    if (p.demo && tutorialDemos[p.demo]) {
+        demoWrap.classList.remove('hidden');
+        startTutorialDemo(tutorialDemos[p.demo]);
+    } else {
+        demoWrap.classList.add('hidden');
+        stopTutorialDemo();
+    }
     document.getElementById('tutorial-prev').style.visibility = tutorialIdx === 0 ? 'hidden' : 'visible';
     document.getElementById('tutorial-next').innerText = tutorialIdx === tutorialPages.length - 1 ? 'Fertig ✓' : 'Weiter →';
     const dots = document.getElementById('tutorial-dots');
@@ -1472,16 +2554,17 @@ function renderTutorialPage() {
     });
 }
 function openTutorial() { tutorialIdx = 0; renderTutorialPage(); document.getElementById('tutorial-overlay').classList.remove('hidden'); }
-function closeTutorial() { document.getElementById('tutorial-overlay').classList.add('hidden'); }
+function closeTutorial() { document.getElementById('tutorial-overlay').classList.add('hidden'); stopTutorialDemo(); }
 function tutorialStep(dir) {
     if (dir > 0 && tutorialIdx === tutorialPages.length - 1) { closeTutorial(); return; }
     tutorialIdx = Math.max(0, Math.min(tutorialPages.length - 1, tutorialIdx + dir));
     renderTutorialPage();
 }
 function startTurn() {
-    if (players[currentPlayerIdx].skipped) { alert(`${playerLabel(players[currentPlayerIdx])} muss aussetzen!`); players[currentPlayerIdx].skipped = false; currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); return; }
-    pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING";
+    if (players[currentPlayerIdx].skipped) { showNotification(`⏭️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} MUSS AUSSETZEN!`); players[currentPlayerIdx].skipped = false; currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); return; }
+    pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING"; roadBonusUsedThisTurn = false;
     showNotification(`⚔️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} IST DRAN!`);
+    focusOnPlayerUnits(players[currentPlayerIdx]);
     updateUI(); render();
 }
 
@@ -1602,9 +2685,10 @@ function processMovement(unit, tQ, tR) {
         }
     }
 
-    if (newHex.terrain === 'mountains' && p.inventory.findIndex(c => c.type === 'tool_hook') === -1 && oldHex.terrain !== 'mountains') return false; 
-
+    // Straßenbonus: der erste Schritt auf/entlang einer Straße pro Zug ist kostenlos, danach normal.
     let cost = 1;
+    let usedRoadBonus = false;
+    if (newHex.terrain === 'road' && !roadBonusUsedThisTurn) { cost = 0; usedRoadBonus = true; }
     unit.q = tQ; unit.r = tR; checkLandmark(tQ, tR);
     
     if (newHex.terrain === 'river') {
@@ -1617,19 +2701,16 @@ function processMovement(unit, tQ, tR) {
                 if (riverEscapeHexes.length > 0) { gameState = "RIVER_ESCAPE"; updateUI(); return true; } else { actionPoints = 0; finishPath(); return true; }
             } else if (nH.terrain === 'river') { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); curH = nH; } else { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); actionPoints = 0; finishPath(); return true; }
         }
-    } else { actionPoints -= cost; if (newHex.terrain === 'forest') actionPoints = 0; if (actionPoints <= 0) finishPath(); }
+    } else {
+        actionPoints -= cost;
+        if (usedRoadBonus) { roadBonusUsedThisTurn = true; showNotification("🛤️ Straßen-Bonus: dieser Schritt war kostenlos!"); }
+        if (newHex.terrain === 'forest') actionPoints = 0; if (actionPoints <= 0) finishPath();
+    }
     updateUI(); render();
 }
 
-canvas.addEventListener('click', e => {
-    if (isGameOver) return;
-    if (net.active && !isMyTurn()) return;
-    if (isDragging) return; const x = (e.clientX-camera.x)/(hexSize*camera.zoom), y = (e.clientY-camera.y)/(hexSize*camera.zoom), q = (2/3*x), r = (-1/3*x + Math.sqrt(3)/3*y);
-    let rx = Math.round(q), rz = Math.round(r), ry = Math.round(-q-r);
-    if (Math.abs(rx-q)>Math.abs(ry-(-q-r)) && Math.abs(rx-q)>Math.abs(rz-r)) rx = -ry-rz; else if (Math.abs(ry-(-q-r)) > Math.abs(rz-r)) ry = -rx-rz; else rz = -rx-ry;
-    const hex = mapData.hexes[`${rx},${rz}`]; if (!hex || hex.terrain === 'void') return;
-
-    if (gameState === "PLACING" && hex.terrain === 'swamp') { 
+function performHexClick(rx, rz, hex) {
+    if (gameState === "PLACING" && hex.terrain === 'swamp') {
         if (players.some(p => p.units.some(u => u.q === rx && u.r === rz))) return;
         players[currentPlayerIdx].units.push({ q: rx, r: rz }); 
         if (players.reduce((sum, p) => sum + p.units.length, 0) === players.length * 2) { currentPlayerIdx = 0; startTurn(); } else { currentPlayerIdx = (currentPlayerIdx + 1) % players.length; }
@@ -1691,6 +2772,15 @@ canvas.addEventListener('click', e => {
         }
     }
     updateUI(); render();
+}
+
+canvas.addEventListener('click', e => {
+    if (!isControllable()) return;
+    if (isDragging) return; const x = (e.clientX-camera.x)/(hexSize*camera.zoom), y = (e.clientY-camera.y)/(hexSize*camera.zoom), q = (2/3*x), r = (-1/3*x + Math.sqrt(3)/3*y);
+    let rx = Math.round(q), rz = Math.round(r), ry = Math.round(-q-r);
+    if (Math.abs(rx-q)>Math.abs(ry-(-q-r)) && Math.abs(rx-q)>Math.abs(rz-r)) rx = -ry-rz; else if (Math.abs(ry-(-q-r)) > Math.abs(rz-r)) ry = -rx-rz; else rz = -rx-ry;
+    const hex = mapData.hexes[`${rx},${rz}`]; if (!hex || hex.terrain === 'void') return;
+    performHexClick(rx, rz, hex);
 });
 
 function updateUI() {
@@ -1701,8 +2791,31 @@ function updateUI() {
     document.getElementById('cards-left-display').innerText = drawPoints;
     document.getElementById('btn-choice-draw').disabled = pathDrawn;
     document.getElementById('btn-choice-move').disabled = pathMoved;
-    const states = { PLACING: "FIGUR SETZEN", CHOOSING: "AKTION WÄHLEN", DRAWING: "STAPEL WÄHLEN", DICE_ROLL: "WÜRFELN!", PLACING_TERRAIN: `${placementsRemaining}X SETZEN`, ROTATING_RIVER: "FLUSS DREHEN", ACTION_VIEW: "AKTION GEZOGEN", SWAP_CARD: "INVENTAR TAUSCHEN", MOVING: selectedUnit ? "ZIEHEN" : "FIGUR WÄHLEN", SELECT_PUSH_TARGET_1: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_TARGET_2: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_DESTINATION: "ZIELFELD WÄHLEN", RIVER_ESCAPE: "ANS UFER RETTEN", RIVER_ESCAPE_PUSH: "GEGNER RETTEN", BOAT_LANDING: "UFER WÄHLEN" };
+    const states = { PLACING: "FIGUR SETZEN", CHOOSING: "AKTION WÄHLEN", DRAWING: "STAPEL WÄHLEN", DICE_ROLL: "WÜRFELN!", PLACING_TERRAIN: `${placementsRemaining}X SETZEN`, ROTATING_RIVER: "FLUSS DREHEN", ACTION_VIEW: "AKTION GEZOGEN", SWAP_CARD: "INVENTAR TAUSCHEN", MOVING: selectedUnit ? "ZIEHEN" : "FIGUR WÄHLEN", SELECT_PUSH_TARGET_1: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_TARGET_2: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_DESTINATION: "ZIELFELD WÄHLEN", RIVER_ESCAPE: "ANS UFER RETTEN", RIVER_ESCAPE_PUSH: "GEGNER RETTEN", BOAT_LANDING: "UFER WÄHLEN", TORNADO_FX: "🌪️ STURM!" };
     guide.innerText = states[gameState] || "BITTE WARTEN...";
+    // Klartext-Hinweis darunter: erklaert in Worten, was gerade anklickbar ist - passend zu den
+    // farbigen Markierungen auf dem Spielfeld (siehe computeHighlightTargets()/renderFX()).
+    const hints = {
+        PLACING: `Klicke ein <b>gold umrandetes</b> Sumpf-Feld an, um deine Figur zu platzieren.`,
+        CHOOSING: `Wähle unten eine Aktion: Karten ziehen oder eine Figur bewegen.`,
+        DRAWING: `Wähle einen der beiden Stapel zum Ziehen.`,
+        DICE_ROLL: `Klicke auf "Würfeln".`,
+        PLACING_TERRAIN: `Klicke ${placementsRemaining}x ein <b>gold umrandetes</b> Feld an, um die Landschaft zu platzieren.`,
+        ROTATING_RIVER: `Drehe den Fluss in die passende Richtung und bestätige mit "Setzen".`,
+        ACTION_VIEW: `Aktion wird ausgeführt…`,
+        SWAP_CARD: `Wähle eine Karte aus deinem Inventar zum Tauschen.`,
+        MOVING: selectedUnit ? `Klicke ein <b>gold umrandetes</b> Nachbarfeld an, um dorthin zu ziehen.` : `Klicke eine <span class="hint-select">blau umrandete</span> eigene Figur an, um sie auszuwählen.`,
+        SELECT_PUSH_TARGET_1: `Klicke eine <span class="hint-select">blau umrandete</span> gegnerische Figur an, um sie zurückzuwerfen.`,
+        SELECT_PUSH_TARGET_2: `Klicke noch eine <span class="hint-select">blau umrandete</span> gegnerische Figur an.`,
+        SELECT_PUSH_DESTINATION: `Klicke ein <b>gold umrandetes</b> Nachbarfeld als Zielfeld an.`,
+        RIVER_ESCAPE: `Klicke ein <b>gold umrandetes</b> Ufer-Feld an, um dich zu retten.`,
+        RIVER_ESCAPE_PUSH: `Klicke ein <b>gold umrandetes</b> Feld an, um die Figur zu retten.`,
+        BOAT_LANDING: `Klicke ein <b>gold umrandetes</b> Ufer-Feld zum Anlanden an.`,
+        SELECT_SKIP: `Klicke eine <span class="hint-select">blau umrandete</span> gegnerische Figur an, die aussetzen muss.`,
+        SELECT_TELEPORT_UNIT: `Klicke eine <span class="hint-select">blau umrandete</span> eigene Figur an, die teleportiert werden soll.`,
+        SELECT_TELEPORT_TARGET: `Klicke ein <b>gold umrandetes</b> geplündertes Ruinen-Feld als Ziel an.`
+    };
+    document.getElementById('guide-hint').innerHTML = hints[gameState] || '';
     document.getElementById('choice-area').classList.toggle('hidden', gameState !== 'CHOOSING');
     document.getElementById('drawing-area').classList.toggle('hidden', !['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE', 'SWAP_CARD'].includes(gameState));
     document.getElementById('draw-selection').classList.toggle('hidden', gameState !== 'DRAWING');
@@ -1718,6 +2831,7 @@ function updateUI() {
     if (currentCard) {
         document.getElementById('card-icon').innerText = currentCard.icon;
         document.getElementById('card-name').innerText = currentCard.name;
+        document.getElementById('card-desc').innerText = CARD_INFO[currentCard.type] || '';
         if(gameState === 'ACTION_VIEW') setTimeout(() => { if(gameState === 'ACTION_VIEW') finishCard(); }, 1500);
     }
     if (gameState === 'PLACING_TERRAIN' || gameState === 'ROTATING_RIVER') document.getElementById('placement-info').innerText = `NOCH ${placementsRemaining}`;
@@ -1726,15 +2840,282 @@ function updateUI() {
         const slot = document.getElementById(`inv-slot-${i}`), card = p.inventory[i];
         slot.querySelector('.inv-icon').innerText = card ? card.icon : ""; slot.querySelector('.inv-name').innerText = card ? card.name : "Leer";
         slot.classList.toggle('filled', !!card); slot.classList.toggle('swap-mode', gameState === "SWAP_CARD" && !!card);
+        slot.title = card ? `${card.name}: ${CARD_INFO[card.type] || ''}` : '';
     }
 
-    if (net.active) {
-        const myTurn = isMyTurn();
+    // Zug-Checkliste: zeigt auf einen Blick, welche der zwei Pflicht-Aktionen diesen Zug schon
+    // erledigt sind (pulsiert gold, solange offen; wird gruen sobald erledigt).
+    const checkDraw = document.getElementById('check-draw'), checkMove = document.getElementById('check-move');
+    checkDraw.textContent = pathDrawn ? '✅ Karten gezogen' : '⬜ Karten ziehen';
+    checkDraw.classList.toggle('done', pathDrawn); checkDraw.classList.toggle('pending', !pathDrawn);
+    checkMove.textContent = pathMoved ? '✅ Bewegt' : '⬜ Bewegen';
+    checkMove.classList.toggle('done', pathMoved); checkMove.classList.toggle('pending', !pathMoved);
+
+    const npcTurn = !!(p && p.isNPC);
+    if (net.active || npcTurn) {
+        const myTurn = isControllable();
         document.getElementById('action-controls').classList.toggle('locked', !myTurn);
+        document.getElementById('inventory-panel').classList.toggle('locked', !myTurn);
         document.getElementById('turn-lock-msg').classList.toggle('hidden', myTurn);
-        if (!myTurn) document.getElementById('turn-lock-msg').innerText = `⏳ ${playerLabel(p)} ist am Zug…`;
+        if (!myTurn) {
+            // Der KI-Name enthaelt meist schon ein 🤖 (siehe presetPlayers) - nicht nochmal
+            // davorsetzen, sonst steht am Ende "🤖 🤖 KI (...) ist am Zug".
+            const label = playerLabel(p);
+            const prefix = npcTurn ? (label.startsWith('🤖') ? '' : '🤖 ') : '⏳ ';
+            document.getElementById('turn-lock-msg').innerText = `${prefix}${label} ist am Zug…`;
+        }
+    } else {
+        // Weder Online-Modus noch KI dran, d.h. ein lokaler Mensch ist am Zug: alle Sperren aus
+        // dem vorherigen (KI-)Zug wieder aufheben - sonst bleiben Buttons/Hinweis faelschlich
+        // gesperrt haengen, sobald die Reihe wieder an den Menschen kommt (Bug: fehlte hier).
+        document.getElementById('inventory-panel').classList.remove('locked');
+        document.getElementById('action-controls').classList.remove('locked');
+        document.getElementById('turn-lock-msg').classList.add('hidden');
     }
     if (net.active && !net.applyingRemote) sendStateUpdate();
+    scheduleNpcCheck();
+}
+
+// ================= SEEN: 3+ zusammenhaengende Flussfelder verschmelzen optisch =================
+// Rein visuell! Mechanisch bleibt jedes Feld ganz normales 'river'-Terrain - Bewegung, Boot und die
+// automatische Stroemung (processMovement) funktionieren dadurch fuer den ganzen See unveraendert
+// genauso wie bisher fuer einzelne Fluesse, ohne dass dafuer irgendwas angepasst werden musste.
+// Nur wie diese Felder GEZEICHNET werden, aendert sich: statt einzelner gewundener Flussbaender
+// verschmelzen sie zu einer Fluche mit organischer (nicht-sechseckiger) Uferlinie. Wo ein Feld des
+// Sees per eigener Fliessrichtung an Land grenzt (= "Muendung", ergibt sich automatisch aus den
+// beim Platzieren gewaehlten Fluss-Richtungen), verjuengt sich das Ufer dort trichterfoermig und
+// geht in den bekannten Fluss-Spray-Effekt ueber, statt einfach nur aufzuhoeren.
+// Eine einfache Fluss-Kette (jedes Feld hoechstens 2 Fluss-Nachbarn INNERHALB der Gruppe, keine
+// Verzweigung, keine geschlossene Schleife) ist - egal wie lang - KEIN See, nur eine ganz normale,
+// evtl. laenger gewundene Fluss-Strecke. Erst wenn sich Felder verzweigen (ein Feld hat 3+
+// Fluss-Nachbarn in der Gruppe, ein echter Zusammenfluss) ODER die Gruppe eine geschlossene
+// Schleife/ein Dreiecks-Cluster bildet (dann gibt es genauso viele Kanten wie Felder statt Felder-1
+// wie bei einer reinen Kette), wirkt die Flaeche "breiter" als ein Fluss und wird zum See.
+function isLakeShape(group) {
+    if (group.length < 3) return false;
+    const set = new Set(group.map(g => `${g.q},${g.r}`));
+    let edgeCount = 0, maxDegree = 0;
+    group.forEach(hex => {
+        let degree = 0;
+        hexDirections.forEach(d => { if (set.has(`${hex.q + d.q},${hex.r + d.r}`)) degree++; });
+        maxDegree = Math.max(maxDegree, degree);
+        edgeCount += degree;
+    });
+    edgeCount /= 2; // jede Nachbarschafts-Kante wird von beiden Seiten mitgezaehlt
+    if (maxDegree >= 3) return true; // Zusammenfluss-/Verzweigungspunkt
+    if (edgeCount >= group.length) return true; // geschlossene Schleife/Cluster statt reiner Kette
+    return false;
+}
+function getLakeGroups() {
+    const processed = new Set();
+    const groups = [];
+    const groupIndexByKey = new Map(); // "q,r" -> Index in groups[], nur fuer Felder DIE zu einem See gehoeren
+    Object.values(mapData.hexes).forEach(hex => {
+        if (hex.terrain !== 'river') return;
+        const key = `${hex.q},${hex.r}`;
+        if (processed.has(key)) return;
+        const group = getConnectedRivers(hex.q, hex.r);
+        group.forEach(g => processed.add(`${g.q},${g.r}`));
+        if (isLakeShape(group)) {
+            const idx = groups.length;
+            groups.push(group);
+            group.forEach(g => groupIndexByKey.set(`${g.q},${g.r}`, idx));
+        }
+    });
+    return { groups, groupIndexByKey };
+}
+function hexCornerWorld(hex, i, s) {
+    const cx = (hexSize * 1.5 * hex.q) * camera.zoom + camera.x, cy = (hexSize * Math.sqrt(3) * (hex.r + hex.q / 2)) * camera.zoom + camera.y;
+    return { x: cx + s * Math.cos(Math.PI / 3 * i), y: cy + s * Math.sin(Math.PI / 3 * i) };
+}
+// Chaikin-Corner-Cutting fuer eine OFFENE Punktkette: erster und letzter Punkt bleiben als Anker fix
+// (dort muss die Kontur exakt an den naechsten Abschnitt/Trichter anschliessen), nur die Punkte
+// dazwischen werden rundgeschliffen - ergibt eine glatte, organische Uferlinie statt Sechseck-Kanten.
+function chaikinOpenPts(points, iterations) {
+    let pts = points;
+    for (let it = 0; it < iterations; it++) {
+        const next = [pts[0]];
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[i], p1 = pts[i + 1];
+            next.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
+            next.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
+        }
+        next.push(pts[pts.length - 1]);
+        pts = next;
+    }
+    return pts;
+}
+function chaikinClosedPts(points, iterations) { // Fallback falls ein See ausnahmsweise keine Muendung haette
+    let pts = points;
+    for (let it = 0; it < iterations; it++) {
+        const next = [];
+        for (let i = 0; i < pts.length; i++) {
+            const p0 = pts[i], p1 = pts[(i + 1) % pts.length];
+            next.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
+            next.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
+        }
+        pts = next;
+    }
+    return pts;
+}
+function ptKey(p) { return `${Math.round(p.x * 10)},${Math.round(p.y * 10)}`; }
+function circularSlice(arr, startIdx, endIdx) {
+    const n = arr.length, res = [];
+    let i = startIdx;
+    while (true) { res.push(arr[i]); if (i === endIdx) break; i = (i + 1) % n; }
+    return res;
+}
+function drawLakeBlob(group, s) {
+    // Muendungs-Felder (eigene Fliessrichtung geht auf Land/Nicht-Fluss) werden NICHT zum runden
+    // Hauptkoerper des Sees gezaehlt, sondern als eigener, sich verjuengender Auslauf angesetzt -
+    // genau wie im ersten Mockup, das gut ankam. Wuerden sie zum Hauptkoerper gehoeren, ginge der
+    // Trichter nur ueber die halbe Breite EINES Feldes und wirkt dann eher wie eine Zange als wie
+    // ein richtiger, organisch auslaufender Fluss-Trichter.
+    let mouthKeys = [];
+    group.forEach(g => {
+        const hex = mapData.hexes[`${g.q},${g.r}`];
+        const d = hexDirections[hex.direction || 0];
+        const n = mapData.hexes[`${hex.q + d.q},${hex.r + d.r}`];
+        if (!n || n.terrain !== 'river') mouthKeys.push(`${g.q},${g.r}`);
+    });
+    let bodyKeys = group.map(g => `${g.q},${g.r}`).filter(k => !mouthKeys.includes(k));
+    if (bodyKeys.length === 0) { bodyKeys = group.map(g => `${g.q},${g.r}`); mouthKeys = []; } // Fallback: See besteht NUR aus Muendungen (jedes Feld fliesst direkt raus) -> kein separater Auslauf noetig
+    const bodySet = new Set(bodyKeys);
+
+    const boundaryEdges = [];
+    bodyKeys.forEach(k => {
+        const hex = mapData.hexes[k];
+        for (let i = 0; i < 6; i++) {
+            const d = hexDirections[i];
+            const nKey = `${hex.q + d.q},${hex.r + d.r}`;
+            if (bodySet.has(nKey)) continue; // innere Kante zwischen zwei Koerper-Feldern -> ueberspringen
+            const isNeck = mouthKeys.includes(nKey); // Kante zu einem angesetzten Muendungs-Feld
+            boundaryEdges.push({ p1: hexCornerWorld(hex, i, s), p2: hexCornerWorld(hex, (i + 1) % 6, s), isNeck, mouthHex: isNeck ? mapData.hexes[nKey] : null });
+        }
+    });
+    if (boundaryEdges.length === 0) return;
+
+    // Kanten zu einer geschlossenen Schleife verketten (Endpunkte matchen)
+    const used = new Array(boundaryEdges.length).fill(false);
+    const loopPts = [boundaryEdges[0].p1, boundaryEdges[0].p2];
+    const loopEdgeInfo = [boundaryEdges[0]];
+    used[0] = true;
+    let cur = boundaryEdges[0].p2;
+    for (let guard = 0; guard < boundaryEdges.length * 2; guard++) {
+        let found = -1;
+        for (let i = 0; i < boundaryEdges.length; i++) {
+            if (used[i]) continue;
+            if (ptKey(boundaryEdges[i].p1) === ptKey(cur)) { found = i; break; }
+        }
+        if (found === -1) break;
+        used[found] = true;
+        cur = boundaryEdges[found].p2;
+        loopPts.push(cur);
+        loopEdgeInfo.push(boundaryEdges[found]);
+        if (ptKey(cur) === ptKey(loopPts[0])) break;
+    }
+    loopPts.pop(); loopEdgeInfo.pop();
+    const n = loopPts.length;
+    if (n < 3) return;
+
+    const mouthIdxs = [];
+    loopEdgeInfo.forEach((e, i) => { if (e.isNeck) mouthIdxs.push(i); });
+
+    let full;
+    if (mouthIdxs.length === 0) {
+        full = chaikinClosedPts(loopPts, 3); // sollte durch die Kreislauf-Pruefung beim Platzieren nicht vorkommen
+    } else {
+        full = [];
+        for (let m = 0; m < mouthIdxs.length; m++) {
+            const edgeIdx = mouthIdxs[m];
+            const anchorA = loopPts[edgeIdx], anchorB = loopPts[(edgeIdx + 1) % n];
+            const mh = loopEdgeInfo[edgeIdx].mouthHex;
+            const mc = { x: (hexSize * 1.5 * mh.q) * camera.zoom + camera.x, y: (hexSize * Math.sqrt(3) * (mh.r + mh.q / 2)) * camera.zoom + camera.y };
+            const edgeMid = { x: (anchorA.x + anchorB.x) / 2, y: (anchorA.y + anchorB.y) / 2 };
+            const dirA = { x: anchorA.x - edgeMid.x, y: anchorA.y - edgeMid.y };
+            const dirB = { x: anchorB.x - edgeMid.x, y: anchorB.y - edgeMid.y };
+            const axisX = mc.x - edgeMid.x, axisY = mc.y - edgeMid.y;
+            // Der Trichter darf NICHT auf eine duenne Spitze zulaufen, bevor er die Muendungs-Grafik
+            // (die teal Kapsel mit Pfeilen/Spray, s.u. drawRiverConnections) erreicht - genau das sah
+            // wie eine Zange aus (duenner Steg, der in einen separaten Klecks muendet). Stattdessen
+            // verjuengt sich die Breite nur bis auf die Breite der Kapsel selbst (CAPSULE_FRAC, an der
+            // Muendungsfeld-Mitte) und reicht dann noch ein Stueck darueber hinaus (STRETCH) - dort
+            // liegt spaeter die Kapsel-Grafik sauber (deckend) drueber, es entsteht kein sichtbarer Spalt.
+            const STRETCH = 1.1;
+            const CAPSULE_FRAC = 0.62; // ~ Kapsel-Breite (s*0.58) relativ zur Seeufer-Breite (halfW = s*0.5)
+            const steps = 12;
+            const rightPts = [], leftPts = [];
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps; // 0 = Seeufer-Kante, 1 = Muendungsfeld-Mitte (STRETCH reicht noch etwas weiter)
+                const width = CAPSULE_FRAC + (1 - CAPSULE_FRAC) * Math.pow(1 - t, 1.6);
+                const px = edgeMid.x + axisX * STRETCH * t, py = edgeMid.y + axisY * STRETCH * t;
+                rightPts.push({ x: px + dirA.x * width, y: py + dirA.y * width });
+                leftPts.push({ x: px + dirB.x * width, y: py + dirB.y * width });
+            }
+            const spoutSmooth = [...rightPts, ...leftPts.slice().reverse()];
+            full.push(...(m === 0 ? spoutSmooth : spoutSmooth.slice(1)));
+
+            const nextEdgeIdx = mouthIdxs[(m + 1) % mouthIdxs.length];
+            const shoreStart = (edgeIdx + 1) % n, shoreEnd = nextEdgeIdx;
+            const shoreChain = circularSlice(loopPts, shoreStart, shoreEnd);
+            const shoreSmooth = mouthIdxs.length > 1 || shoreStart !== shoreEnd ? chaikinOpenPts(shoreChain, 3) : shoreChain;
+            full.push(...shoreSmooth.slice(1));
+        }
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    full.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+    const bounds = full.reduce((b, p) => ({ minX: Math.min(b.minX, p.x), minY: Math.min(b.minY, p.y), maxX: Math.max(b.maxX, p.x), maxY: Math.max(b.maxY, p.y) }), { minX: 1e9, minY: 1e9, maxX: -1e9, maxY: -1e9 });
+    const grad = ctx.createLinearGradient(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+    grad.addColorStop(0, '#6cc7f0'); grad.addColorStop(0.55, '#3f96d6'); grad.addColorStop(1, '#276fa8');
+    ctx.fillStyle = grad; ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2.2;
+    for (let row = bounds.minY - 10; row < bounds.maxY + 10; row += 16) {
+        ctx.beginPath();
+        for (let x = bounds.minX - 10; x <= bounds.maxX + 10; x += 6) {
+            const y = row + Math.sin((x + row) / 14) * 4;
+            x === bounds.minX - 10 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+    const shimmer = ctx.createLinearGradient(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+    shimmer.addColorStop(0, 'rgba(255,255,255,0)'); shimmer.addColorStop(0.5, 'rgba(255,255,255,0.5)'); shimmer.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = shimmer; ctx.fillRect(bounds.minX, bounds.minY, bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();
+    full.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+}
+
+// Dezenter Stroemungspfeil auf einem See-Innenfeld: zeigt schon VOR dem Reinschwimmen, wohin dieses
+// Feld die Stroemung zieht - bei mehreren Muendungen kann man so gezielt an einer bestimmten Stelle
+// in den See, um an einer bestimmten Muendung rauszukommen. Muendungs-Felder brauchen das nicht extra
+// (die haben durch den Sprueh-Effekt schon eine sichtbare Richtung).
+function drawLakeCurrentArrow(hex, s) {
+    const cx = (hexSize * 1.5 * hex.q) * camera.zoom + camera.x, cy = (hexSize * Math.sqrt(3) * (hex.r + hex.q / 2)) * camera.zoom + camera.y;
+    const d = hexDirections[hex.direction || 0];
+    const ang = Math.atan2(hexSize * Math.sqrt(3) * (d.r + d.q / 2), hexSize * 1.5 * d.q);
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(ang);
+    ctx.globalAlpha = 0.75;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.shadowColor = 'rgba(20,60,90,0.8)'; ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.22, -s * 0.24);
+    ctx.lineTo(s * 0.3, 0);
+    ctx.lineTo(-s * 0.22, s * 0.24);
+    ctx.lineTo(-s * 0.08, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
 }
 
 function render() {
@@ -1749,33 +3130,109 @@ function render() {
         if (!hex.sprite) bakeHex(hex);
         ctx.drawImage(hex.sprite, x - destSize/2, y - destSize/2, destSize, destSize);
     });
+    // Pass 1.5: Seen (3+ zusammenhaengende Flussfelder) als verschmolzene Flaeche obendrauf -
+    // muss vor Pass 2 kommen, damit einzelne Fluss-/Muendungs-Baender (fuer Muendungs-Felder und
+    // fuer von aussen hineinfliessende Fluss-Ketten) danach noch sauber darueber gezeichnet werden.
+    const { groups: lakeGroups, groupIndexByKey: lakeIndexByKey } = getLakeGroups();
+    lakeGroups.forEach(group => drawLakeBlob(group, s));
+    const lakeGroupSets = lakeGroups.map(g => new Set(g.map(h => `${h.q},${h.r}`)));
     // Pass 2: Fluss- und Straßen-Verbindungen (inkl. Mündungen) obendrauf, damit sie nie
     // von einem Nachbarfeld überdeckt werden.
     Object.values(mapData.hexes).forEach(hex => {
         if (hex.terrain !== 'river' && hex.terrain !== 'road') return;
         const x = (hexSize*1.5*hex.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(hex.r+hex.q/2))*camera.zoom+camera.y;
-        if (hex.terrain === 'river') drawRiverConnections(ctx, hex, x, y, s);
+        if (hex.terrain === 'river') {
+            const lakeIdx = lakeIndexByKey.get(`${hex.q},${hex.r}`);
+            if (lakeIdx !== undefined) {
+                // Teil eines Sees: nur das Muendungs-Feld (eigene Fliessrichtung geht auf Land/Nicht-Fluss)
+                // bekommt noch den bekannten Fluss-/Spray-Effekt obendrauf - die reine Innenflaeche wird
+                // schon komplett vom See-Blob getragen, keine einzelnen Flussbaender mehr noetig.
+                const outDir = hex.direction || 0;
+                const outN = mapData.hexes[`${hex.q + hexDirections[outDir].q},${hex.r + hexDirections[outDir].r}`];
+                if (!outN || outN.terrain !== 'river') drawRiverConnections(ctx, hex, x, y, s, lakeGroupSets[lakeIdx]);
+                else drawLakeCurrentArrow(hex, s); // Innenfeld: dezenter Pfeil statt vollem Flussband
+            } else {
+                drawRiverConnections(ctx, hex, x, y, s);
+            }
+        }
         else if (hex.terrain === 'road') drawRoadConnections(ctx, hex, x, y, s);
     });
+}
+// Ermittelt, welche Felder JETZT anklickbar sind, damit das Spielfeld sie farbig markieren kann -
+// getrennt in "select" (etwas anklicken/auswaehlen, z.B. eigene Figur) und "go" (Zielfeld danach,
+// z.B. wohin bewegen/platzieren). Deckt alle Spielzustaende ab, die einen Hex-Klick erwarten;
+// wenn gerade niemand lokal am Zug ist (KI/Online-Gegner), wird nichts markiert.
+function computeHighlightTargets() {
+    const none = { select: [], go: [] };
+    const p = players[currentPlayerIdx];
+    if (!p || !isControllable()) return none;
+    const isOccupied = (q, r) => players.some(pl => pl.units.some(u => u.q === q && u.r === r));
+    switch (gameState) {
+        case 'PLACING':
+            return { select: [], go: Object.values(mapData.hexes).filter(h => h.terrain === 'swamp' && !isOccupied(h.q, h.r)) };
+        case 'MOVING': {
+            if (!selectedUnit) return { select: p.units.map(u => ({ q: u.q, r: u.r })), go: [] };
+            const fromHex = mapData.hexes[`${selectedUnit.q},${selectedUnit.r}`];
+            const hasHook = p.inventory.some(c => c.type === 'tool_hook');
+            const go = hexDirections.map(d => mapData.hexes[`${selectedUnit.q + d.q},${selectedUnit.r + d.r}`])
+                .filter(h => h && !['void', 'water'].includes(h.terrain))
+                .filter(h => h.terrain !== 'mountains' || (fromHex && fromHex.terrain === 'mountains') || hasHook)
+                .map(h => ({ q: h.q, r: h.r }));
+            return { select: [{ q: selectedUnit.q, r: selectedUnit.r }], go };
+        }
+        case 'PLACING_TERRAIN':
+            if (!currentCard) return none;
+            return { select: [], go: Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void'].includes(h.terrain)) };
+        case 'SELECT_SKIP':
+        case 'SELECT_PUSH_TARGET_1':
+        case 'SELECT_PUSH_TARGET_2':
+            return { select: players.filter(pl => pl.id !== p.id).flatMap(pl => pl.units.map(u => ({ q: u.q, r: u.r }))), go: [] };
+        case 'SELECT_TELEPORT_UNIT':
+            return { select: p.units.map(u => ({ q: u.q, r: u.r })), go: [] };
+        case 'SELECT_TELEPORT_TARGET':
+            return { select: [], go: mapData.landmarks.filter(l => l.looted).map(l => ({ q: l.q, r: l.r })) };
+        case 'SELECT_PUSH_DESTINATION': {
+            if (!currentPushUnit) return none;
+            const go = hexDirections.map(d => mapData.hexes[`${currentPushUnit.q + d.q},${currentPushUnit.r + d.r}`])
+                .filter(h => h && !['mountains', 'void', 'water'].includes(h.terrain))
+                .map(h => ({ q: h.q, r: h.r }));
+            return { select: [{ q: currentPushUnit.q, r: currentPushUnit.r }], go };
+        }
+        case 'BOAT_LANDING':
+            return { select: [], go: boatLandingTargets };
+        case 'RIVER_ESCAPE':
+        case 'RIVER_ESCAPE_PUSH':
+            return { select: [], go: riverEscapeHexes };
+        default:
+            return none;
+    }
 }
 function renderFX() {
     fctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
     const s = hexSize * camera.zoom, now = performance.now()/1000;
+    const phase = Math.sin(now*3)*0.5+0.5;
+    const hl = computeHighlightTargets();
 
-    let targets = [];
-    if (gameState === "BOAT_LANDING") targets = boatLandingTargets;
-    else if (gameState === "RIVER_ESCAPE" || gameState === "RIVER_ESCAPE_PUSH") targets = riverEscapeHexes;
-    if (targets.length) {
-        const phase = Math.sin(now*3)*0.5+0.5;
-        targets.forEach(t => {
-            const x = (hexSize*1.5*t.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(t.r+t.q/2))*camera.zoom+camera.y;
-            fctx.save();
-            fctx.shadowColor = `rgba(241,196,15,${0.55+phase*0.45})`; fctx.shadowBlur = 8+phase*12;
-            fctx.beginPath(); for (let i=6; i--;) fctx.lineTo(x+(s*0.95)*Math.cos(Math.PI/3*i), y+(s*0.95)*Math.sin(Math.PI/3*i)); fctx.closePath();
-            fctx.strokeStyle = `rgba(241,196,15,${0.75+phase*0.25})`; fctx.lineWidth = 3; fctx.stroke();
-            fctx.restore();
-        });
-    }
+    // "go"-Ziele (wohin bewegen/platzieren/werfen) - goldener Hex-Rahmen.
+    hl.go.forEach(t => {
+        const x = (hexSize*1.5*t.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(t.r+t.q/2))*camera.zoom+camera.y;
+        fctx.save();
+        fctx.shadowColor = `rgba(241,196,15,${0.55+phase*0.45})`; fctx.shadowBlur = 8+phase*12;
+        fctx.beginPath(); for (let i=6; i--;) fctx.lineTo(x+(s*0.95)*Math.cos(Math.PI/3*i), y+(s*0.95)*Math.sin(Math.PI/3*i)); fctx.closePath();
+        fctx.strokeStyle = `rgba(241,196,15,${0.75+phase*0.25})`; fctx.lineWidth = 3; fctx.stroke();
+        fctx.restore();
+    });
+    // "select"-Ziele (was man zuerst anklicken kann, z.B. eigene Figur) - hellblauer gestrichelter
+    // Ring, bewusst anders als das Gold der Zielfelder, damit man beide Schritte auseinanderhaelt.
+    hl.select.forEach(t => {
+        const x = (hexSize*1.5*t.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(t.r+t.q/2))*camera.zoom+camera.y;
+        fctx.save();
+        fctx.shadowColor = `rgba(93,173,226,${0.5+phase*0.4})`; fctx.shadowBlur = 6+phase*10;
+        fctx.setLineDash([4, 4]);
+        fctx.beginPath(); fctx.arc(x, y, s*0.92, 0, Math.PI*2);
+        fctx.strokeStyle = `rgba(93,173,226,${0.7+phase*0.3})`; fctx.lineWidth = 3; fctx.stroke();
+        fctx.restore();
+    });
 
     mapData.landmarks.forEach(lm => {
         const hexHere = mapData.hexes[`${lm.q},${lm.r}`];
@@ -1801,7 +3258,7 @@ function renderFX() {
 function fxLoop() { renderFX(); requestAnimationFrame(fxLoop); }
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; fxCanvas.width = window.innerWidth; fxCanvas.height = window.innerHeight; render(); }
 window.addEventListener('resize', resizeCanvas);
-resizeCanvas(); updateDefaultSettings(); requestAnimationFrame(fxLoop);
+resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); requestAnimationFrame(fxLoop);
 </script>
 </body>
 </html>
