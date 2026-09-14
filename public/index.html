@@ -603,6 +603,12 @@ let mapData = { hexes: {}, landmarks: [] };
 // dem fxCanvas ueber dem Badge abgefeuert werden - siehe triggerLootBurst()/drawLootBurst().
 let activeBursts = [];
 const LOOT_BURST_DURATION = 0.85;
+// Gestaffelte Meteor-Einschlaege beim Ring-Kollaps (siehe triggerKollaps()/drawMeteorImpact()) -
+// jedes betroffene Feld bekommt einen eigenen, leicht zufaelligen Einschlagszeitpunkt statt dass
+// alle Felder synchron auf einmal zu void werden.
+let pendingMeteors = [];
+const METEOR_DURATION = 0.9;      // Gesamtdauer EINES Einschlags (Anflug+Blitz+Rauch)
+const METEOR_IMPACT_FRACTION = 0.42; // Anteil der Dauer bis zum eigentlichen Einschlagsmoment (Anflugende)
 let hexSize = 40, camera = { x: 0, y: 0, zoom: 0.8 }, iconCache = {};
 let players = [], currentPlayerIdx = 0, gameState = "SETUP";
 let drawPoints = 2, actionPoints = 2, collectedArtifacts = 0;
@@ -1110,6 +1116,79 @@ function drawLootBurst(fctx, cx, cy, s, t) {
         fctx.fillStyle = `rgba(255,235,180,${sparkAlpha})`;
         fctx.beginPath(); fctx.arc(sx, sy, Math.max(0.4, size), 0, 7); fctx.fill();
         fctx.restore();
+    }
+}
+
+// Zeichnet einen einzelnen Meteor-Einschlag: Anflug (gluehender Punkt + Schweif von schraeg oben),
+// dann Einschlagsblitz + russige Schockwelle + Truemmer/Glut die rausspritzen und nach unten sacken,
+// zum Schluss etwas aufsteigender Rauch. lt = lokale Zeit 0..1 relativ zum EIGENEN Einschlag dieses
+// Feldes (0 = Anflug beginnt, 1 = komplett verklungen). Gleiche Technik wie drawLootBurst, nur
+// gewaltsamer/russiger statt golden, weil hier ein Feld dauerhaft zerstoert wird statt nur belohnt.
+function drawMeteorImpact(fctx, cx, cy, s, lt) {
+    const IN_END = METEOR_IMPACT_FRACTION;
+    if (lt < IN_END) {
+        const p = lt / IN_END;
+        const startX = cx + s * 2.2, startY = cy - s * 2.6;
+        const mx = startX + (cx - startX) * p, my = startY + (cy - startY) * p;
+        fctx.save();
+        const tailLen = 5;
+        for (let k = 0; k < tailLen; k++) {
+            const tp = Math.max(0, p - k * 0.05);
+            const tx = startX + (cx - startX) * tp, ty = startY + (cy - startY) * tp;
+            const a = (1 - k / tailLen) * 0.7 * (0.4 + p * 0.6);
+            fctx.fillStyle = `rgba(255,${140 - k * 12},60,${a})`;
+            fctx.beginPath(); fctx.arc(tx, ty, s * 0.1 * (1 - k / tailLen), 0, 7); fctx.fill();
+        }
+        fctx.shadowColor = 'rgba(255,200,80,0.9)'; fctx.shadowBlur = 14;
+        fctx.fillStyle = '#fff6d8';
+        fctx.beginPath(); fctx.arc(mx, my, s * 0.11, 0, 7); fctx.fill();
+        fctx.restore();
+        return;
+    }
+    const t2 = (lt - IN_END) / (1 - IN_END);
+    const easeOut = 1 - Math.pow(1 - t2, 3);
+    const flashAlpha = Math.max(0, 1 - t2 * 5);
+    if (flashAlpha > 0) {
+        const g = fctx.createRadialGradient(cx, cy, 0, cx, cy, s * 1.3);
+        g.addColorStop(0, `rgba(255,245,220,${flashAlpha})`);
+        g.addColorStop(0.4, `rgba(255,140,40,${flashAlpha * 0.75})`);
+        g.addColorStop(1, 'rgba(255,90,20,0)');
+        fctx.fillStyle = g; fctx.beginPath(); fctx.arc(cx, cy, s * 1.3, 0, 7); fctx.fill();
+    }
+    const ringR = s * (0.35 + easeOut * 1.5);
+    const ringAlpha = Math.max(0, 1 - easeOut * 1.1);
+    if (ringAlpha > 0) {
+        fctx.save();
+        fctx.strokeStyle = `rgba(90,60,40,${ringAlpha * 0.85})`; fctx.lineWidth = 5 * (1 - easeOut * 0.7);
+        fctx.shadowColor = 'rgba(255,120,30,0.6)'; fctx.shadowBlur = 8;
+        fctx.beginPath(); fctx.arc(cx, cy, ringR, 0, 7); fctx.stroke();
+        fctx.restore();
+    }
+    const debrisCount = 10;
+    for (let i = 0; i < debrisCount; i++) {
+        const ang = (i / debrisCount) * Math.PI * 2 + i * 0.37;
+        const outDist = s * (0.2 + Math.min(1, t2 * 2.2) * 1.3);
+        const fall = Math.pow(Math.min(1, t2 * 1.6), 2) * s * 0.6;
+        const dx = cx + Math.cos(ang) * outDist, dy = cy + Math.sin(ang) * outDist * 0.6 - (1 - t2) * s * 0.25 + fall;
+        const a = Math.max(0, (1 - t2) * (0.7 + 0.3 * Math.sin(i * 3.3)));
+        if (a <= 0) continue;
+        const isEmber = i % 3 === 0;
+        fctx.save();
+        if (isEmber) { fctx.shadowColor = 'rgba(255,140,40,0.9)'; fctx.shadowBlur = 6; fctx.fillStyle = `rgba(255,170,70,${a})`; }
+        else { fctx.fillStyle = `rgba(70,55,45,${a})`; }
+        fctx.beginPath(); fctx.arc(dx, dy, s * (isEmber ? 0.055 : 0.075), 0, 7); fctx.fill();
+        fctx.restore();
+    }
+    if (t2 > 0.25) {
+        const st = (t2 - 0.25) / 0.75;
+        for (let i = 0; i < 4; i++) {
+            const sx = cx + (i - 1.5) * s * 0.22;
+            const sy = cy - st * s * 1.1 - i * 4;
+            const a = Math.max(0, (1 - st) * 0.35);
+            if (a <= 0) continue;
+            fctx.fillStyle = `rgba(60,55,52,${a})`;
+            fctx.beginPath(); fctx.arc(sx, sy, s * (0.14 + st * 0.12), 0, 7); fctx.fill();
+        }
     }
 }
 
@@ -2248,14 +2327,23 @@ function updateApoUI() {
 
 function triggerKollaps(baseTerrains, key) {
     closedRings[key] = true;
-    Object.values(mapData.hexes).forEach(hex => {
-        if (baseTerrains.includes(hex.baseTerrain) && hex.baseTerrain !== 'water' && hex.baseTerrain !== 'tundra') {
-            hex.terrain = 'void'; players.forEach(p => p.units = p.units.filter(u => !(u.q === hex.q && u.r === hex.r)));
-        }
+    const hexesToCollapse = Object.values(mapData.hexes).filter(hex =>
+        baseTerrains.includes(hex.baseTerrain) && hex.baseTerrain !== 'water' && hex.baseTerrain !== 'tundra');
+    // Das eigentliche Spielgeschehen (Ring geschlossen, Einheiten dort entfernt, Sieg-Check) passiert
+    // weiterhin sofort und synchron - nur die SICHTBARE Verwandlung der Felder zu void wird ab jetzt
+    // ueber gestaffelte Meteor-Einschlaege animiert (siehe pendingMeteors/renderFX/drawMeteorImpact),
+    // damit nicht mehr alle betroffenen Felder auf einen Schlag lautlos verschwinden.
+    hexesToCollapse.forEach(hex => {
+        players.forEach(p => p.units = p.units.filter(u => !(u.q === hex.q && u.r === hex.r)));
     });
-    render(); updateApoUI();
+    const now = performance.now() / 1000;
+    hexesToCollapse.forEach((hex, i) => {
+        const delay = i * 0.14 + Math.random() * 0.12;
+        pendingMeteors.push({ q: hex.q, r: hex.r, impactAt: now + delay, voided: false });
+    });
+    updateApoUI();
     const activePlayers = players.filter(p => p.units.length > 0);
-    if (activePlayers.length === 1 && players.length > 1) { 
+    if (activePlayers.length === 1 && players.length > 1) {
         triggerVictory(activePlayers[0], "Einziger Überlebender!");
     }
 }
@@ -3457,6 +3545,26 @@ function renderFX() {
             const x = (hexSize*1.5*b.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(b.r+b.q/2))*camera.zoom+camera.y;
             const t = Math.min(1, (now - b.start) / LOOT_BURST_DURATION);
             drawLootBurst(fctx, x, y, s, t);
+        });
+    }
+
+    // Gestaffelte Meteor-Einschlaege beim Ring-Kollaps: genau im Einschlagsmoment wird das jeweilige
+    // Feld auf void umgestellt und einmal neu gebacken/gerendert (siehe triggerKollaps()) - danach
+    // laeuft der Effekt (Rauch/Glut) noch kurz auf dem fxCanvas weiter aus, bevor er entfernt wird.
+    if (pendingMeteors.length > 0) {
+        pendingMeteors.forEach(m => {
+            if (!m.voided && (now - m.impactAt) / METEOR_DURATION >= METEOR_IMPACT_FRACTION) {
+                const hex = mapData.hexes[`${m.q},${m.r}`];
+                if (hex && hex.terrain !== 'void') { hex.terrain = 'void'; bakeHex(hex); render(); }
+                m.voided = true;
+            }
+        });
+        pendingMeteors = pendingMeteors.filter(m => (now - m.impactAt) / METEOR_DURATION < 1);
+        pendingMeteors.forEach(m => {
+            const lt = (now - m.impactAt) / METEOR_DURATION;
+            if (lt < 0) return; // noch nicht dran (naechster in der Kaskade)
+            const x = (hexSize*1.5*m.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(m.r+m.q/2))*camera.zoom+camera.y;
+            drawMeteorImpact(fctx, x, y, s, lt);
         });
     }
 
