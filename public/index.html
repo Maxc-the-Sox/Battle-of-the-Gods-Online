@@ -1896,10 +1896,18 @@ function findUnitAt(q, r) {
     return null;
 }
 
+// Fortlaufende Versionsnummer fuer jeden gesendeten/empfangenen Spielzustand (siehe applyRemoteState()
+// weiter unten). Schutz gegen jede Art von "alter Zustand ueberschreibt neueren Zustand" - z.B. falls
+// eine Nachricht durch eine Server-/Verbindungs-Eigenart verzoegert ankommt, oder ein Client sich kurz
+// neu verbindet und dabei den letzten (moeglicherweise nicht mehr ganz aktuellen) Serverzustand
+// bekommt. Wird bei jedem Senden erhoeht UND beim Empfangen auf den empfangenen Wert gesetzt, damit
+// der Zaehler bei einem Wechsel des aktiven Spielers nahtlos weiterlaeuft statt bei 0 neu anzufangen.
+let stateSeq = 0;
 function serializeState() {
     const hexes = {};
     Object.entries(mapData.hexes).forEach(([k, h]) => { hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction }; });
     return {
+        stateSeq: ++stateSeq,
         hexes,
         landmarks: mapData.landmarks.map(l => ({ ...l })),
         players: players.map(p => ({
@@ -1938,6 +1946,14 @@ function sendStateUpdate() {
 }
 
 function applyRemoteState(state) {
+    // Veraltete/verspaetete Zustaende ignorieren (siehe stateSeq-Kommentar oben) - sonst koennte z.B.
+    // ein Zustand von VOR einer gerade erst platzierten Landschaftskarte diese Platzierung wieder
+    // rueckgaengig machen, nur weil er zufaellig etwas spaeter als der eigentlich neuere ankommt.
+    if (typeof state.stateSeq === 'number' && state.stateSeq <= stateSeq) {
+        console.warn(`Veralteten Spielzustand ignoriert (${state.stateSeq} <= ${stateSeq}) - wurde NICHT angewendet.`);
+        return;
+    }
+    if (typeof state.stateSeq === 'number') stateSeq = state.stateSeq;
     net.applyingRemote = true;
     mapData.hexes = {};
     Object.entries(state.hexes).forEach(([k, h]) => { mapData.hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction, sprite: null }; });
@@ -2496,6 +2512,8 @@ function updateApoUI() {
     document.getElementById('apo-next-trigger').innerText = nextT;
 }
 
+// Lesbare Namen fuer die Verlauf-/Toast-Meldung beim Ring-Kollaps (siehe RING_KOLLAPS_MELDUNG weiter unten).
+const RING_LABELS = { outer: 'Außenring', middle: 'Mittelring', inner: 'Innenring' };
 function triggerKollaps(baseTerrains, key) {
     closedRings[key] = true;
     const hexesToCollapse = Object.values(mapData.hexes).filter(hex =>
@@ -2507,6 +2525,15 @@ function triggerKollaps(baseTerrains, key) {
     hexesToCollapse.forEach(hex => {
         players.forEach(p => p.units = p.units.filter(u => !(u.q === hex.q && u.r === hex.r)));
     });
+    // WICHTIG (Bugfix): ohne diese Meldung gab es ausser Sound+Animation keinerlei Hinweis, DASS und
+    // WARUM gerade Felder verschwinden - das gilt auch fuer eigens draufgesetzte Landschaftskarten
+    // (Wald/Berg/Strasse/Fluss), die zerstoert werden, weil sie auf urspruenglichem Wuesten-/Sumpf-/
+    // etc.-Gelaende stehen (siehe applyTerrain()-Kommentar: baseTerrain bleibt immer das Original-
+    // Gelaende, unabhaengig davon, was der Spieler spaeter draufbaut). Die Meldung landet auch im
+    // Verlauf (siehe showNotification() -> addLogEntry()), ist also auch online fuer alle nachlesbar.
+    if (hexesToCollapse.length > 0) {
+        showNotification(`💥 ${RING_LABELS[key] || key} kollabiert! ${hexesToCollapse.length} Feld(er) wurden zerstört (auch bereits bebaute).`);
+    }
     if (hexesToCollapse.length > 0) playSoundMeteor(); // einmal pro Kollaps, nicht pro Einzel-Einschlag (sonst Laermteppich)
     const now = performance.now() / 1000;
     // Alle Einschlaege eines Kollaps starten zufaellig irgendwann INNERHALB desselben, gedeckelten
