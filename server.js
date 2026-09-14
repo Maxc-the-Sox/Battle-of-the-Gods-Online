@@ -112,6 +112,11 @@ function sanitizeName(name) {
     return trimmed || 'Spieler';
 }
 
+function sanitizeChatText(text) {
+    if (typeof text !== 'string') return '';
+    return text.trim().slice(0, 300);
+}
+
 function sanitizeColor(color) {
     if (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) return color;
     return '#d4af37';
@@ -177,6 +182,21 @@ wss.on('connection', ws => {
             if (!ws.clientId || !room.members.has(ws.clientId)) return;
             room.latestState = msg.state;
             const payload = JSON.stringify({ type: 'state', state: msg.state });
+            room.members.forEach((m, clientId) => { if (clientId !== ws.clientId) safeSend(m.ws, payload); });
+            return;
+        }
+
+        if (msg.type === 'chat') {
+            const code = ws.roomCode;
+            if (!code || !rooms.has(code)) return;
+            const room = rooms.get(code);
+            const member = room.members.get(ws.clientId);
+            if (!member) return; // nicht (mehr) im Raum - Nachricht verwerfen
+            const text = sanitizeChatText(msg.text);
+            if (!text) return;
+            // Name/Farbe kommen bewusst vom Server (aus der Mitgliederliste), nicht vom Client -
+            // so kann sich niemand als jemand anderes ausgeben.
+            const payload = JSON.stringify({ type: 'chat', clientId: ws.clientId, name: member.name, color: member.color, text });
             room.members.forEach((m, clientId) => { if (clientId !== ws.clientId) safeSend(m.ws, payload); });
             return;
         }
