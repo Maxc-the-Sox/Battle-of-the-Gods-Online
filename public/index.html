@@ -2885,17 +2885,38 @@ function updateUI() {
 // Sees per eigener Fliessrichtung an Land grenzt (= "Muendung", ergibt sich automatisch aus den
 // beim Platzieren gewaehlten Fluss-Richtungen), verjuengt sich das Ufer dort trichterfoermig und
 // geht in den bekannten Fluss-Spray-Effekt ueber, statt einfach nur aufzuhoeren.
+// WICHTIG: hier zaehlt NUR die tatsaechliche Fliessrichtung (wer fliesst wohin), nicht die reine
+// geometrische Naehe der Felder. Bei einem scharfen (120 Grad) Fluss-Knick beruehren sich die 3
+// beteiligten Felder im Hex-Raster naemlich automatisch gegenseitig - das sieht geometrisch wie
+// ein "Dreiecks-Cluster" aus, ist aber trotzdem nur eine ganz normale Fluss-Kurve. Deshalb reicht
+// reine Nachbarschaft nicht als Kriterium. Ein See entsteht erst an einem ECHTEN Zusammenfluss:
+// einem Feld, in das 2 oder mehr andere Fluss-Felder derselben Gruppe tatsaechlich hineinfliessen
+// (ihre eigene, beim Platzieren gewaehlte Fliessrichtung zeigt auf genau dieses Feld). Eine
+// einfache Kette - und sei sie noch so lang oder kurvig - hat pro Feld immer nur einen einzigen
+// Zufluss und wird dadurch nie zum See.
+function isLakeShape(group) {
+    if (group.length < 3) return false;
+    const set = new Set(group.map(g => `${g.q},${g.r}`));
+    const inflowCount = new Map();
+    group.forEach(g => {
+        const hex = mapData.hexes[`${g.q},${g.r}`];
+        const d = hexDirections[hex.direction || 0];
+        const targetKey = `${hex.q + d.q},${hex.r + d.r}`;
+        if (set.has(targetKey)) inflowCount.set(targetKey, (inflowCount.get(targetKey) || 0) + 1);
+    });
+    return Array.from(inflowCount.values()).some(v => v >= 2);
+}
 function getLakeGroups() {
     const processed = new Set();
     const groups = [];
-    const groupIndexByKey = new Map(); // "q,r" -> Index in groups[], nur fuer Felder DIE zu einem See gehoeren (>=3)
+    const groupIndexByKey = new Map(); // "q,r" -> Index in groups[], nur fuer Felder DIE zu einem See gehoeren
     Object.values(mapData.hexes).forEach(hex => {
         if (hex.terrain !== 'river') return;
         const key = `${hex.q},${hex.r}`;
         if (processed.has(key)) return;
         const group = getConnectedRivers(hex.q, hex.r);
         group.forEach(g => processed.add(`${g.q},${g.r}`));
-        if (group.length >= 3) {
+        if (isLakeShape(group)) {
             const idx = groups.length;
             groups.push(group);
             group.forEach(g => groupIndexByKey.set(`${g.q},${g.r}`, idx));
