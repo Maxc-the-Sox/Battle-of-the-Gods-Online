@@ -298,6 +298,13 @@
             transition: transform 0.15s;
         }
         #feedback-fab:hover { transform: scale(1.08); }
+        #sound-toggle-fab {
+            position: fixed; top: 20px; right: 72px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 1.15em;
+            color: var(--gold-light); background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
+            cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5); transition: transform 0.15s;
+        }
+        #sound-toggle-fab:hover { transform: scale(1.08); }
         #feedback-overlay {
             position: fixed; inset: 0; z-index: 3002; display: flex; align-items: center; justify-content: center;
             background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
@@ -454,6 +461,7 @@
 </div>
 
 <div id="help-fab" class="hidden" onclick="openTutorial()" title="Anleitung">?</div>
+<div id="sound-toggle-fab" onclick="toggleSoundMute()" title="Sound an/aus">🔊</div>
 <div id="feedback-fab" onclick="openFeedback()" title="Feedback / Bug melden">🐞</div>
 <div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
 
@@ -1898,6 +1906,7 @@ function applyRemoteState(state) {
         const winner = players.find(p => p.id === lastVictoryInfo.id);
         if (winner) showVictoryUI(winner, lastVictoryInfo.reason);
     }
+    checkMyTurnNotification();
     net.applyingRemote = false;
 }
 
@@ -2426,6 +2435,7 @@ function triggerKollaps(baseTerrains, key) {
     hexesToCollapse.forEach(hex => {
         players.forEach(p => p.units = p.units.filter(u => !(u.q === hex.q && u.r === hex.r)));
     });
+    if (hexesToCollapse.length > 0) playSoundMeteor(); // einmal pro Kollaps, nicht pro Einzel-Einschlag (sonst Laermteppich)
     const now = performance.now() / 1000;
     // Alle Einschlaege eines Kollaps starten zufaellig irgendwann INNERHALB desselben, gedeckelten
     // Zeitfensters (statt jedes Feld einzeln um einen festen Betrag zu verzoegern) - ein Ring mit
@@ -2471,6 +2481,7 @@ function handleChoice(choice) {
 }
 
 function prepareDraw(type) {
+    playSoundClick();
     if (type === 'LANDSCAPE') {
         currentCard = [{name:"Berg",type:"mountains",icon:"⛰️"},{name:"Wald",type:"forest",icon:"🌲"},{name:"Fluss",type:"river",icon:"🌊"},{name:"Straße",type:"road",icon:"🛤️"}][Math.floor(Math.random()*4)];
         currentCard.deck = "LANDSCAPE";
@@ -2570,6 +2581,7 @@ function resolveTornado() {
 }
 
 function rollDice() {
+    playSoundDice();
     const diceDisplay = document.getElementById('dice-display'); diceDisplay.classList.add('rolling');
     setTimeout(() => {
         diceValue = [3, 2, 2, 1, 1, 1][Math.floor(Math.random() * 6)]; placementsRemaining = diceValue;
@@ -2996,6 +3008,144 @@ function submitFeedback() {
         btn.disabled = false;
     });
 }
+
+// =====================================================================
+// SOUND-EFFEKTE - alle Toene werden per Web Audio API direkt im Code
+// erzeugt (keine Audiodateien noetig, bleibt eine einzige HTML-Datei).
+// "ctx"/"fctx" sind schon die 2D-Canvas-Kontexte des Spiels - deshalb hier
+// bewusst "sndCtx"/"audioCtx()" als eigene Namen, um keine Kollision zu riskieren.
+// =====================================================================
+let soundMuted = false;
+try { soundMuted = localStorage.getItem('botg_sound_muted') === '1'; } catch (e) {}
+let sndCtx = null;
+function audioCtx() { if (!sndCtx) sndCtx = new (window.AudioContext || window.webkitAudioContext)(); return sndCtx; }
+
+function sndNoiseBuffer(c, duration) {
+    const n = Math.floor(c.sampleRate * duration);
+    const buf = c.createBuffer(1, n, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+}
+function sndNoiseBurst(c, { duration = 0.05, filterFreq = 1200, filterType = 'bandpass', filterQ = 1, gain = 0.3, startTime = 0, attack = 0.002 } = {}) {
+    const src = c.createBufferSource();
+    src.buffer = sndNoiseBuffer(c, duration);
+    const filt = c.createBiquadFilter();
+    filt.type = filterType; filt.frequency.value = filterFreq; filt.Q.value = filterQ;
+    const g = c.createGain();
+    const t0 = c.currentTime + startTime;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+    src.connect(filt); filt.connect(g); g.connect(c.destination);
+    src.start(t0); src.stop(t0 + duration + 0.02);
+}
+function sndTone(c, { freq = 440, freqEnd = null, type = 'sine', duration = 0.3, gain = 0.25, startTime = 0, attack = 0.005 } = {}) {
+    const osc = c.createOscillator();
+    osc.type = type;
+    const t0 = c.currentTime + startTime;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (freqEnd !== null) osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd, 1), t0 + duration);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+    osc.connect(g); g.connect(c.destination);
+    osc.start(t0); osc.stop(t0 + duration + 0.02);
+}
+
+function playSoundDice() {
+    if (soundMuted) return;
+    try {
+        const c = audioCtx(); let t = 0;
+        for (let i = 0; i < 7; i++) {
+            sndNoiseBurst(c, { duration: 0.025, filterFreq: 900 + Math.random() * 900, filterType: 'bandpass', filterQ: 3, gain: 0.22, startTime: t });
+            t += 0.045 + Math.random() * 0.035;
+        }
+    } catch (e) {}
+}
+function playSoundLoot() {
+    if (soundMuted) return;
+    try {
+        const c = audioCtx();
+        [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+            sndTone(c, { freq: f, type: 'triangle', duration: 0.5, gain: 0.18, startTime: i * 0.07 });
+            sndTone(c, { freq: f * 2, type: 'sine', duration: 0.35, gain: 0.06, startTime: i * 0.07 });
+        });
+        sndNoiseBurst(c, { duration: 0.4, filterFreq: 6000, filterType: 'highpass', filterQ: 0.7, gain: 0.05, startTime: 0.1 });
+    } catch (e) {}
+}
+function playSoundMeteor() {
+    if (soundMuted) return;
+    try {
+        const c = audioCtx();
+        sndTone(c, { freq: 160, freqEnd: 38, type: 'sine', duration: 0.35, gain: 0.5, startTime: 0 });
+        sndNoiseBurst(c, { duration: 0.3, filterFreq: 300, filterType: 'lowpass', filterQ: 0.8, gain: 0.35, startTime: 0 });
+        sndNoiseBurst(c, { duration: 0.12, filterFreq: 2000, filterType: 'bandpass', filterQ: 1, gain: 0.12, startTime: 0.01 });
+    } catch (e) {}
+}
+function playSoundClick() {
+    if (soundMuted) return;
+    try {
+        const c = audioCtx();
+        sndNoiseBurst(c, { duration: 0.03, filterFreq: 2200, filterType: 'bandpass', filterQ: 4, gain: 0.2, startTime: 0 });
+        sndTone(c, { freq: 900, type: 'square', duration: 0.02, gain: 0.05, startTime: 0 });
+    } catch (e) {}
+}
+function playSoundTurn() {
+    if (soundMuted) return;
+    try {
+        const c = audioCtx();
+        sndTone(c, { freq: 880, type: 'sine', duration: 0.55, gain: 0.22, startTime: 0 });
+        sndTone(c, { freq: 1760, type: 'sine', duration: 0.4, gain: 0.08, startTime: 0 });
+        sndTone(c, { freq: 659.25, type: 'sine', duration: 0.6, gain: 0.2, startTime: 0.13 });
+        sndTone(c, { freq: 1318.5, type: 'sine', duration: 0.45, gain: 0.07, startTime: 0.13 });
+    } catch (e) {}
+}
+
+function toggleSoundMute() {
+    soundMuted = !soundMuted;
+    try { localStorage.setItem('botg_sound_muted', soundMuted ? '1' : '0'); } catch (e) {}
+    updateSoundMuteUI();
+    if (!soundMuted) playSoundClick(); // kurzes Feedback, dass Sound jetzt wieder an ist
+}
+function updateSoundMuteUI() {
+    const btn = document.getElementById('sound-toggle-fab');
+    if (btn) btn.textContent = soundMuted ? '🔇' : '🔊';
+}
+
+// ---------- "Du bist dran"-Hinweis (Online-Modus): Ton + blinkender Tab-Titel ----------
+const ORIGINAL_TAB_TITLE = document.title;
+let tabFlashTimer = null;
+let myTurnWasActive = false; // Kantenerkennung: nur beim UEBERGANG "nicht mein Zug" -> "mein Zug" feuern
+
+function startTabFlash() {
+    if (tabFlashTimer) return;
+    let on = false;
+    tabFlashTimer = setInterval(() => {
+        document.title = on ? ORIGINAL_TAB_TITLE : '🎲 DU BIST DRAN!';
+        on = !on;
+    }, 1000);
+}
+function stopTabFlash() {
+    if (tabFlashTimer) { clearInterval(tabFlashTimer); tabFlashTimer = null; }
+    document.title = ORIGINAL_TAB_TITLE;
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) stopTabFlash(); });
+
+// Wird sowohl vom Host (startTurn(), lokal) als auch von allen anderen Clients (applyRemoteState(),
+// nach Empfang des neuen Spielstands) aufgerufen - so bekommt JEDER Mitspieler den Hinweis, wenn
+// GENAU ER an der Reihe ist, egal ob er selbst oder jemand anders den Zug ausgeloest hat.
+function checkMyTurnNotification() {
+    const nowMyTurn = net.active && !isGameOver && net.myIndex !== -1 && net.myIndex === currentPlayerIdx;
+    if (nowMyTurn && !myTurnWasActive) {
+        playSoundTurn();
+        if (document.hidden) startTabFlash();
+    }
+    if (!nowMyTurn) stopTabFlash();
+    myTurnWasActive = nowMyTurn;
+}
+
 function tutorialStep(dir) {
     if (dir > 0 && tutorialIdx === tutorialPages.length - 1) { closeTutorial(); return; }
     tutorialIdx = Math.max(0, Math.min(tutorialPages.length - 1, tutorialIdx + dir));
@@ -3006,6 +3156,7 @@ function startTurn() {
     pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING"; roadBonusUsedThisTurn = false;
     showNotification(`⚔️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} IST DRAN!`);
     focusOnPlayerUnits(players[currentPlayerIdx]);
+    checkMyTurnNotification();
     updateUI(); render();
 }
 
@@ -3041,7 +3192,7 @@ function checkLandmark(q, r) {
             triggerVictory(players[currentPlayerIdx]); 
         } 
     }
-    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; triggerLootBurst(q, r); checkApocalypse(); updateUI(); updateApoUI(); }
+    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; triggerLootBurst(q, r); playSoundLoot(); checkApocalypse(); updateUI(); updateApoUI(); }
 }
 
 function handlePushFlow(unit) {
@@ -3741,7 +3892,7 @@ function renderFX() {
 function fxLoop() { renderFX(); requestAnimationFrame(fxLoop); }
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; fxCanvas.width = window.innerWidth; fxCanvas.height = window.innerHeight; render(); }
 window.addEventListener('resize', resizeCanvas);
-resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); requestAnimationFrame(fxLoop);
+resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); updateSoundMuteUI(); requestAnimationFrame(fxLoop);
 </script>
 </body>
 </html>
