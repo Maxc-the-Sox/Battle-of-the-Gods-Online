@@ -289,6 +289,41 @@
         .tutorial-nav { display: flex; gap: 16px; }
         .tutorial-nav .btn { margin-top: 0; }
 
+        /* ---------- Feedback / Bug-Report ---------- */
+        #feedback-fab {
+            position: fixed; bottom: 20px; right: 20px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 1.15em;
+            color: #241c08; background: radial-gradient(circle at 35% 30%, var(--gold-light), var(--gold-dim));
+            border: 1px solid #fff2cf; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(212,175,55,0.4);
+            transition: transform 0.15s;
+        }
+        #feedback-fab:hover { transform: scale(1.08); }
+        #feedback-overlay {
+            position: fixed; inset: 0; z-index: 3002; display: flex; align-items: center; justify-content: center;
+            background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
+        }
+        .feedback-box {
+            position: relative; width: 460px; max-width: 90vw; max-height: 88vh; overflow-y: auto;
+            padding: 40px 42px 32px; box-sizing: border-box;
+            background: linear-gradient(165deg, rgba(28,25,19,0.96), rgba(12,11,8,0.98));
+            border: 1px solid rgba(212,175,55,0.65);
+            box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 60px rgba(212,175,55,0.1), inset 0 0 40px rgba(0,0,0,0.6);
+        }
+        .feedback-field { text-align: left; margin-bottom: 16px; }
+        .feedback-field label { display: block; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 0.5px; text-transform: uppercase; color: #b9a86c; margin-bottom: 6px; }
+        .feedback-field input, .feedback-field textarea {
+            width: 100%; background: #0c0b08; border: 1px solid rgba(212,175,55,0.5); color: #f3e2a9;
+            padding: 10px; font-family: 'Cormorant Garamond', serif; font-size: 1.02em; box-sizing: border-box;
+            border-radius: 2px; resize: vertical;
+        }
+        .feedback-field textarea { min-height: 90px; }
+        .feedback-field input:focus, .feedback-field textarea:focus { outline: none; border-color: var(--gold-light); box-shadow: 0 0 8px rgba(212,175,55,0.4); }
+        .feedback-nav { display: flex; gap: 16px; margin-top: 8px; }
+        .feedback-nav .btn { margin-top: 0; }
+        #feedback-status { text-align: center; font-family: 'Cinzel', serif; font-size: 0.82em; letter-spacing: 0.5px; margin-top: 14px; min-height: 1.4em; }
+        #feedback-status.ok { color: #8fd19e; }
+        #feedback-status.err { color: #e57368; }
+
         /* ---------- Online-Modus / Lobby ---------- */
         .menu-scroll { max-height: 90vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
         .menu-scroll::-webkit-scrollbar { width: 8px; }
@@ -408,6 +443,7 @@
 </div>
 
 <div id="help-fab" class="hidden" onclick="openTutorial()" title="Anleitung">?</div>
+<div id="feedback-fab" onclick="openFeedback()" title="Feedback / Bug melden">🐞</div>
 <div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
 
 <div id="lobby-overlay" class="hidden">
@@ -503,6 +539,34 @@
             <button id="tutorial-prev" class="btn btn-secondary" onclick="tutorialStep(-1)">← Zurück</button>
             <button id="tutorial-next" class="btn btn-gold" onclick="tutorialStep(1)">Weiter →</button>
         </div>
+    </div>
+</div>
+
+<div id="feedback-overlay" class="hidden">
+    <div class="feedback-box">
+        <div class="corner-tl"></div><div class="corner-tr"></div>
+        <div class="corner-bl"></div><div class="corner-br"></div>
+        <button class="tutorial-close" onclick="closeFeedback()">✕</button>
+        <div class="tutorial-icon">🐞</div>
+        <div class="tutorial-title">Feedback / Bug melden</div>
+        <div class="menu-subtitle" style="margin-bottom:22px;">Hilf mit, das Spiel besser zu machen</div>
+        <div class="feedback-field">
+            <label for="feedback-name">Dein Name</label>
+            <input type="text" id="feedback-name" maxlength="30" placeholder="Wie sollen wir dich nennen?">
+        </div>
+        <div class="feedback-field">
+            <label for="feedback-title">Kurzer Titel</label>
+            <input type="text" id="feedback-title" maxlength="80" placeholder='z.B. "Karte lässt sich nicht ziehen"'>
+        </div>
+        <div class="feedback-field">
+            <label for="feedback-desc">Was ist passiert?</label>
+            <textarea id="feedback-desc" maxlength="1000" placeholder="Beschreibe so genau wie möglich, was du gemacht hast und was passiert ist..."></textarea>
+        </div>
+        <div class="feedback-nav">
+            <button class="btn btn-secondary" onclick="closeFeedback()">Abbrechen</button>
+            <button id="feedback-submit-btn" class="btn btn-gold" onclick="submitFeedback()">Absenden</button>
+        </div>
+        <div id="feedback-status"></div>
     </div>
 </div>
 
@@ -2856,6 +2920,69 @@ function renderTutorialPage() {
 }
 function openTutorial() { tutorialIdx = 0; renderTutorialPage(); document.getElementById('tutorial-overlay').classList.remove('hidden'); }
 function closeTutorial() { document.getElementById('tutorial-overlay').classList.add('hidden'); stopTutorialDemo(); }
+
+// ---------- Feedback / Bug-Report ----------
+// Diese URL bekommst du von Google, wenn du das beiliegende Apps-Script als Web-App bereitstellst
+// (siehe Anleitung). Bis die echte URL eingetragen ist, bleibt der Platzhalter drin und das
+// Formular zeigt einen ehrlichen Hinweis an, statt eine erfolgreiche Meldung nur vorzutäuschen.
+const FEEDBACK_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbx0nFsRpfasRjlKekdc5wvGfmKRXfLqzKKqXgAHlENAVxu23S4a0qwqnqz7AG2YxudG/exec';
+
+function openFeedback() {
+    const nameField = document.getElementById('feedback-name');
+    if (!nameField.value) {
+        nameField.value = (typeof net !== 'undefined' && net.name) ? net.name : (localStorage.getItem('botg_player_name') || '');
+    }
+    const statusEl = document.getElementById('feedback-status');
+    statusEl.textContent = ''; statusEl.className = '';
+    document.getElementById('feedback-overlay').classList.remove('hidden');
+}
+function closeFeedback() { document.getElementById('feedback-overlay').classList.add('hidden'); }
+
+function submitFeedback() {
+    const statusEl = document.getElementById('feedback-status');
+    const btn = document.getElementById('feedback-submit-btn');
+    const name = document.getElementById('feedback-name').value.trim();
+    const title = document.getElementById('feedback-title').value.trim();
+    const desc = document.getElementById('feedback-desc').value.trim();
+    if (!title || !desc) {
+        statusEl.textContent = 'Bitte Titel und Beschreibung ausfüllen.';
+        statusEl.className = 'err';
+        return;
+    }
+    if (!FEEDBACK_WEBHOOK_URL || FEEDBACK_WEBHOOK_URL.indexOf('BITTE_HIER') !== -1) {
+        statusEl.textContent = 'Feedback-System ist noch nicht eingerichtet (fehlende Webhook-URL).';
+        statusEl.className = 'err';
+        return;
+    }
+    btn.disabled = true;
+    statusEl.textContent = 'Wird gesendet...';
+    statusEl.className = '';
+    fetch(FEEDBACK_WEBHOOK_URL, {
+        method: 'POST',
+        mode: 'no-cors', // Apps-Script-Webhooks setzen keine CORS-Header - die Antwort koennen wir eh
+                          // nicht auslesen, aber die eigentliche Anfrage kommt trotzdem zuverlaessig an.
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // vermeidet einen CORS-Preflight
+        body: JSON.stringify({
+            name: name || 'Anonym',
+            title: title,
+            description: desc,
+            room: (typeof net !== 'undefined' && net.room) ? net.room : '',
+            url: location.href,
+            userAgent: navigator.userAgent
+        })
+    }).then(() => {
+        statusEl.textContent = 'Danke! Dein Feedback wurde gesendet.';
+        statusEl.className = 'ok';
+        document.getElementById('feedback-title').value = '';
+        document.getElementById('feedback-desc').value = '';
+        btn.disabled = false;
+        setTimeout(closeFeedback, 1800);
+    }).catch(() => {
+        statusEl.textContent = 'Senden fehlgeschlagen - bitte prüfe deine Internetverbindung.';
+        statusEl.className = 'err';
+        btn.disabled = false;
+    });
+}
 function tutorialStep(dir) {
     if (dir > 0 && tutorialIdx === tutorialPages.length - 1) { closeTutorial(); return; }
     tutorialIdx = Math.max(0, Math.min(tutorialPages.length - 1, tutorialIdx + dir));
