@@ -464,6 +464,19 @@
         .settings-grid input.lobby-input { width: 100%; text-align: left; }
         #room-badge { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 900; font-family: 'Cinzel', serif; font-size: 0.8em; letter-spacing: 1px; color: #c9b98a; background: rgba(18,16,12,0.85); border: 1px solid rgba(212,175,55,0.4); padding: 6px 18px; border-radius: 2px; }
         #room-badge-code { color: var(--gold-light); font-weight: bold; letter-spacing: 3px; }
+        #disconnect-banner {
+            position: fixed; top: 0; left: 0; width: 100%; z-index: 4000; box-sizing: border-box;
+            display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap;
+            padding: 12px 20px; background: linear-gradient(180deg, #6b1f1f, #3d0f0f);
+            border-bottom: 2px solid #e57368; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            font-family: 'Cinzel', serif; font-size: 0.85em; letter-spacing: 0.5px; color: #ffe1dc;
+        }
+        #disconnect-banner button {
+            background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08;
+            border: 1px solid #fff2cf; border-radius: 2px; padding: 7px 16px; cursor: pointer;
+            font-family: 'Cinzel', serif; font-weight: bold; font-size: 0.95em;
+        }
+        #disconnect-banner button:hover { filter: brightness(1.1); }
         #action-controls.locked, #inventory-panel.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
         #turn-lock-msg { text-align: center; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1px; color: #e57368; margin-bottom: 10px; text-transform: uppercase; }
     </style>
@@ -512,6 +525,13 @@
 <div id="sound-toggle-fab" onclick="toggleSoundMute()" title="Sound an/aus">🔊</div>
 <div id="feedback-fab" onclick="openFeedback()" title="Feedback / Bug melden">🐞</div>
 <div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
+
+<!-- Bleibt sichtbar (anders als der kurze Toast oben), bis die Seite neu geladen wird - eine verlorene
+     Verbindung soll man nicht verpassen koennen, nur weil man gerade wo anders hingeschaut hat. -->
+<div id="disconnect-banner" class="hidden">
+    <span>⚠️ Verbindung zum Server verloren.</span>
+    <button onclick="location.reload()">🔄 Neu laden zum Weiterspielen</button>
+</div>
 
 <div id="lobby-overlay" class="hidden">
     <div class="menu-box">
@@ -1727,7 +1747,15 @@ function connectWebSocket(name, roomCode, activeBtnId) {
     ws.onopen = () => { net.connected = true; sendJoin(); };
     ws.onclose = () => {
         net.connected = false;
-        if (net.active) showNotification('⚠️ Verbindung zum Server verloren.');
+        if (net.active) {
+            // Waehrend eines laufenden Spiels reicht der kurze Toast (showNotification) allein nicht -
+            // der verschwindet nach 1.8s wieder, auch wenn gerade niemand hinschaut. Das Banner bleibt
+            // bewusst stehen, bis aktiv neu geladen wird (es gibt hier absichtlich keinen automatischen
+            // Reconnect-Versuch - ein manueller Reload holt ueber die gespeicherte Spieler-ID zuverlaessig
+            // den aktuellen Stand vom Server zurueck, siehe applyRemoteState()/getPersistentClientId()).
+            showNotification('⚠️ Verbindung zum Server verloren.');
+            document.getElementById('disconnect-banner').classList.remove('hidden');
+        }
         resetLobbyButtons();
     };
     ws.onerror = () => {};
@@ -1769,6 +1797,11 @@ function handleNetMessage(msg) {
         applyRemoteState(msg.state);
     } else if (msg.type === 'chat') {
         addChatMessage(msg.name, msg.color, msg.text, false);
+    } else if (msg.type === 'player_left') {
+        // Kommt vom Server, sobald irgendein anderer Mitspieler waehrend eines laufenden Spiels die
+        // Verbindung verliert (Absturz, Netzwerk weg, Seite zu) ODER den Raum bewusst verlaesst - vorher
+        // gab es dafuer ausser einem stillen Verschwinden aus der Lobby-Liste keinerlei Hinweis.
+        showNotification(`⚠️ ${msg.name} hat die Verbindung verloren.`);
     }
 }
 
