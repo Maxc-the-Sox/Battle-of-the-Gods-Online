@@ -607,8 +607,14 @@ const LOOT_BURST_DURATION = 0.85;
 // jedes betroffene Feld bekommt einen eigenen, leicht zufaelligen Einschlagszeitpunkt statt dass
 // alle Felder synchron auf einmal zu void werden.
 let pendingMeteors = [];
-const METEOR_DURATION = 0.9;      // Gesamtdauer EINES Einschlags (Anflug+Blitz+Rauch)
+const METEOR_DURATION = 0.45;     // Gesamtdauer EINES Einschlags (Anflug+Blitz+Rauch)
 const METEOR_IMPACT_FRACTION = 0.42; // Anteil der Dauer bis zum eigentlichen Einschlagsmoment (Anflugende)
+// Zeitfenster, ueber das die Einschlaege EINES Kollaps gestaffelt starten - bewusst mit einer Obergrenze
+// gedeckelt (statt z.B. "0.15s pro Feld"), weil ein Ring je nach Kartengroesse auch mehrere hundert
+// Felder umfassen kann - ohne Deckel wuerde die Kaskade dann viele Sekunden bis Minuten dauern statt,
+// wie gewuenscht, zuegig durchzulaufen. Kleine Ringe (wenige Felder) bekommen dadurch automatisch ein
+// kuerzeres, engeres Fenster; grosse Ringe laufen trotzdem in derselben Gesamtzeit durch.
+const METEOR_CASCADE_WINDOW_MAX = 0.6;
 let hexSize = 40, camera = { x: 0, y: 0, zoom: 0.8 }, iconCache = {};
 let players = [], currentPlayerIdx = 0, gameState = "SETUP";
 let drawPoints = 2, actionPoints = 2, collectedArtifacts = 0;
@@ -1418,9 +1424,15 @@ function isValidTarget(hex) {
 
 function applyTerrain(hex, type) {
     hex.terrain = type;
-    // Fluss ersetzt den Untergrund nicht (genau wie eine Straße) - Original-Gelände bleibt
-    // für die Grafik und die Ring-Logik erhalten.
-    if (type !== 'river') hex.baseTerrain = type;
+    // baseTerrain (das urspruengliche Untergrund-Gelaende aus der geladenen Karte, z.B. Wueste/Wiese/
+    // Huegel) bleibt hier IMMER unangetastet - es wird schon in processLoadedMap() einmalig gesetzt und
+    // dient sowohl der Grafik unter Fluss/Straße als auch der Ring-Kollaps-Logik (triggerKollaps()),
+    // die genau anhand von baseTerrain entscheidet, welchem Ring ein Feld angehoert.
+    // Frueher wurde es hier fuer alles ausser 'river' ueberschrieben - dadurch verloren z.B. die rund um
+    // Wuesten-Ruinen von Anfang an platzierten Berge ihre Wueste-Zugehoerigkeit und wurden beim
+    // Aussenring-Kollaps nie zerstoert, egal wo sie auf der Karte standen. Das gleiche Verhalten (nie
+    // baseTerrain anfassen) hat auch der Kartenplatzierungs-Code fuer vom Spieler gezogene Landschafts-
+    // karten weiter unten in performHexClick(), diese Funktion war die einzige Ausnahme davon.
 }
 // -----------------
 
@@ -2337,8 +2349,13 @@ function triggerKollaps(baseTerrains, key) {
         players.forEach(p => p.units = p.units.filter(u => !(u.q === hex.q && u.r === hex.r)));
     });
     const now = performance.now() / 1000;
-    hexesToCollapse.forEach((hex, i) => {
-        const delay = i * 0.14 + Math.random() * 0.12;
+    // Alle Einschlaege eines Kollaps starten zufaellig irgendwann INNERHALB desselben, gedeckelten
+    // Zeitfensters (statt jedes Feld einzeln um einen festen Betrag zu verzoegern) - ein Ring mit
+    // wenigen Feldern bekommt so automatisch ein kurzes, knackiges Fenster, waehrend ein Ring mit
+    // hunderten Feldern (z.B. ein grosser Wuesten-Ring) nicht ewig braucht, weil das Fenster gedeckelt ist.
+    const cascadeWindow = Math.min(METEOR_CASCADE_WINDOW_MAX, 0.05 + hexesToCollapse.length * 0.02);
+    hexesToCollapse.forEach(hex => {
+        const delay = Math.random() * cascadeWindow;
         pendingMeteors.push({ q: hex.q, r: hex.r, impactAt: now + delay, voided: false });
     });
     updateApoUI();
