@@ -359,11 +359,27 @@
             background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
         }
         .tutorial-box {
-            position: relative; width: 560px; max-width: 90vw; padding: 40px 42px 30px;
+            position: relative; width: 560px; max-width: 90vw;
             background: linear-gradient(165deg, rgba(28,25,19,0.96), rgba(12,11,8,0.98));
             border: 1px solid rgba(212,175,55,0.65);
             box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 60px rgba(212,175,55,0.1), inset 0 0 40px rgba(0,0,0,0.6);
         }
+        /* Der eigentliche Inhalt scrollt in diesem inneren Wrapper - NICHT direkt in .tutorial-box,
+           gleiches Prinzip wie schon bei .feedback-scroll/.menu-scroll: die dekorativen Ecken und der
+           Schliessen-Button bleiben ausserhalb, unabhaengig vom Scroll-Zustand immer sichtbar/klickbar.
+           Vorher hatte .tutorial-box GAR KEINEN Scroll-Mechanismus - auf kleinen Handy-Bildschirmen
+           wurden die spaeteren, laengeren Tutorial-Seiten (z.B. mit Stichpunktlisten) bis zu 420px
+           hoeher als der Bildschirm, wodurch Titel, Navigations-Buttons ("Weiter"/"Zurück") UND das
+           Schliessen-Kreuz gleichzeitig ausserhalb des sichtbaren Bereichs lagen - das Tutorial liess
+           sich auf dem Handy ab Seite 4 praktisch nicht mehr bedienen oder schliessen. */
+        .tutorial-scroll {
+            max-height: 88vh; overflow-y: auto; overflow-x: hidden; padding: 40px 42px 30px; box-sizing: border-box;
+            scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent;
+        }
+        .tutorial-scroll::-webkit-scrollbar { width: 8px; }
+        .tutorial-scroll::-webkit-scrollbar-track { background: transparent; }
+        .tutorial-scroll::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 4px; }
+        .tutorial-scroll::-webkit-scrollbar-thumb:hover { background: var(--gold); }
         .tutorial-close {
             position: absolute; top: 14px; right: 16px; font-family: 'Cinzel', serif; font-size: 1.1em; color: #c9b98a;
             background: none; border: none; cursor: pointer; opacity: 0.7; line-height: 1;
@@ -667,12 +683,30 @@
                .menu-box (Start-Screen, Lokal-Setup, Online-Lobby teilen sich diese Klasse) hatte eine
                feste width:500px - auf einem ~390px breiten Handy-Screen ragte der Kasten seitlich
                ueber den Bildschirm hinaus und schnitt Buttons/Text rechts ab (z.B. "🌐 Online Spielen").
-               .tutorial-box/.feedback-box hatten bereits max-width:90vw und sind unveraendert ok. */
+               .feedback-box hatte bereits max-width:90vw und ist unveraendert ok - .tutorial-box hat
+               inzwischen ebenfalls einen scrollbaren inneren Wrapper bekommen (siehe .tutorial-scroll
+               weiter oben), war vorher auf kleinen Handys nicht komplett erreichbar. */
             .menu-box { width: 94vw; }
             .menu-scroll { padding: 28px 16px 22px; }
-            #lobby-overlay .menu-scroll { padding: 22px 14px 16px; }
+            #lobby-overlay .menu-scroll { padding: 16px 14px 12px; }
             h1 { font-size: 2em; }
             .glow-orb { width: 220px; height: 130px; }
+
+            /* Der Raum-Schritt ("Server hosten") hat auf kleinen Handys (z.B. 375x667) trotz
+               Scroll-Wrapper spuerbar mehr Inhalt als Bildschirmhoehe - Nutzer meldete, dass das
+               Fenster "nicht so gut passt". Technisch war es bereits scrollbar (`.menu-scroll` hat
+               `max-height`+`overflow-y:auto`, siehe weiter oben), aber ohne sichtbaren Hinweis wirkte
+               es wie abgeschnitten, und der wichtige "SPIEL STARTEN"-Button lag komplett ausserhalb
+               des ersten Sichtfelds. Deshalb hier gezielt Leerraum einsparen (NICHT die Farbpunkte
+               selbst verkleinern - deren 42px Groesse war extra fuer Touch-Ziele vergroessert worden,
+               siehe unten): kompaktere Ueberschrift/Trenner/Raum-Code, und ein kleinerer Abstand
+               zwischen den Farbpunkten reicht, damit alle 6 in eine Zeile statt zwei passen. */
+            #lobby-overlay h1 { font-size: 1.3em; }
+            #lobby-overlay .menu-subtitle { font-size: 0.8em; margin-bottom: 8px; }
+            #lobby-overlay .divider-orn { margin: 8px 0; }
+            #lobby-room-code { font-size: 1.4em; margin-bottom: 0; }
+            #lobby-step-room > p { margin: 6px 0 !important; }
+            #lobby-step-room .color-picker { gap: 6px; }
 
             /* Start-Screen-Buttons untereinander statt nebeneinander - bei 2 Spalten war auf schmalen
                Screens kein Platz mehr fuer "🌐 Online Spielen" (siehe oben), zusaetzlich groessere
@@ -853,6 +887,7 @@
         <div class="corner-tl"></div><div class="corner-tr"></div>
         <div class="corner-bl"></div><div class="corner-br"></div>
         <button class="tutorial-close" onclick="closeTutorial()">✕</button>
+        <div class="tutorial-scroll">
         <div id="tutorial-icon" class="tutorial-icon">📖</div>
         <div id="tutorial-title" class="tutorial-title">Titel</div>
         <div id="tutorial-step-label" class="tutorial-step-label">Schritt 1 / 8</div>
@@ -865,6 +900,7 @@
         <div class="tutorial-nav">
             <button id="tutorial-prev" class="btn btn-secondary" onclick="tutorialStep(-1)">← Zurück</button>
             <button id="tutorial-next" class="btn btn-gold" onclick="tutorialStep(1)">Weiter →</button>
+        </div>
         </div>
     </div>
 </div>
