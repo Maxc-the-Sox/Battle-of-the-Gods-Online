@@ -2,6 +2,12 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
+    <!-- viewport-fit=cover: Karte darf bis unter Notch/Home-Indicator reichen, die festen UI-Elemente
+         beruecksichtigen das per env(safe-area-inset-*) weiter unten (siehe .mobile-dock).
+         maximum-scale/user-scalable=no: verhindert Doppeltipp-/Pinch-Zoom DES BROWSERS, der sonst mit
+         der spiel-eigenen Kamera-Zoom-Steuerung (Pinch auf dem Canvas, siehe Touch-Handling) kollidieren
+         wuerde - man haette sonst zwei unabhaengige Zoom-Ebenen gleichzeitig. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>Battle of the Gods</title>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
     <style>
@@ -537,6 +543,63 @@
         #disconnect-banner button:hover { filter: brightness(1.1); }
         #action-controls.locked, #inventory-panel.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
         #turn-lock-msg { text-align: center; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1px; color: #e57368; margin-bottom: 10px; text-transform: uppercase; }
+
+        /* ==================== Mobile Layout (Handy/schmales Tablet) ====================
+           Greift rein ueber die Fensterbreite (responsive), nicht ueber Geraete-Erkennung - am PC
+           bleibt alles exakt wie gehabt, ein Tablet im Querformat bleibt i.d.R. ebenfalls beim
+           normalen Desktop-Layout. #ui-panel/#apo-panel/#inventory-panel sind dieselben Elemente wie
+           oben, werden hier nur per .mobile-open umpositioniert statt dupliziert (siehe
+           toggleMobilePanel() im Skript weiter unten) - alle bestehenden Update-Funktionen schreiben
+           unveraendert in dieselben Elemente. */
+        #mobile-dock { display: none; }
+        #mobile-panel-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 498; }
+        @media (max-width: 700px) {
+            #mobile-dock {
+                display: flex; position: fixed; left: 0; right: 0; bottom: 0;
+                height: calc(64px + env(safe-area-inset-bottom, 0px));
+                padding-bottom: env(safe-area-inset-bottom, 0px);
+                background: linear-gradient(180deg, rgba(28,25,19,0.94), rgba(10,9,7,0.98));
+                border-top: 1px solid rgba(212,175,55,0.5);
+                align-items: center; justify-content: space-around; z-index: 500;
+            }
+            /* Tap-Ziel bewusst 56px - deutlich ueber der ueblichen 44px-Mindestgroesse fuer Touch. */
+            .mobile-dock-btn {
+                width: 56px; height: 56px; border-radius: 50%;
+                display: flex; align-items: center; justify-content: center; font-size: 24px;
+                background: rgba(212,175,55,0.12); border: 1.5px solid rgba(212,175,55,0.55);
+                color: #f3e2a9; font-family: 'Cinzel', serif; cursor: pointer; position: relative; padding: 0;
+            }
+            .mobile-dock-btn.active { border-color: #f1c40f; background: rgba(241,196,15,0.18); box-shadow: 0 0 14px rgba(241,196,15,0.5); }
+            .mobile-dock-badge {
+                position: absolute; top: -4px; right: -4px; background: #5dade2; color: #0c1a24;
+                border-radius: 50%; min-width: 18px; height: 18px; padding: 0 3px; font-size: 10px;
+                display: flex; align-items: center; justify-content: center; font-weight: bold; border: 1px solid #0c1a24;
+            }
+            #mobile-panel-backdrop.show { display: block; }
+
+            /* Panels: aus den festen Ecken raus, als Bottom-Sheet ueber dem Dock. Nur .mobile-open
+               ist sichtbar - ohne die Klasse bleiben sie ausgeblendet (das Antippen eines anderen
+               Dock-Buttons schliesst per closeMobilePanel() das vorherige automatisch). */
+            #ui-panel, #apo-panel, #inventory-panel { display: none; }
+            #ui-panel.mobile-open, #apo-panel.mobile-open, #inventory-panel.mobile-open {
+                display: block !important; position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important;
+                bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important;
+                width: auto !important; max-height: 62vh; overflow-y: auto;
+                border-radius: 16px 16px 0 0; z-index: 499;
+                box-shadow: 0 -10px 30px rgba(0,0,0,0.65);
+            }
+            /* Tap-Ziele innerhalb der aufgeklappten Panels gross genug machen (Nutzerwunsch: "Karten
+               ziehen"/"Bewegen" etc. muessen bequem drueckbar sein) - mind. 44px hoch. */
+            #ui-panel.mobile-open button, #apo-panel.mobile-open button, #inventory-panel.mobile-open button {
+                min-height: 44px;
+            }
+            #inventory-panel.mobile-open .inv-slot { min-height: 44px; box-sizing: border-box; }
+            #apo-panel.mobile-open .apo-preview-btn { width: 36px; height: 36px; font-size: 1em; }
+
+            /* #feedback-fab sitzt am Desktop unten rechts (bottom:20px) - wuerde sonst genau im neuen
+               Dock haengen. Ueber den Dock schieben statt zu verdecken. */
+            #feedback-fab { bottom: calc(64px + 14px + env(safe-area-inset-bottom, 0px)) !important; }
+        }
     </style>
 </head>
 <body>
@@ -822,6 +885,19 @@
     <div class="apo-row"><span>Ring 2</span> <span class="apo-status-group"><span id="apo-2" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="middle" onclick="toggleRingPreview('middle')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
     <div class="apo-row"><span>Ring 3</span> <span class="apo-status-group"><span id="apo-3" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="inner" onclick="toggleRingPreview('inner')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
     <div class="apo-next">Nächster Kollaps bei <span id="apo-next-trigger" style="color:#f3e2a9; font-weight:bold;">3</span> Artefakten</div>
+</div>
+
+<!-- Handy/Tablet-Layout (schmaler Bildschirm): #ui-panel/#apo-panel/#inventory-panel oben bleiben
+     exakt dieselben Elemente - sie werden per CSS (siehe "Mobile Layout" im <style>) nur umpositioniert
+     statt dupliziert, damit alle bestehenden updateUI()/updateApoUI()/Inventar-Updates unveraendert
+     weiter in dieselben Elemente schreiben, egal wie breit der Bildschirm gerade ist. Auf breiten
+     Bildschirmen (Desktop) ist dieser ganze Block per Media Query unsichtbar (display:none) und ohne
+     jede Wirkung. -->
+<div id="mobile-panel-backdrop" onclick="closeMobilePanel()"></div>
+<div id="mobile-dock" class="hidden">
+    <button class="mobile-dock-btn" id="dock-btn-ui-panel" onclick="toggleMobilePanel('ui-panel')" title="Spieler & Aktionen">👑</button>
+    <button class="mobile-dock-btn" id="dock-btn-apo-panel" onclick="toggleMobilePanel('apo-panel')" title="Apokalypse-Status">💀</button>
+    <button class="mobile-dock-btn" id="dock-btn-inventory-panel" onclick="toggleMobilePanel('inventory-panel')" title="Inventar">🎒<span id="dock-inv-badge" class="mobile-dock-badge hidden">0</span></button>
 </div>
 
 <div id="turn-toast" class="hidden"></div>
@@ -1660,6 +1736,7 @@ function processLoadedMap(data, count, presetPlayers) {
     document.getElementById('ui-panel').classList.remove('hidden');
     document.getElementById('apo-panel').classList.remove('hidden');
     document.getElementById('inventory-panel').classList.remove('hidden');
+    document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
     resetChatAndLogForNewGame();
@@ -2185,6 +2262,7 @@ function applyRemoteState(state) {
     document.getElementById('ui-panel').classList.remove('hidden');
     document.getElementById('apo-panel').classList.remove('hidden');
     document.getElementById('inventory-panel').classList.remove('hidden');
+    document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     document.getElementById('room-badge').classList.remove('hidden');
     document.getElementById('room-badge-code').innerText = net.room || '';
@@ -2792,6 +2870,67 @@ canvas.addEventListener('wheel', e => {
 
 canvas.addEventListener('mousedown', e => { if (e.button === 0) { isDragging = true; hasDragged = false; lastMouse = { x: e.clientX, y: e.clientY }; dragStartMouse = { x: e.clientX, y: e.clientY }; } });
 window.addEventListener('mouseup', () => isDragging = false);
+
+// --- Touch-Steuerung (Handy/Tablet) ---
+// Ergaenzt die Maus-Steuerung oben, die unangetastet bleibt - Touch nutzt dieselben Zustandsvariablen
+// (isDragging/lastMouse/hasDragged/dragStartMouse), damit der bestehende 'click'-Listener weiter unten
+// (der hasDragged prueft, um Verschieben von Anklicken zu unterscheiden) Touch und Maus einheitlich
+// behandelt - ein Tipp/Klick auf ein Feld loest bei beiden ganz normal performHexClick() aus, das
+// passiert ueber den synthetischen 'click', den Browser nach einem Tap selbst erzeugen.
+// touch-action:none verhindert, dass der Browser die Gesten selbst als Seiten-Scroll/-Zoom interpretiert
+// (Pinch-Zoom der Seite ist zusaetzlich schon per Viewport-Meta-Tag unterbunden).
+canvas.style.touchAction = 'none';
+const activeTouches = new Map(); // pointerId (touch.identifier) -> {x, y}
+let pinchStartDist = 0, pinchStartZoom = 1, pinchMidpoint = { x: 0, y: 0 };
+function touchDistance() {
+    const pts = [...activeTouches.values()];
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+}
+canvas.addEventListener('touchstart', e => {
+    for (const t of e.changedTouches) activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+    if (activeTouches.size === 1) {
+        const t = [...activeTouches.values()][0];
+        isDragging = true; hasDragged = false; lastMouse = { x: t.x, y: t.y }; dragStartMouse = { x: t.x, y: t.y };
+    } else if (activeTouches.size === 2) {
+        isDragging = false; // ab zwei Fingern: Pinch-Zoom statt Verschieben
+        pinchStartDist = touchDistance(); pinchStartZoom = camera.zoom;
+        const pts = [...activeTouches.values()];
+        pinchMidpoint = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    }
+}, { passive: true });
+canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) if (activeTouches.has(t.identifier)) activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+    if (activeTouches.size === 2) {
+        const dist = touchDistance();
+        if (pinchStartDist > 0) {
+            // Gleiche Zoom-um-Punkt-Mathematik wie beim Maus-Wheel-Handler oben, nur mit dem
+            // Mittelpunkt der beiden Finger statt der Cursor-Position als Bezugspunkt.
+            const worldX = (pinchMidpoint.x - camera.x) / camera.zoom, worldY = (pinchMidpoint.y - camera.y) / camera.zoom;
+            camera.zoom = Math.min(Math.max(pinchStartZoom * (dist / pinchStartDist), 0.2), 3);
+            camera.x = pinchMidpoint.x - worldX * camera.zoom; camera.y = pinchMidpoint.y - worldY * camera.zoom;
+            render();
+        }
+    } else if (activeTouches.size === 1 && isDragging) {
+        const t = [...activeTouches.values()][0];
+        camera.x += (t.x - lastMouse.x); camera.y += (t.y - lastMouse.y); lastMouse = { x: t.x, y: t.y };
+        if (!hasDragged && Math.hypot(t.x - dragStartMouse.x, t.y - dragStartMouse.y) > DRAG_THRESHOLD_PX) hasDragged = true;
+        render();
+    }
+}, { passive: false });
+function touchEndHandler(e) {
+    for (const t of e.changedTouches) activeTouches.delete(t.identifier);
+    if (activeTouches.size === 0) { isDragging = false; pinchStartDist = 0; }
+    else if (activeTouches.size === 1) {
+        // Von Pinch (2 Finger) zurueck auf Verschieben (1 Finger) - Referenzpunkt neu setzen, sonst
+        // wuerde die Karte beim Loslassen des zweiten Fingers einmal springen.
+        const t = [...activeTouches.values()][0];
+        isDragging = true; lastMouse = { x: t.x, y: t.y }; pinchStartDist = 0;
+    }
+}
+canvas.addEventListener('touchend', touchEndHandler, { passive: true });
+canvas.addEventListener('touchcancel', touchEndHandler, { passive: true });
+
 window.addEventListener('mousemove', e => {
     if (isDragging) {
         camera.x += (e.clientX - lastMouse.x); camera.y += (e.clientY - lastMouse.y); lastMouse = { x: e.clientX, y: e.clientY };
@@ -2848,6 +2987,24 @@ let ringPreviewKey = null;
 function toggleRingPreview(key) {
     ringPreviewKey = (ringPreviewKey === key) ? null : key;
     updateApoUI();
+}
+
+// --- Handy/Tablet-Dock: oeffnet/schliesst #ui-panel/#apo-panel/#inventory-panel als Bottom-Sheet ---
+// (siehe #mobile-dock/.mobile-open im HTML/CSS weiter oben). Auf breiten Bildschirmen ohne Wirkung,
+// da die Dock-Buttons dort per Media Query gar nicht sichtbar/klickbar sind.
+function closeMobilePanel() {
+    document.querySelectorAll('#ui-panel.mobile-open, #apo-panel.mobile-open, #inventory-panel.mobile-open').forEach(p => p.classList.remove('mobile-open'));
+    document.querySelectorAll('.mobile-dock-btn.active').forEach(b => b.classList.remove('active'));
+    document.getElementById('mobile-panel-backdrop').classList.remove('show');
+}
+function toggleMobilePanel(panelId) {
+    const panel = document.getElementById(panelId), wasOpen = panel.classList.contains('mobile-open');
+    closeMobilePanel();
+    if (!wasOpen) {
+        panel.classList.add('mobile-open');
+        document.getElementById(`dock-btn-${panelId}`).classList.add('active');
+        document.getElementById('mobile-panel-backdrop').classList.add('show');
+    }
 }
 
 // Lesbare Namen fuer die Verlauf-/Toast-Meldung beim Ring-Kollaps (siehe RING_KOLLAPS_MELDUNG weiter unten).
@@ -4098,6 +4255,11 @@ function updateUI() {
         slot.classList.toggle('filled', !!card); slot.classList.toggle('swap-mode', gameState === "SWAP_CARD" && !!card);
         slot.title = card ? `${card.name}: ${CARD_INFO[card.type] || ''}` : '';
     }
+    // Nur fuers Handy-Dock relevant (siehe #mobile-dock oben) - zeigt auf einen Blick, ob ueberhaupt
+    // etwas im Inventar liegt, ohne das Panel extra aufklappen zu muessen. Auf breiten Bildschirmen
+    // unsichtbar und ohne Wirkung.
+    const invCount = p ? p.inventory.length : 0, dockInvBadge = document.getElementById('dock-inv-badge');
+    dockInvBadge.innerText = invCount; dockInvBadge.classList.toggle('hidden', invCount === 0);
 
     // Zug-Checkliste: zeigt auf einen Blick, welche der zwei Pflicht-Aktionen diesen Zug schon
     // erledigt sind (pulsiert gold, solange offen; wird gruen sobald erledigt).
