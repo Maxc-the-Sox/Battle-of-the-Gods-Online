@@ -1671,6 +1671,27 @@ function applyTerrain(hex, type) {
     // baseTerrain anfassen) hat auch der Kartenplatzierungs-Code fuer vom Spieler gezogene Landschafts-
     // karten weiter unten in performHexClick(), diese Funktion war die einzige Ausnahme davon.
 }
+
+// Einmauer-Schutz: Berge sind (im Gegensatz zu Wald/Fluss/Strasse) das einzige Gelaende, das eine Figur
+// ohne Seil & Haken gar nicht mehr verlassen/betreten kann - deshalb darf man nie den LETZTEN offenen
+// Nachbarn einer Figur mit einer Bergkarte zubauen, egal ob eigene oder gegnerische Figur, egal wo auf
+// der Karte (nicht nur auf der Startburg). Gilt bewusst nur fuer Berge, nicht fuer Wald/Fluss/Strasse -
+// die sind zwar teuer bzw. lenken um, blockieren eine Figur aber nie komplett.
+function wouldTrapAnyUnit(targetHex) {
+    for (const p of players) {
+        for (const u of p.units) {
+            if (getHexDistance(u.q, u.r, targetHex.q, targetHex.r) !== 1) continue;
+            const stillOpenElsewhere = hexDirections.some(d => {
+                const nq = u.q + d.q, nr = u.r + d.r;
+                if (nq === targetHex.q && nr === targetHex.r) return false; // genau das waere ja das neu gebaute Feld
+                const nh = mapData.hexes[`${nq},${nr}`];
+                return nh && !['mountains', 'water', 'void'].includes(nh.terrain);
+            });
+            if (!stillOpenElsewhere) return true; // targetHex ist der letzte offene Nachbar dieser Figur
+        }
+    }
+    return false;
+}
 // -----------------
 
 // =====================================================================
@@ -2280,7 +2301,8 @@ function npcDoDrawing(p, diff) {
 }
 
 function npcValidTerrainPlacementHexes() {
-    return Object.values(mapData.hexes).filter(h => h.terrain !== 'void' && !['mountains', 'forest', 'river', 'road'].includes(h.terrain));
+    return Object.values(mapData.hexes).filter(h => h.terrain !== 'void' && !['mountains', 'forest', 'river', 'road'].includes(h.terrain)
+        && !(currentCard && currentCard.type === 'mountains' && wouldTrapAnyUnit(h)));
 }
 function npcDoPlacingTerrain(p, diff) {
     let candidates = npcValidTerrainPlacementHexes();
@@ -2990,7 +3012,7 @@ const tutorialPages = [
     { icon: '🏛️', title: 'Ziel des Spiels', html: `Sammelt gemeinsam <b>Artefakte</b> aus den Ruinen der Insel. Sobald genug gefunden wurden, gewinnt, wer als Erster den <b>Tempel</b> erreicht.<br><br>Doch Vorsicht: Mit jedem Fortschritt bricht die Welt an ihren Rändern weg. Bleibt am Ende nur noch <b>ein Spieler mit Figuren</b> übrig, gewinnt automatisch er.` },
     { icon: '⚙️', title: 'Vorbereitung', html: `Wählt die Spieleranzahl (2–6) sowie optional die <b>Ziel-Artefakte</b> und die drei <b>Ring-Schwellen</b> der Apokalypse.<br><br>Danach setzt jeder Spieler reihum seine <b>2 Figuren</b> auf ein Feld mit Startburg (Sumpf-Textur).` },
     { icon: '🎲', title: 'Der Spielzug', html: `In jedem Zug musst du <b>beides</b> erledigen — die Reihenfolge ist egal:<ul><li><b>2× Karte ziehen</b></li><li><b>Bewegen</b></li></ul>Erst wenn beides abgeschlossen ist, ist der nächste Spieler an der Reihe.` },
-    { icon: '🗺️', title: 'Karten ziehen: Landschaft', html: `Eine <b>Landschaftskarte</b> (Berg, Wald, Fluss oder Straße) bestimmt per Würfelwurf, wie viele Felder du setzen darfst. Klicke dazu freie Felder auf der Karte an.<br><br>Einen <b>Fluss</b> musst du zusätzlich per „Drehen" ausrichten und mit „Setzen" bestätigen — er verbindet sich automatisch mit anschließenden Flussfeldern.` },
+    { icon: '🗺️', title: 'Karten ziehen: Landschaft', html: `Eine <b>Landschaftskarte</b> (Berg, Wald, Fluss oder Straße) bestimmt per Würfelwurf, wie viele Felder du setzen darfst. Klicke dazu freie Felder auf der Karte an.<br><br>Einen <b>Fluss</b> musst du zusätzlich per „Drehen" ausrichten und mit „Setzen" bestätigen — er verbindet sich automatisch mit anschließenden Flussfeldern.<br><br>⛰️ <b>Einmauer-Schutz:</b> Du kannst nie den letzten offenen Nachbarn einer Figur mit einem Berg zubauen — egal ob eigene oder gegnerische Figur, egal wo auf der Karte. Mindestens ein Weg zum Entkommen bleibt immer frei.` },
     { icon: '🃏', title: 'Karten ziehen: Aktionen', html: `<b>Aktionskarten</b> wandern in dein Inventar (max. 3 — ist es voll, musst du beim nächsten Ziehen tauschen).<ul>
         <li>🏃 <b>Extra Zug</b>: sofort +1 Aktionspunkt</li>
         <li>🚫 <b>Aussetzen</b>: ein Gegner setzt die nächste Runde aus</li>
@@ -3784,8 +3806,9 @@ function performHexClick(rx, rz, hex) {
             if (pushRemaining > 0) gameState = "SELECT_PUSH_TARGET_2"; 
             else { players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
         }
-    } else if (gameState === "PLACING_TERRAIN" && currentCard) { 
+    } else if (gameState === "PLACING_TERRAIN" && currentCard) {
         if (['mountains', 'forest', 'river', 'road'].includes(hex.terrain)) return;
+        if (currentCard.type === 'mountains' && wouldTrapAnyUnit(hex)) { alert("Hier kannst du keinen Berg setzen - das wäre der letzte offene Weg einer Figur, sie würde komplett eingemauert!"); return; }
         hex.terrain = currentCard.type; bakeHex(hex); if (currentCard.type === 'river') { hex.direction = 0; pendingRiverHex = hex; gameState = "ROTATING_RIVER"; } else { placementsRemaining--; if (placementsRemaining <= 0) finishCard(); }
     } else if (gameState === "SELECT_SKIP") {
         const owner = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz));
@@ -4232,7 +4255,7 @@ function computeHighlightTargets() {
         }
         case 'PLACING_TERRAIN':
             if (!currentCard) return none;
-            return { select: [], go: Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void'].includes(h.terrain)) };
+            return { select: [], go: Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void'].includes(h.terrain) && !(currentCard.type === 'mountains' && wouldTrapAnyUnit(h))) };
         case 'SELECT_SKIP':
         case 'SELECT_PUSH_TARGET_1':
         case 'SELECT_PUSH_TARGET_2':
