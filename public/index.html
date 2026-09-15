@@ -1079,6 +1079,15 @@ const LOOT_BURST_DURATION = 0.85;
 // jedes betroffene Feld bekommt einen eigenen, leicht zufaelligen Einschlagszeitpunkt statt dass
 // alle Felder synchron auf einmal zu void werden.
 let pendingMeteors = [];
+// Bugfix (Performance): bei einem grossen Ring-Kollaps (hunderte Felder, siehe triggerKollaps()-
+// Kommentar zu cascadeWindow) landen pro Animations-Frame oft MEHRERE Meteore gleichzeitig -
+// renderFX() rief dafuer bisher pro einzelnem Einschlag sofort das komplette render() auf (kompletter
+// Karten-Neuaufbau: sortiert/zeichnet JEDES Feld der Karte neu, siehe render()-Kommentar), oft ein
+// gutes Dutzend Mal in denselben 16ms - das war der spuerbare Ruckler waehrend einer Apokalypse.
+// Jetzt wird nur noch ein Merker gesetzt und render() maximal EINMAL pro Frame nachgeholt (siehe
+// fxLoop() unten) - alle Feld-Aenderungen dieses Frames landen trotzdem noch im selben Bild, nur
+// eben gesammelt in einem einzigen Kartenaufbau statt vielen.
+let mapNeedsRerender = false;
 const METEOR_DURATION = 0.7;     // Gesamtdauer EINES Einschlags (Anflug+Blitz+Rauch)
 const METEOR_IMPACT_FRACTION = 0.42; // Anteil der Dauer bis zum eigentlichen Einschlagsmoment (Anflugende)
 // Zeitstempel (performance.now()), bis zu dem Klicks wegen eines Kollaps-Rucklers gesperrt sind -
@@ -4121,6 +4130,16 @@ function tutorialStep(dir) {
     renderTutorialPage();
 }
 function startTurn() {
+    // Bugfix: durch einen Ring-Kollaps ausgeschiedene Spieler (units.length === 0) wurden von der
+    // Zugreihenfolge bisher NICHT uebersprungen - advanceTurn() zaehlt stur den Index hoch, ohne
+    // Ruecksicht auf Eliminierung. Trifft der Kollaps nicht direkt den letzten verbliebenen Gegner
+    // (dann greift schon "Einziger Ueberlebender" in triggerKollaps()), sondern nur EINEN von
+    // mehreren noch aktiven Spielern, kam die Zugreihenfolge also irgendwann wieder bei der
+    // ausgeschiedenen Person an - "IST DRAN!", obwohl gar keine Figur mehr da ist, mit der man
+    // irgendetwas tun koennte. Wie beim "MUSS AUSSETZEN"-Fall direkt darunter einfach weiterschalten.
+    // Die players.some(...)-Absicherung verhindert eine Endlos-Rekursion fuer den (praktisch nie
+    // vorkommenden) Fall, dass durch denselben Kollaps ALLE Spieler gleichzeitig ausscheiden.
+    if (players[currentPlayerIdx].units.length === 0 && players.some(p => p.units.length > 0)) { advanceTurn(); startTurn(); return; }
     if (players[currentPlayerIdx].skipped) { showNotification(`⏭️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} MUSS AUSSETZEN!`); players[currentPlayerIdx].skipped = false; advanceTurn(); startTurn(); return; }
     pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING"; roadBonusUsedThisTurn = false;
     showNotification(`⚔️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} IST DRAN!`);
@@ -4959,7 +4978,7 @@ function renderFX() {
         pendingMeteors.forEach(m => {
             if (!m.voided && (now - m.impactAt) / METEOR_DURATION >= METEOR_IMPACT_FRACTION) {
                 const hex = mapData.hexes[`${m.q},${m.r}`];
-                if (hex && hex.terrain !== 'void') { hex.terrain = 'void'; bakeHex(hex); render(); }
+                if (hex && hex.terrain !== 'void') { hex.terrain = 'void'; bakeHex(hex); mapNeedsRerender = true; }
                 // Nachhall-Sound + kurzer Bildschirm-Ruckler (siehe triggerKollaps()) im selben Frame wie
                 // der sichtbare Einschlag, damit alles garantiert synchron bleibt statt ueber separat
                 // geplante Timer zu laufen. Nutzt dieselbe Auswahl/Lautstaerke wie der Sound (siehe
@@ -4989,7 +5008,13 @@ function renderFX() {
         });
     });
 }
-function fxLoop() { renderFX(); requestAnimationFrame(fxLoop); }
+function fxLoop() {
+    renderFX();
+    // Siehe mapNeedsRerender-Kommentar oben: hoechstens ein render() pro Frame, egal wie viele
+    // Meteore gerade in diesem Frame eingeschlagen sind.
+    if (mapNeedsRerender) { render(); mapNeedsRerender = false; }
+    requestAnimationFrame(fxLoop);
+}
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; fxCanvas.width = window.innerWidth; fxCanvas.height = window.innerHeight; render(); }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); updateSoundMuteUI(); requestAnimationFrame(fxLoop);
