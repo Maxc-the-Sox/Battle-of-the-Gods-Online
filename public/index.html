@@ -553,6 +553,7 @@
            unveraendert in dieselben Elemente. */
         #mobile-dock { display: none; }
         #mobile-panel-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 498; }
+        #mobile-river-controls { display: none; }
         @media (max-width: 700px) {
             #mobile-dock {
                 display: flex; position: fixed; left: 0; right: 0; bottom: 0;
@@ -577,6 +578,16 @@
             }
             #mobile-panel-backdrop.show { display: block; }
 
+            /* Schwebende Fluss-Dreh-/Setz-Leiste - unabhaengig vom Dock/Panel-System, damit sie auch
+               sichtbar ist, waehrend alle drei Panels geschlossen sind (genau der Fall beim Platzieren
+               auf dem Spielfeld). Gleiche Position wie #feedback-fab (ueber dem Dock), aber zentriert. */
+            #mobile-river-controls.show {
+                display: flex; position: fixed; left: 50%; transform: translateX(-50%);
+                bottom: calc(64px + 14px + env(safe-area-inset-bottom, 0px));
+                gap: 10px; z-index: 501;
+            }
+            #mobile-river-controls .btn { width: auto; margin-top: 0; min-height: 48px; padding: 12px 18px; white-space: nowrap; }
+
             /* Panels: aus den festen Ecken raus, als Bottom-Sheet ueber dem Dock. Nur .mobile-open
                ist sichtbar - ohne die Klasse bleiben sie ausgeblendet (das Antippen eines anderen
                Dock-Buttons schliesst per closeMobilePanel() das vorherige automatisch). */
@@ -599,6 +610,42 @@
             /* #feedback-fab sitzt am Desktop unten rechts (bottom:20px) - wuerde sonst genau im neuen
                Dock haengen. Ueber den Dock schieben statt zu verdecken. */
             #feedback-fab { bottom: calc(64px + 14px + env(safe-area-inset-bottom, 0px)) !important; }
+
+            /* ==== Startmenü / Lokal-Setup / Online-Lobby fuer Mobile ====
+               .menu-box (Start-Screen, Lokal-Setup, Online-Lobby teilen sich diese Klasse) hatte eine
+               feste width:500px - auf einem ~390px breiten Handy-Screen ragte der Kasten seitlich
+               ueber den Bildschirm hinaus und schnitt Buttons/Text rechts ab (z.B. "🌐 Online Spielen").
+               .tutorial-box/.feedback-box hatten bereits max-width:90vw und sind unveraendert ok. */
+            .menu-box { width: 94vw; }
+            .menu-scroll { padding: 28px 16px 22px; }
+            #lobby-overlay .menu-scroll { padding: 22px 14px 16px; }
+            h1 { font-size: 2em; }
+            .glow-orb { width: 220px; height: 130px; }
+
+            /* Start-Screen-Buttons untereinander statt nebeneinander - bei 2 Spalten war auf schmalen
+               Screens kein Platz mehr fuer "🌐 Online Spielen" (siehe oben), zusaetzlich groessere
+               Tap-Flaeche (Nutzerwunsch: Buttons gross genug zum Druecken). */
+            .button-row { flex-direction: column; }
+            .menu-btn { min-height: 50px; box-sizing: border-box; }
+
+            /* .btn/.help-btn werden auch in Tutorial/Feedback/Fluss-Rotation verwendet - overall
+               Mindesthoehe 44px wie schon in den In-Game-Panels (siehe oben im mobile-open-Block). */
+            .btn, .help-btn { min-height: 44px; box-sizing: border-box; }
+
+            /* Farbauswahl-Punkte/-Swatches waren mit 20-32px unter der 44px-Mindestgroesse fuer
+               Touch-Ziele - auf Mobile vergroessert. */
+            .color-swatch { width: 42px; height: 42px; font-size: 19px; }
+            .color-select-wrap { width: 40px; height: 40px; }
+            .color-dot { width: 30px; height: 30px; font-size: 14px; }
+
+            /* Spielerkarten-Zeile (Name/Mensch-KI-Umschalter/Schwierigkeit/Farbe) auf schmalen Screens
+               notfalls umbrechen lassen statt alles reinzuquetschen, und die kleinen Tap-Ziele
+               (Umschalter, Schwierigkeits-Dropdown) etwas vergroessern. */
+            .player-card { flex-wrap: wrap; row-gap: 8px; }
+            .player-card .type-toggle span { padding: 10px 11px; font-size: 0.74em; }
+            .player-card select.diff-select { padding: 9px 6px; font-size: 0.72em; width: 76px; }
+
+            select { min-height: 44px; box-sizing: border-box; }
         }
     </style>
 </head>
@@ -898,6 +945,17 @@
     <button class="mobile-dock-btn" id="dock-btn-ui-panel" onclick="toggleMobilePanel('ui-panel')" title="Spieler & Aktionen">👑</button>
     <button class="mobile-dock-btn" id="dock-btn-apo-panel" onclick="toggleMobilePanel('apo-panel')" title="Apokalypse-Status">💀</button>
     <button class="mobile-dock-btn" id="dock-btn-inventory-panel" onclick="toggleMobilePanel('inventory-panel')" title="Inventar">🎒<span id="dock-inv-badge" class="mobile-dock-badge hidden">0</span></button>
+</div>
+
+<!-- Schwebende Mini-Leiste nur fuer den Fluss-Dreh-/Setz-Schritt (gameState "ROTATING_RIVER"):
+     Nutzer bemaengelte, dass man dafuer auf Mobile extra das (zum Platzieren geschlossene) Panel
+     wieder oeffnen musste. Unabhaengig vom Dock/Panel-System, erscheint automatisch (siehe
+     updateUI()) sobald man einen Fluss gesetzt hat, und deckt sich funktional 1:1 mit
+     #rotation-controls im Panel - das Antippen des Flussfeldes selbst dreht es ebenfalls
+     (siehe performHexClick()). -->
+<div id="mobile-river-controls">
+    <button class="btn" onclick="rotateRiver()">↻ Drehen</button>
+    <button class="btn btn-ok" onclick="confirmRiver()">✓ Setzen</button>
 </div>
 
 <div id="turn-toast" class="hidden"></div>
@@ -1384,12 +1442,26 @@ function drawShieldToken(dctx, cx, cy, s, color, glow, icon) {
     // Optionales Goetter-Wappen mittig auf dem Schild - nur die echten Spielfiguren in renderFX()
     // uebergeben hier ein Icon (siehe GOD_ICON_BY_COLOR), Tutorial-/Kollaps-Illustrationen weiter
     // unten bewusst nicht, damit dort keine ungewollten Symbole auftauchen.
+    // Zentrierung ueber textAlign:'center'/textBaseline:'middle' reicht bei Emojis NICHT: die
+    // Glyphen haben je nach Symbol unterschiedliche Eigen-Geometrie (⚡ ist z.B. schmal und
+    // asymmetrisch, 🔱/💀 wieder anders), wodurch manche Icons sichtbar aus der Mitte rutschen.
+    // Stattdessen die tatsaechliche Bounding-Box per measureText() auslesen und so verschieben,
+    // dass ihr Mittelpunkt exakt auf dem Zielpunkt landet - funktioniert fuer jedes Emoji gleich gut.
     if (icon) {
         dctx.save();
         dctx.font = `${s * 0.8}px serif`;
-        dctx.textAlign = 'center'; dctx.textBaseline = 'middle';
+        dctx.textAlign = 'left'; dctx.textBaseline = 'alphabetic';
         dctx.shadowColor = 'rgba(0,0,0,0.85)'; dctx.shadowBlur = 4;
-        dctx.fillText(icon, cx, cy + s * 0.06);
+        const targetX = cx, targetY = cy + s * 0.06;
+        const m = dctx.measureText(icon);
+        const left = m.actualBoundingBoxLeft, right = m.actualBoundingBoxRight;
+        const asc = m.actualBoundingBoxAscent, desc = m.actualBoundingBoxDescent;
+        let drawX = targetX - s * 0.4, drawY = targetY + s * 0.28; // Fallback ohne actualBoundingBox*-Unterstuetzung
+        if ([left, right, asc, desc].every(v => typeof v === 'number' && !isNaN(v))) {
+            drawX = targetX - (right - left) / 2;
+            drawY = targetY + (asc - desc) / 2;
+        }
+        dctx.fillText(icon, drawX, drawY);
         dctx.restore();
     }
 }
@@ -4155,6 +4227,13 @@ function performHexClick(rx, rz, hex) {
         if (['mountains', 'forest', 'river', 'road'].includes(hex.terrain)) return;
         if (currentCard.type === 'mountains' && wouldTrapAnyUnit(hex)) { alert("Hier kannst du keinen Berg setzen - das wäre der letzte offene Weg einer Figur, sie würde komplett eingemauert!"); return; }
         hex.terrain = currentCard.type; bakeHex(hex); if (currentCard.type === 'river') { hex.direction = 0; pendingRiverHex = hex; gameState = "ROTATING_RIVER"; } else { placementsRemaining--; if (placementsRemaining <= 0) finishCard(); }
+    } else if (gameState === "ROTATING_RIVER") {
+        // Nutzerwunsch: Fluss drehen direkt auf dem Spielbrett moeglich machen, statt zwingend den
+        // "Drehen"-Button im Panel druecken zu muessen (auf Mobile muesste dafuer sonst erst das
+        // gerade zum Platzieren geschlossene Panel wieder geoeffnet werden - siehe auch die
+        // schwebende #mobile-river-controls-Leiste fuer "Setzen"). Tap auf das gerade gesetzte
+        // Flussfeld selbst dreht es einen Schritt weiter, wie der bestehende rotateRiver().
+        if (pendingRiverHex && rx === pendingRiverHex.q && rz === pendingRiverHex.r) rotateRiver();
     } else if (gameState === "SELECT_SKIP") {
         const owner = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz));
         if (owner) { owner.skipped = true; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
@@ -4236,6 +4315,9 @@ function updateUI() {
     document.getElementById('dice-section').classList.toggle('hidden', !['DICE_ROLL', 'PLACING_TERRAIN'].includes(gameState));
     document.getElementById('btn-roll-dice').classList.toggle('hidden', gameState !== 'DICE_ROLL');
     document.getElementById('rotation-controls').classList.toggle('hidden', gameState !== 'ROTATING_RIVER');
+    // Mobile-Pendant zu #rotation-controls (siehe #mobile-river-controls oben) - erscheint unabhaengig
+    // davon, ob eines der Panels gerade geoeffnet ist.
+    document.getElementById('mobile-river-controls').classList.toggle('show', gameState === 'ROTATING_RIVER');
     document.getElementById('btn-finish-drawing').classList.toggle('hidden', !['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE'].includes(gameState));
     document.getElementById('btn-discard-new').classList.toggle('hidden', gameState !== 'SWAP_CARD');
 
