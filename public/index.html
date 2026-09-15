@@ -1284,7 +1284,7 @@ function drawVoidHex(dctx, x, y, s) {
     dctx.font = `${s}px Arial`; dctx.textAlign = 'center'; dctx.textBaseline = 'middle'; dctx.fillStyle = 'rgba(255,255,255,0.6)';
     dctx.fillText('☁️', x, y);
 }
-function drawShieldToken(dctx, cx, cy, s, color, glow) {
+function drawShieldToken(dctx, cx, cy, s, color, glow, icon) {
     const w = s * 0.85, h = s * 1.05;
     dctx.save();
     if (glow) { dctx.shadowColor = 'rgba(241,196,15,0.95)'; dctx.shadowBlur = 14; }
@@ -1304,6 +1304,17 @@ function drawShieldToken(dctx, cx, cy, s, color, glow) {
     dctx.lineWidth = glow ? 2.5 : 1.6; dctx.strokeStyle = glow ? '#f1c40f' : 'rgba(255,255,255,0.85)'; dctx.stroke();
     dctx.beginPath(); dctx.ellipse(cx - w * 0.18, cy - h * 0.28, w * 0.16, h * 0.09, -0.5, 0, 7);
     dctx.fillStyle = 'rgba(255,255,255,0.5)'; dctx.fill();
+    // Optionales Goetter-Wappen mittig auf dem Schild - nur die echten Spielfiguren in renderFX()
+    // uebergeben hier ein Icon (siehe GOD_ICON_BY_COLOR), Tutorial-/Kollaps-Illustrationen weiter
+    // unten bewusst nicht, damit dort keine ungewollten Symbole auftauchen.
+    if (icon) {
+        dctx.save();
+        dctx.font = `${s * 0.8}px serif`;
+        dctx.textAlign = 'center'; dctx.textBaseline = 'middle';
+        dctx.shadowColor = 'rgba(0,0,0,0.85)'; dctx.shadowBlur = 4;
+        dctx.fillText(icon, cx, cy + s * 0.06);
+        dctx.restore();
+    }
 }
 function drawLandmarkBadge(dctx, cx, cy, s, kind, phase) {
     const icon = kind === 'temple' ? '🏛️' : (kind === 'looted' ? '🕸️' : '🏺');
@@ -1756,6 +1767,17 @@ function wouldTrapAnyUnit(targetHex) {
 // alle anderen im selben "Raum" weiterreicht ("dumb relay").
 
 const PLAYER_COLORS = ["#ff4757", "#2e86de", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"];
+// Goetter-Sigil pro Spielerfarbe - wird auf dem Schild-Token der jeweiligen Spielfigur als Wappen
+// gezeichnet (siehe drawShieldToken()/renderFX()). Absichtlich per Farb-Lookup statt per Spieler-Index,
+// damit es auch bei Server/Client-Zuordnung immer zur tatsaechlich angezeigten Farbe passt.
+const GOD_ICON_BY_COLOR = {
+    "#ff4757": "⚔️",  // Ares - Kriegsgott
+    "#2e86de": "🔱",  // Poseidon - Meeresgott
+    "#2ecc71": "💀",  // Hades - Unterweltgott
+    "#f1c40f": "⚡",  // Zeus - Göttervater
+    "#9b59b6": "🦉",  // Athena - Weisheitsgöttin
+    "#e67e22": "🔥",  // Hephaistos - Schmiedegott
+};
 
 function uuid4() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -4603,7 +4625,7 @@ function renderFX() {
             let offsetX = 0, offsetY = 0; if (group.length === 2) { offsetX = (i===0 ? -1 : 1) * spread * 0.7; offsetY = (i===0 ? -1 : 1) * spread * 0.7; }
             else if (group.length > 2) { let angle = i * (Math.PI * 2 / group.length) - Math.PI/2; offsetX = Math.cos(angle) * spread; offsetY = Math.sin(angle) * spread; }
             const glow = (item.original === selectedUnit || item.original === currentPushUnit);
-            drawShieldToken(fctx, centerX + offsetX, centerY + offsetY, s * (group.length > 1 ? 0.62 : 0.78), item.color, glow);
+            drawShieldToken(fctx, centerX + offsetX, centerY + offsetY, s * (group.length > 1 ? 0.62 : 0.78), item.color, glow, GOD_ICON_BY_COLOR[item.color]);
         });
     });
 }
