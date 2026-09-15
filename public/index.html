@@ -139,6 +139,11 @@
         #guide-hint { font-family: 'Cormorant Garamond', serif; text-align: center; color: #d8c9a3; font-size: 0.92em; font-style: italic; margin-bottom: 14px; padding: 0 2px; line-height: 1.35; }
         #guide-hint b { color: #f1c40f; font-style: normal; }
         #guide-hint .hint-select { color: #85c1e9; font-style: normal; font-weight: bold; }
+        /* Bewegungs-Kosten-Hinweise (siehe moveHintSummaryHtml()) - bewusst als fixer UI-Text statt
+           auf der Karte: skaliert nicht mit dem Kamera-Zoom, bleibt also auch weit herausgezoomt
+           gut lesbar. Leicht abgesetzt vom normalen Hinweissatz drueber (eigene Zeile, dezenter
+           Rahmen), damit klar ist: das sind zusaetzliche Warnungen, kein Pflichttext. */
+        #guide-hint .move-hint-extra { display: block; margin-top: 7px; padding-top: 6px; border-top: 1px dashed rgba(243,210,122,0.3); color: #f3d27a; font-style: normal; font-weight: bold; font-size: 0.94em; line-height: 1.5; }
         #artifact-display { font-family: 'Cinzel', serif; text-align: center; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(241,196,15,0.5); color: var(--gold-light); padding: 10px; margin-bottom: 14px; font-weight: bold; font-size: 1.02em; letter-spacing: 0.5px; }
 
         .inv-header { font-family: 'Cinzel', serif; color: #5dade2; font-weight: bold; text-transform: uppercase; text-align: center; padding-bottom: 9px; margin-bottom: 12px; letter-spacing: 2px; font-size: 0.88em; position: relative; }
@@ -4028,7 +4033,7 @@ function updateUI() {
         ROTATING_RIVER: `Drehe den Fluss in die passende Richtung und bestätige mit "Setzen".`,
         ACTION_VIEW: `Aktion wird ausgeführt…`,
         SWAP_CARD: `Wähle eine Karte aus deinem Inventar zum Tauschen.`,
-        MOVING: selectedUnit ? `Klicke ein <b>gold umrandetes</b> Nachbarfeld an, um dorthin zu ziehen.` : `Klicke eine <span class="hint-select">blau umrandete</span> eigene Figur an, um sie auszuwählen.`,
+        MOVING: selectedUnit ? `Klicke ein <b>gold umrandetes</b> Nachbarfeld an, um dorthin zu ziehen.${moveHintSummaryHtml()}` : `Klicke eine <span class="hint-select">blau umrandete</span> eigene Figur an, um sie auszuwählen.`,
         SELECT_PUSH_TARGET_1: `Klicke eine <span class="hint-select">blau umrandete</span> gegnerische Figur an, um sie zurückzuwerfen.`,
         SELECT_PUSH_TARGET_2: `Klicke noch eine <span class="hint-select">blau umrandete</span> gegnerische Figur an.`,
         SELECT_PUSH_DESTINATION: `Klicke ein <b>gold umrandetes</b> Nachbarfeld als Zielfeld an.`,
@@ -4442,31 +4447,28 @@ function computeHighlightTargets() {
             return none;
     }
 }
-// Kurztext fuer ueberraschende Bewegungs-Konsequenzen (siehe renderFX()) - normale Felder (1 AP,
-// wie erwartet) liefern bewusst null, damit nicht jedes Zielfeld vollgepflastert wird, sondern nur
-// die Ausnahmen auffallen. Deckt sich exakt mit der echten Kostenlogik in performHexClick() weiter
-// unten (Strassenbonus/Wald/Fluss) - bei Aenderungen dort bitte auch hier nachziehen.
+// Kurztext fuer ueberraschende Bewegungs-Konsequenzen (siehe moveHintSummaryHtml()) - normale
+// Felder (1 AP, wie erwartet) liefern bewusst null, damit nur die Ausnahmen auffallen. Deckt sich
+// exakt mit der echten Kostenlogik in performHexClick() weiter unten (Strassenbonus/Wald/Fluss) -
+// bei Aenderungen dort bitte auch hier nachziehen.
 function moveHintForHex(hex) {
     if (!hex) return null;
-    if (hex.terrain === 'forest') return '🌲 Zug endet hier';
-    if (hex.terrain === 'river') return '🌊 reißt mit!';
-    if (hex.terrain === 'road' && !roadBonusUsedThisTurn) return '🛣️ gratis';
+    if (hex.terrain === 'forest') return '🌲 Wald beendet den Zug sofort';
+    if (hex.terrain === 'river') return '🌊 Fluss reißt automatisch mit';
+    if (hex.terrain === 'road' && !roadBonusUsedThisTurn) return '🛣️ Straße: dieser Schritt ist gratis';
     return null;
 }
-// Zeichnet einen kompakten Hinweis-Pill direkt auf die fx-Ebene (gleicher Stil wie die uebrigen
-// Karten-Beschriftungen) - x/y ist bereits die fertige Zielposition (siehe renderFX()-Aufrufstelle).
-function drawMoveHintBadge(ctx, x, y, text) {
-    ctx.save();
-    ctx.font = `bold ${Math.max(10, Math.min(13, hexSize * camera.zoom * 0.24))}px 'Cinzel', serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const padX = 8, h = 18, w = ctx.measureText(text).width + padX * 2;
-    ctx.fillStyle = 'rgba(26,16,5,0.88)';
-    ctx.strokeStyle = 'rgba(243,210,122,0.9)'; ctx.lineWidth = 1.2;
-    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x - w/2, y - h/2, w, h, 5); ctx.fill(); ctx.stroke(); }
-    else { ctx.fillRect(x - w/2, y - h/2, w, h); ctx.strokeRect(x - w/2, y - h/2, w, h); }
-    ctx.fillStyle = '#f3d27a';
-    ctx.fillText(text, x, y + 1);
-    ctx.restore();
+// Baut den kleinen, fett hervorgehobenen Zusatz zum Bewegungs-Hinweissatz (siehe updateUI()) -
+// fasst alle Sonderfaelle unter den GERADE erreichbaren Nachbarfeldern zusammen (dedupliziert nach
+// Text, falls z.B. zwei Wald-Nachbarn gleichzeitig erreichbar sind). Bewusst als normaler HTML-Text
+// statt auf der Karte gezeichnet: skaliert nicht mit dem Kamera-Zoom, bleibt also auch weit
+// herausgezoomt lesbar - anders als ein fruehrer Versuch mit Labels direkt auf den Feldern.
+function moveHintSummaryHtml() {
+    if (gameState !== 'MOVING' || !selectedUnit) return '';
+    const hl = computeHighlightTargets();
+    const notes = [...new Set(hl.go.map(t => moveHintForHex(mapData.hexes[`${t.q},${t.r}`])).filter(Boolean))];
+    if (notes.length === 0) return '';
+    return `<div class="move-hint-extra">${notes.join('<br>')}</div>`;
 }
 function renderFX() {
     fctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
@@ -4497,21 +4499,11 @@ function renderFX() {
         fctx.strokeStyle = `rgba(241,196,15,${0.75+phase*0.25})`; fctx.lineWidth = 3; fctx.stroke();
         fctx.restore();
     });
-    // Kurze Kosten-/Verhaltens-Hinweise auf Nachbarfeldern beim Bewegen (siehe moveHintForHex()) -
-    // nur auf Feldern, die JETZT tatsaechlich Zielfeld sind (identisch zu hl.go oben), und bewusst
-    // vom Zugfeld WEG versetzt (Richtung Aussenrand des jeweiligen Hex), damit das Label nie ein
-    // anderes begehbares Nachbarfeld verdeckt - alle Nachbarfelder liegen im selben Abstand um die
-    // Figur, das naechste Feld in dieselbe Richtung DAHINTER ist dagegen nie selbst ein Zielfeld.
-    if (gameState === 'MOVING' && selectedUnit) {
-        const ux = (hexSize*1.5*selectedUnit.q)*camera.zoom+camera.x, uy = (hexSize*Math.sqrt(3)*(selectedUnit.r+selectedUnit.q/2))*camera.zoom+camera.y;
-        hl.go.forEach(t => {
-            const hintText = moveHintForHex(mapData.hexes[`${t.q},${t.r}`]);
-            if (!hintText) return;
-            const x = (hexSize*1.5*t.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(t.r+t.q/2))*camera.zoom+camera.y;
-            const dx = x - ux, dy = y - uy, len = Math.hypot(dx, dy) || 1;
-            drawMoveHintBadge(fctx, x + (dx/len) * s * 0.68, y + (dy/len) * s * 0.68, hintText);
-        });
-    }
+    // Bewegungs-Kosten-Hinweise werden NICHT mehr hier auf der Karte gezeichnet (siehe
+    // moveHintForHex()) - bei kleinem Zoom waren die Labels kaum lesbar, weil ihre Schriftgroesse
+    // mit camera.zoom mitskaliert. Stattdessen jetzt als fixer Text im Hinweissatz unter dem
+    // Zustands-Titel (siehe updateUI()/moveHintSummaryHtml()) - unabhaengig vom Zoom immer gleich
+    // gut lesbar.
     // "select"-Ziele (was man zuerst anklicken kann, z.B. eigene Figur) - hellblauer gestrichelter
     // Ring, bewusst anders als das Gold der Zielfelder, damit man beide Schritte auseinanderhaelt.
     hl.select.forEach(t => {
