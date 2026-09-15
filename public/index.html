@@ -4449,13 +4449,30 @@ function computeHighlightTargets() {
 }
 // Kurztext fuer ueberraschende Bewegungs-Konsequenzen (siehe moveHintSummaryHtml()) - normale
 // Felder (1 AP, wie erwartet) liefern bewusst null, damit nur die Ausnahmen auffallen. Deckt sich
-// exakt mit der echten Kostenlogik in performHexClick() weiter unten (Strassenbonus/Wald/Fluss) -
-// bei Aenderungen dort bitte auch hier nachziehen.
+// exakt mit der echten Kostenlogik in processMovement() weiter oben (Kletterhaken/Boot/Strassenbonus/
+// Wald/Fluss) - bei Aenderungen dort bitte auch hier nachziehen.
 function moveHintForHex(hex) {
     if (!hex) return null;
     if (hex.terrain === 'forest') return '🌲 Wald beendet den Zug sofort';
-    if (hex.terrain === 'river') return '🌊 Fluss reißt automatisch mit';
+    if (hex.terrain === 'river') {
+        // Mit Schlauchboot im Inventar reisst der Fluss NICHT automatisch mit, sondern man landet
+        // an einem waehlbaren Ufer (siehe processMovement(), Abschnitt "2. RIVER (BOOT)" -> gameState
+        // "BOAT_LANDING") - das Boot wird dabei verbraucht. Ohne Boot gilt weiterhin die automatische
+        // Mitnahme entlang des Flusslaufs.
+        const p = players[currentPlayerIdx];
+        const hasBoat = p && p.inventory.some(c => c.type === 'tool_boat');
+        if (hasBoat) return '🛶 Schlauchboot: du wählst das Ufer selbst';
+        return '🌊 Fluss reißt automatisch mit';
+    }
     if (hex.terrain === 'road' && !roadBonusUsedThisTurn) return '🛣️ Straße: dieser Schritt ist gratis';
+    if (hex.terrain === 'mountains') {
+        // Nur erreichbar, wenn man schon auf einem Berg steht (dann gratis, kein Hinweis noetig)
+        // oder mit Seil & Haken im Inventar (siehe computeHighlightTargets()) - genau dieser Haken
+        // wird dann in processMovement() verbraucht, das ist der ueberraschende Teil.
+        const fromHex = selectedUnit ? mapData.hexes[`${selectedUnit.q},${selectedUnit.r}`] : null;
+        if (fromHex && fromHex.terrain === 'mountains') return null;
+        return '⛰️ Verbraucht Seil & Haken';
+    }
     return null;
 }
 // Baut den kleinen, fett hervorgehobenen Zusatz zum Bewegungs-Hinweissatz (siehe updateUI()) -
