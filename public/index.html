@@ -455,7 +455,7 @@
         .menu-btn.btn-secondary-menu { background: linear-gradient(180deg, #5c6266, #34383a); color: #f2f2f2; border: 1px solid #95a5a6; }
         .menu-btn.btn-secondary-menu:hover { background: linear-gradient(180deg, #7c8286, #454a4c); transform: translateY(-2px); }
         .color-picker { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 2px; }
-        .color-swatch { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid rgba(255,255,255,0.25); box-shadow: 0 2px 6px rgba(0,0,0,0.5); transition: transform 0.15s, border-color 0.15s; }
+        .color-swatch { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid rgba(255,255,255,0.25); box-shadow: 0 2px 6px rgba(0,0,0,0.5); transition: transform 0.15s, border-color 0.15s; display: flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1; text-shadow: 0 1px 2px rgba(0,0,0,0.85); }
         .color-swatch:hover { transform: scale(1.1); }
         .color-swatch.selected { border-color: var(--gold-light); box-shadow: 0 0 10px var(--gold); }
         .color-swatch.taken { opacity: 0.22; cursor: not-allowed; }
@@ -503,17 +503,18 @@
         .color-select-wrap { position: relative; flex-shrink: 0; width: 26px; height: 26px; }
         .color-select-wrap select.local-color-select { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: none; padding: 0; }
         .color-dot {
-            display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--pc-color); margin: 3px auto;
+            display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--pc-color); margin: 3px auto;
             box-shadow: 0 0 6px color-mix(in srgb, var(--pc-color) 70%, transparent);
             border: 1px solid rgba(255,255,255,0.4);
             pointer-events: none;
+            font-size: 11px; line-height: 1; text-shadow: 0 1px 2px rgba(0,0,0,0.85);
         }
         .player-card input.local-name-input:focus,
         .player-card select.diff-select:focus {
             outline: none; border-color: var(--gold-light); box-shadow: 0 0 8px rgba(212,175,55,0.4);
         }
         .lobby-member { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid rgba(212,175,55,0.15); font-family: 'Cinzel', serif; font-size: 0.85em; }
-        .lobby-swatch { width: 16px; height: 16px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+        .lobby-swatch { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 9px; line-height: 1; text-shadow: 0 1px 1px rgba(0,0,0,0.85); }
         .lobby-member-name { flex: 1; color: #f3e2a9; text-transform: none; letter-spacing: 0; }
         .lobby-host-tag { font-size: 0.72em; color: var(--gold); border: 1px solid var(--gold); padding: 2px 6px; border-radius: 2px; letter-spacing: 1px; }
         .lobby-input { background: #0c0b08; border: 1px solid rgba(212,175,55,0.5); color: #f3e2a9; padding: 10px; font-family: 'Cinzel', serif; box-sizing: border-box; width: 100%; }
@@ -1567,6 +1568,7 @@ function renderPlayerTypeSelectors() {
         colorWrap.className = 'color-select-wrap';
         const dot = document.createElement('span');
         dot.className = 'color-dot';
+        dot.id = `player-dot-${i}`;
         const colorSelect = document.createElement('select');
         colorSelect.className = 'local-color-select';
         colorSelect.id = `player-color-${i}`;
@@ -1585,6 +1587,8 @@ function renderPlayerTypeSelectors() {
 function applyPlayerCardColor(i, color) {
     const card = document.getElementById(`player-card-${i}`);
     if (card) card.style.setProperty('--pc-color', color);
+    const dot = document.getElementById(`player-dot-${i}`);
+    if (dot) dot.innerText = GOD_ICON_BY_COLOR[color] || '';
 }
 function renderLocalColorSelect(i) {
     const sel = document.getElementById(`player-color-${i}`);
@@ -1866,6 +1870,7 @@ function renderColorPicker() {
         const sw = document.createElement('div');
         sw.className = 'color-swatch' + (c === net.color ? ' selected' : '') + (taken.includes(c) ? ' taken' : '');
         sw.style.background = c;
+        sw.innerText = GOD_ICON_BY_COLOR[c] || '';
         sw.title = taken.includes(c) ? 'Bereits vergeben' : c;
         sw.onclick = () => { if (!taken.includes(c)) { net.color = c; try { localStorage.setItem('botg_player_color', c); } catch (e) {} renderColorPicker(); if (net.connected) sendJoin(); } };
         wrap.appendChild(sw);
@@ -1991,7 +1996,7 @@ function renderLobbyMembers(started) {
         const row = document.createElement('div');
         row.className = 'lobby-member';
         const isHost = m.clientId === net.hostId, isMe = m.clientId === net.clientId;
-        row.innerHTML = `<span class="lobby-swatch" style="background:${m.color}"></span><span class="lobby-member-name">${escapeHtml(m.name)}${isMe ? ' (Du)' : ''}</span>${isHost ? '<span class="lobby-host-tag">HOST</span>' : ''}`;
+        row.innerHTML = `<span class="lobby-swatch" style="background:${m.color}">${GOD_ICON_BY_COLOR[m.color] || ''}</span><span class="lobby-member-name">${escapeHtml(m.name)}${isMe ? ' (Du)' : ''}</span>${isHost ? '<span class="lobby-host-tag">HOST</span>' : ''}`;
         list.appendChild(row);
     });
     const isHost = net.clientId === net.hostId;
@@ -1999,7 +2004,7 @@ function renderLobbyMembers(started) {
         net.localNpcs.forEach(n => {
             const row = document.createElement('div');
             row.className = 'lobby-member';
-            row.innerHTML = `<span class="lobby-swatch" style="background:${n.color}"></span><span class="lobby-member-name">${escapeHtml(n.name)}</span><span class="lobby-host-tag" style="border-color:#5dade2;color:#5dade2;">KI</span>`;
+            row.innerHTML = `<span class="lobby-swatch" style="background:${n.color}">${GOD_ICON_BY_COLOR[n.color] || ''}</span><span class="lobby-member-name">${escapeHtml(n.name)}</span><span class="lobby-host-tag" style="border-color:#5dade2;color:#5dade2;">KI</span>`;
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button'; removeBtn.className = 'help-btn';
             removeBtn.style.cssText = 'width:auto; padding:2px 8px; margin-left:6px; font-size:0.7em;';
