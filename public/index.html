@@ -167,6 +167,18 @@
         .victory-btn { font-family: 'Cinzel', serif; background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08; font-size: 0.9em; letter-spacing: 1px; text-transform: uppercase; padding: 12px 0; border: 1px solid #fff2cf; border-radius: 2px; cursor: pointer; font-weight: bold; width: 100%; box-shadow: 0 8px 20px rgba(212,175,55,0.3); }
         .victory-btn:hover { background: linear-gradient(180deg, #fff2cf, #a4841f); }
 
+        /* ---------- Sieges-Statistik (siehe showVictoryUI()) - lehnt sich bewusst an .apo-row/.apo-header
+           an, damit es wie derselbe "Baukasten" wirkt statt wie ein Fremdkoerper im Sieges-Panel. ---------- */
+        #victory-stats { margin: 4px 0 18px; text-align: left; }
+        .victory-stats-header { font-family: 'Cinzel', serif; color: var(--gold-light); font-weight: bold; text-transform: uppercase; text-align: center; padding-bottom: 8px; margin-bottom: 2px; letter-spacing: 1.5px; font-size: 0.8em; border-bottom: 1px solid rgba(212,175,55,0.3); }
+        .victory-stats-legend { text-align: center; font-size: 0.72em; color: #a89a76; font-style: italic; margin-bottom: 7px; font-family: 'Cormorant Garamond', serif; }
+        .victory-stat-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 1px; border-bottom: 1px solid rgba(212,175,55,0.14); font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 0.3px; gap: 8px; }
+        .victory-stat-row:last-of-type { border-bottom: none; }
+        .victory-stat-row .vs-name { display: flex; align-items: center; gap: 6px; color: #f3e2a9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .victory-stat-row .vs-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 5px currentColor; }
+        .victory-stat-row .vs-vals { color: #c9b98a; white-space: nowrap; flex-shrink: 0; font-size: 0.95em; }
+        .victory-stats-summary { text-align: center; font-size: 0.85em; color: #cbb; padding-top: 9px; margin-top: 2px; border-top: 1px solid rgba(212,175,55,0.25); font-family: 'Cormorant Garamond', serif; font-style: italic; }
+
         .btn {
             display: flex; align-items: center; justify-content: center; gap: 8px;
             font-family: 'Cinzel', serif; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; font-size: 0.8em;
@@ -713,6 +725,7 @@
     <h1 class="victory-title">SIEG!</h1>
     <div id="winner-name" class="victory-winner">Spieler X</div>
     <div id="victory-reason" class="victory-reason">...</div>
+    <div id="victory-stats"></div>
     <button class="victory-btn" onclick="location.reload()">NEUES SPIEL</button>
 </div>
 
@@ -820,6 +833,10 @@ const METEOR_IMPACT_FRACTION = 0.42; // Anteil der Dauer bis zum eigentlichen Ei
 const METEOR_CASCADE_WINDOW_MAX = 2.3;
 let hexSize = 40, camera = { x: 0, y: 0, zoom: 0.8 }, iconCache = {};
 let players = [], currentPlayerIdx = 0, gameState = "SETUP";
+// Grob gezaehlte "Runde" (jedes Mal, wenn currentPlayerIdx wieder bei 0 ankommt, siehe advanceTurn())
+// - nur fuer die Statistik auf dem Sieges-Screen gedacht, hat keine Auswirkung auf die eigentliche
+// Spiellogik. Zaehlt bewusst NICHT die anfaengliche Figuren-Platzierung mit (siehe performHexClick()).
+let roundCount = 1;
 let drawPoints = 2, actionPoints = 2, collectedArtifacts = 0;
 let targetArtifacts = 7, ringThresholds = [3, 5, 7], closedRings = { outer: false, middle: false, inner: false };
 let pathDrawn = false, pathMoved = false, isDragging = false, lastMouse = { x: 0, y: 0 };
@@ -1569,7 +1586,8 @@ async function loadStandardMap() {
             return {
                 id: i + 1, color: localPlayerColors[i] || PLAYER_COLORS[i], units: [], inventory: [], skipped: false, netId: null,
                 name: customName ? customName : (isNPC ? `🤖 KI (${NPC_DIFF_LABELS[type]})` : null),
-                isNPC, npcDifficulty: isNPC ? type : null
+                isNPC, npcDifficulty: isNPC ? type : null,
+                ruinsLooted: 0, collapsesSurvived: 0
             };
         });
         processLoadedMap(data, count, presetPlayers);
@@ -1589,7 +1607,7 @@ function processLoadedMap(data, count, presetPlayers) {
 
     Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
 
-    players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, name: null, netId: null, isNPC: false, npcDifficulty: null }));
+    players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, name: null, netId: null, isNPC: false, npcDifficulty: null, ruinsLooted: 0, collapsesSurvived: 0 }));
     document.getElementById('setup-overlay').style.display = 'none';
     document.getElementById('ui-panel').classList.remove('hidden');
     document.getElementById('apo-panel').classList.remove('hidden');
@@ -1597,7 +1615,7 @@ function processLoadedMap(data, count, presetPlayers) {
     document.getElementById('help-fab').classList.remove('hidden');
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
     resetChatAndLogForNewGame();
-    gameState = "PLACING"; currentPlayerIdx = 0; fitMapToScreen(); centerMap(); updateUI(); render(); updateApoUI();
+    gameState = "PLACING"; currentPlayerIdx = 0; roundCount = 1; fitMapToScreen(); centerMap(); updateUI(); render(); updateApoUI();
 }
 
 // --- GENERATOR ---
@@ -1998,9 +2016,9 @@ async function startOnlineGame() {
             parseInt(document.getElementById('cfg-ring2-online').value) || 5,
             parseInt(document.getElementById('cfg-ring3-online').value) || 7
         ];
-        const presetPlayers = net.lobbyMembers.map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false, isNPC: false, npcDifficulty: null }));
+        const presetPlayers = net.lobbyMembers.map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false, isNPC: false, npcDifficulty: null, ruinsLooted: 0, collapsesSurvived: 0 }));
         net.localNpcs.forEach(n => {
-            presetPlayers.push({ id: presetPlayers.length + 1, netId: null, name: n.name, color: n.color, units: [], inventory: [], skipped: false, isNPC: true, npcDifficulty: n.difficulty });
+            presetPlayers.push({ id: presetPlayers.length + 1, netId: null, name: n.name, color: n.color, units: [], inventory: [], skipped: false, isNPC: true, npcDifficulty: n.difficulty, ruinsLooted: 0, collapsesSurvived: 0 });
         });
         net.active = true;
         net.myIndex = presetPlayers.findIndex(pl => pl.netId === net.clientId);
@@ -2037,9 +2055,10 @@ function serializeState() {
             id: p.id, netId: p.netId, name: p.name, color: p.color, skipped: p.skipped,
             isNPC: !!p.isNPC, npcDifficulty: p.npcDifficulty || null,
             units: p.units.map(u => ({ q: u.q, r: u.r })),
-            inventory: p.inventory.map(c => ({ ...c }))
+            inventory: p.inventory.map(c => ({ ...c })),
+            ruinsLooted: p.ruinsLooted || 0, collapsesSurvived: p.collapsesSurvived || 0
         })),
-        currentPlayerIdx, gameState, drawPoints, actionPoints, collectedArtifacts,
+        currentPlayerIdx, gameState, roundCount, drawPoints, actionPoints, collectedArtifacts,
         targetArtifacts, ringThresholds, closedRings: { ...closedRings },
         pathDrawn, pathMoved,
         currentCard: currentCard ? { ...currentCard } : null,
@@ -2086,7 +2105,7 @@ function applyRemoteState(state) {
     players = state.players.map(p => ({ ...p, units: p.units.map(u => ({ ...u })), inventory: p.inventory.map(c => ({ ...c })) }));
     net.myIndex = players.findIndex(p => p.netId === net.clientId);
 
-    currentPlayerIdx = state.currentPlayerIdx; gameState = state.gameState;
+    currentPlayerIdx = state.currentPlayerIdx; gameState = state.gameState; roundCount = state.roundCount || 1;
     drawPoints = state.drawPoints; actionPoints = state.actionPoints; collectedArtifacts = state.collectedArtifacts;
     targetArtifacts = state.targetArtifacts; ringThresholds = state.ringThresholds; closedRings = state.closedRings;
     pathDrawn = state.pathDrawn; pathMoved = state.pathMoved;
@@ -2765,6 +2784,11 @@ function triggerKollaps(baseTerrains, key) {
     hexesToCollapse.forEach(hex => {
         players.forEach(p => p.units = p.units.filter(u => !(u.q === hex.q && u.r === hex.r)));
     });
+    // Statistik fuer den Sieges-Screen (siehe showVictoryUI()): jeder Spieler, der diesen Ring-Kollaps
+    // noch mit mindestens einer Figur im Spiel erlebt (egal ob er dabei selbst Figuren verloren hat),
+    // zaehlt ihn als "ueberlebt". Wer schon vorher komplett raus war, bleibt bei 0 Figuren und zaehlt
+    // hier folgerichtig nicht nochmal mit.
+    players.forEach(p => { if (p.units.length > 0) p.collapsesSurvived = (p.collapsesSurvived || 0) + 1; });
     // WICHTIG (Bugfix): ohne diese Meldung gab es ausser Sound+Animation keinerlei Hinweis, DASS und
     // WARUM gerade Felder verschwinden - das gilt auch fuer eigens draufgesetzte Landschaftskarten
     // (Wald/Berg/Strasse/Fluss), die zerstoert werden, weil sie auf urspruenglichem Wuesten-/Sumpf-/
@@ -2992,7 +3016,14 @@ function cancelCurrentCard() {
 function discardNewCard() { drawPoints--; currentCard = null; gameState = (drawPoints <= 0) ? "DRAWING_DONE" : "DRAWING"; updateUI(); render(); }
 function finishPath() { actionPoints = 0; pathMoved = true; selectedUnit = null; checkTurnEnd(); }
 function deselectUnit() { selectedUnit = null; updateUI(); render(); }
-function checkTurnEnd() { if (pathDrawn && pathMoved) { currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); } else { gameState = "CHOOSING"; updateUI(); render(); } }
+// Naechsten Spieler dran nehmen UND, falls dabei wieder bei Spieler 0 angekommen, roundCount hochzaehlen
+// (siehe roundCount-Deklaration oben) - zentral an einer Stelle, damit checkTurnEnd()/startTurn() (Skip)
+// nicht beide getrennt zaehlen muessten.
+function advanceTurn() {
+    currentPlayerIdx = (currentPlayerIdx + 1) % players.length;
+    if (currentPlayerIdx === 0) roundCount++;
+}
+function checkTurnEnd() { if (pathDrawn && pathMoved) { advanceTurn(); startTurn(); } else { gameState = "CHOOSING"; updateUI(); render(); } }
 
 function showNotification(text) {
     addLogEntry(text);
@@ -3612,7 +3643,7 @@ function tutorialStep(dir) {
     renderTutorialPage();
 }
 function startTurn() {
-    if (players[currentPlayerIdx].skipped) { showNotification(`⏭️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} MUSS AUSSETZEN!`); players[currentPlayerIdx].skipped = false; currentPlayerIdx = (currentPlayerIdx + 1) % players.length; startTurn(); return; }
+    if (players[currentPlayerIdx].skipped) { showNotification(`⏭️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} MUSS AUSSETZEN!`); players[currentPlayerIdx].skipped = false; advanceTurn(); startTurn(); return; }
     pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING"; roadBonusUsedThisTurn = false;
     showNotification(`⚔️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} IST DRAN!`);
     focusOnPlayerUnits(players[currentPlayerIdx]);
@@ -3636,6 +3667,24 @@ function triggerVictory(player, reason = "Tempel erreicht!", delayMs = 0) {
     if (delayMs > 0) setTimeout(reveal, delayMs); else reveal();
 }
 
+// Baut die kleine Statistik unterhalb des Sieg-Grundes zusammen (siehe roundCount/ruinsLooted/
+// collapsesSurvived) - rein informativ, verglichen mit den anderen Panels bewusst schlicht gehalten,
+// damit der Sieger-Name oben weiterhin der eigentliche Blickfang bleibt.
+function buildVictoryStatsHtml() {
+    const rows = players.map(p => {
+        const eliminated = p.units.length === 0 && p.id !== lastVictoryInfo.id;
+        const nameHtml = `${escapeHtml(playerLabel(p))}${eliminated ? ' 💀' : ''}`;
+        return `<div class="victory-stat-row">
+            <span class="vs-name"><span class="vs-dot" style="background:${p.color};color:${p.color}"></span>${nameHtml}</span>
+            <span class="vs-vals">🏺 ${p.ruinsLooted || 0} · ☄️ ${p.collapsesSurvived || 0}</span>
+        </div>`;
+    }).join('');
+    return `<div class="victory-stats-header">Statistik</div>
+        <div class="victory-stats-legend">🏺 Ruinen geplündert &nbsp;·&nbsp; ☄️ Kollapse überlebt</div>
+        ${rows}
+        <div class="victory-stats-summary">🏆 ${collectedArtifacts} / ${targetArtifacts} Artefakte gesamt · ${roundCount} Runde${roundCount === 1 ? '' : 'n'}</div>`;
+}
+
 function showVictoryUI(player, reason) {
     camera.zoom = 0.5;
     centerMap();
@@ -3647,6 +3696,7 @@ function showVictoryUI(player, reason) {
     winnerName.innerText = `${playerLabel(player)} hat gewonnen!`;
     winnerName.style.color = player.color;
     reasonText.innerText = reason;
+    document.getElementById('victory-stats').innerHTML = buildVictoryStatsHtml();
 
     document.getElementById('ui-panel').classList.add('hidden');
     document.getElementById('inventory-panel').classList.add('hidden');
@@ -3661,7 +3711,7 @@ function checkLandmark(q, r) {
             triggerVictory(players[currentPlayerIdx]); 
         } 
     }
-    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; triggerLootBurst(q, r); playSoundLoot(); checkApocalypse(); updateUI(); updateApoUI(); }
+    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; players[currentPlayerIdx].ruinsLooted = (players[currentPlayerIdx].ruinsLooted || 0) + 1; triggerLootBurst(q, r); playSoundLoot(); checkApocalypse(); updateUI(); updateApoUI(); }
 }
 
 function handlePushFlow(unit) {
