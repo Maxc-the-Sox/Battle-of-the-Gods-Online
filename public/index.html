@@ -2766,7 +2766,10 @@ function triggerKollaps(baseTerrains, key) {
     updateApoUI();
     const activePlayers = players.filter(p => p.units.length > 0);
     if (activePlayers.length === 1 && players.length > 1) {
-        triggerVictory(activePlayers[0], "Einziger Überlebender!");
+        // Erst wenn der letzte Meteor dieser Kaskade fertig eingeschlagen UND ausgeraucht ist (siehe
+        // cascadeWindow oben + METEOR_DURATION), wird der Sieg sichtbar - siehe triggerVictory()-Kommentar.
+        const collapseVictoryDelayMs = hexesToCollapse.length > 0 ? (cascadeWindow + METEOR_DURATION) * 1000 : 0;
+        triggerVictory(activePlayers[0], "Einziger Überlebender!", collapseVictoryDelayMs);
     }
 }
 
@@ -3595,11 +3598,20 @@ function startTurn() {
     updateUI(); render();
 }
 
-function triggerVictory(player, reason = "Tempel erreicht!") {
+// delayMs: nur fuer den "Einziger Ueberlebender"-Sieg durch Ring-Kollaps gebraucht (siehe Aufrufer in
+// triggerKollaps()) - isGameOver/lastVictoryInfo werden trotzdem SOFORT gesetzt, damit ab jetzt keine
+// weiteren Zuege/KI-Aktionen mehr passieren (isControllable()/runNpcStepIfNeeded() pruefen isGameOver).
+// Nur die eigentliche SICHTBARE Sieges-Anzeige (Kamera-Zoom + Sieges-Panel) wartet, bis die Meteor-
+// Kaskade des Kollaps tatsaechlich fertig durchgelaufen ist - sonst sieht man vom Kollaps nichts mehr,
+// weil Panel+Zoom bisher sofort alles ueberdeckt haben, noch bevor ueberhaupt ein Meteor eingeschlagen ist.
+function triggerVictory(player, reason = "Tempel erreicht!", delayMs = 0) {
     isGameOver = true;
     lastVictoryInfo = { id: player.id, reason };
-    showVictoryUI(player, reason);
-    if (net.active && !net.applyingRemote) sendStateUpdate();
+    const reveal = () => {
+        showVictoryUI(player, reason);
+        if (net.active && !net.applyingRemote) sendStateUpdate();
+    };
+    if (delayMs > 0) setTimeout(reveal, delayMs); else reveal();
 }
 
 function showVictoryUI(player, reason) {
