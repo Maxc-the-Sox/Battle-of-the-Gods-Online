@@ -160,6 +160,14 @@
         .apo-status-dead { color: #e57368; font-weight: bold; text-decoration: line-through; }
         .apo-status-dead::before { content: '◆ '; }
         .apo-next { margin-top: 10px; font-size: 0.85em; color: #cbb; text-align: center; padding-top: 9px; border-top: 1px solid rgba(229,115,104,0.25); font-family: 'Cormorant Garamond', serif; }
+        /* Augen-Button pro Ring: zeigt auf Wunsch (statt dauerhaft) die zugehoerigen Felder rot auf
+           der Karte an - siehe toggleRingPreview()/renderFX(). Status+Button zusammen rechts gruppiert,
+           damit .apo-row weiterhin nur zwei Flex-Kinder hat (Label links, Rest rechts). */
+        .apo-status-group { display: flex; align-items: center; gap: 8px; }
+        .apo-preview-btn { background: transparent; border: 1px solid var(--gold-dim); color: var(--gold-light); border-radius: 5px; width: 24px; height: 21px; font-size: 0.76em; line-height: 1; cursor: pointer; flex-shrink: 0; transition: background .15s, color .15s, border-color .15s; }
+        .apo-preview-btn:hover:not(:disabled) { border-color: var(--gold-light); }
+        .apo-preview-btn.active { background: linear-gradient(180deg, #e5786f, #a83226); color: #2a0d0a; border-color: #e5786f; }
+        .apo-preview-btn:disabled { opacity: 0.3; cursor: default; }
 
         .victory-title { font-size: 1.8em; color: #f1c40f; text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 2px; border-bottom: 1px solid rgba(241,196,15,0.3); padding-bottom: 10px; font-family: 'Cinzel', serif; font-weight: bold; }
         .victory-winner { font-family: 'Cinzel', serif; font-size: 1.1em; color: #fff2cf; margin-bottom: 15px; font-weight: bold; letter-spacing: 0.5px; }
@@ -804,9 +812,9 @@
 <div id="apo-panel" class="hidden">
     <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
     <div class="apo-header">Apokalypse Status</div>
-    <div class="apo-row"><span>Ring 1</span> <span id="apo-1" class="apo-status-safe">STABIL</span></div>
-    <div class="apo-row"><span>Ring 2</span> <span id="apo-2" class="apo-status-safe">STABIL</span></div>
-    <div class="apo-row"><span>Ring 3</span> <span id="apo-3" class="apo-status-safe">STABIL</span></div>
+    <div class="apo-row"><span>Ring 1</span> <span class="apo-status-group"><span id="apo-1" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="outer" onclick="toggleRingPreview('outer')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
+    <div class="apo-row"><span>Ring 2</span> <span class="apo-status-group"><span id="apo-2" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="middle" onclick="toggleRingPreview('middle')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
+    <div class="apo-row"><span>Ring 3</span> <span class="apo-status-group"><span id="apo-3" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="inner" onclick="toggleRingPreview('inner')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
     <div class="apo-next">Nächster Kollaps bei <span id="apo-next-trigger" style="color:#f3e2a9; font-weight:bold;">3</span> Artefakten</div>
 </div>
 
@@ -1635,7 +1643,7 @@ function processLoadedMap(data, count, presetPlayers) {
     document.getElementById('help-fab').classList.remove('hidden');
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
     resetChatAndLogForNewGame();
-    gameState = "PLACING"; currentPlayerIdx = 0; roundCount = 1; fitMapToScreen(); centerMap(); updateUI(); render(); updateApoUI();
+    gameState = "PLACING"; currentPlayerIdx = 0; roundCount = 1; ringPreviewKey = null; fitMapToScreen(); centerMap(); updateUI(); render(); updateApoUI();
 }
 
 // --- GENERATOR ---
@@ -2789,6 +2797,25 @@ function updateApoUI() {
     let nextT = "KEINER";
     if (!closedRings.outer) nextT = ringThresholds[0]; else if (!closedRings.middle) nextT = ringThresholds[1]; else if (!closedRings.inner) nextT = ringThresholds[2];
     document.getElementById('apo-next-trigger').innerText = nextT;
+    // Augen-Buttons: fuer einen bereits kollabierten Ring gibt es nichts mehr zu zeigen (die Felder
+    // sind schon void) - Button deaktivieren und eine laufende Vorschau fuer genau diesen Ring beenden.
+    document.querySelectorAll('.apo-preview-btn').forEach(b => {
+        const key = b.dataset.ring;
+        const closed = key === 'outer' ? closedRings.outer : key === 'middle' ? closedRings.middle : closedRings.inner;
+        b.disabled = closed;
+        if (closed && ringPreviewKey === key) ringPreviewKey = null;
+        b.classList.toggle('active', ringPreviewKey === key);
+    });
+}
+
+// Zeigt/versteckt auf Knopfdruck (siehe #apo-panel) die Felder eines Rings direkt auf der Karte -
+// als Alternative zu einer dauerhaften Markierung, die waehrend des normalen Spielens nur stoeren
+// wuerde. Rein informativ, unabhaengig vom Zug/isControllable() - jederzeit fuer jeden nutzbar, auch
+// waehrend ein Gegner am Zug ist. Erneuter Klick auf denselben Ring oder auf einen anderen schaltet um.
+let ringPreviewKey = null;
+function toggleRingPreview(key) {
+    ringPreviewKey = (ringPreviewKey === key) ? null : key;
+    updateApoUI();
 }
 
 // Lesbare Namen fuer die Verlauf-/Toast-Meldung beim Ring-Kollaps (siehe RING_KOLLAPS_MELDUNG weiter unten).
@@ -4415,12 +4442,52 @@ function computeHighlightTargets() {
             return none;
     }
 }
+// Kurztext fuer ueberraschende Bewegungs-Konsequenzen (siehe renderFX()) - normale Felder (1 AP,
+// wie erwartet) liefern bewusst null, damit nicht jedes Zielfeld vollgepflastert wird, sondern nur
+// die Ausnahmen auffallen. Deckt sich exakt mit der echten Kostenlogik in performHexClick() weiter
+// unten (Strassenbonus/Wald/Fluss) - bei Aenderungen dort bitte auch hier nachziehen.
+function moveHintForHex(hex) {
+    if (!hex) return null;
+    if (hex.terrain === 'forest') return '🌲 Zug endet hier';
+    if (hex.terrain === 'river') return '🌊 reißt mit!';
+    if (hex.terrain === 'road' && !roadBonusUsedThisTurn) return '🛣️ gratis';
+    return null;
+}
+// Zeichnet einen kompakten Hinweis-Pill direkt auf die fx-Ebene (gleicher Stil wie die uebrigen
+// Karten-Beschriftungen) - x/y ist bereits die fertige Zielposition (siehe renderFX()-Aufrufstelle).
+function drawMoveHintBadge(ctx, x, y, text) {
+    ctx.save();
+    ctx.font = `bold ${Math.max(10, Math.min(13, hexSize * camera.zoom * 0.24))}px 'Cinzel', serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const padX = 8, h = 18, w = ctx.measureText(text).width + padX * 2;
+    ctx.fillStyle = 'rgba(26,16,5,0.88)';
+    ctx.strokeStyle = 'rgba(243,210,122,0.9)'; ctx.lineWidth = 1.2;
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x - w/2, y - h/2, w, h, 5); ctx.fill(); ctx.stroke(); }
+    else { ctx.fillRect(x - w/2, y - h/2, w, h); ctx.strokeRect(x - w/2, y - h/2, w, h); }
+    ctx.fillStyle = '#f3d27a';
+    ctx.fillText(text, x, y + 1);
+    ctx.restore();
+}
 function renderFX() {
     fctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
     const s = hexSize * camera.zoom, now = performance.now()/1000;
     const phase = Math.sin(now*3)*0.5+0.5;
     const hl = computeHighlightTargets();
 
+    // Ring-Vorschau (siehe toggleRingPreview()/#apo-panel) - zeigt auf Knopfdruck rot, welche Felder
+    // zu einem bestimmten Kollaps-Ring gehoeren. Laeuft unabhaengig vom Zug/den go/select-Highlights
+    // unten, deshalb zuerst gezeichnet (liegt optisch darunter, Zielfeld-Markierungen bleiben oben).
+    if (ringPreviewKey) {
+        Object.values(mapData.hexes).forEach(hx => {
+            if (hx.terrain === 'void' || npcRingKeyForHex(hx) !== ringPreviewKey) return;
+            const x = (hexSize*1.5*hx.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(hx.r+hx.q/2))*camera.zoom+camera.y;
+            fctx.save();
+            fctx.beginPath(); for (let i=6; i--;) fctx.lineTo(x+(s*0.95)*Math.cos(Math.PI/3*i), y+(s*0.95)*Math.sin(Math.PI/3*i)); fctx.closePath();
+            fctx.fillStyle = 'rgba(229,60,50,0.28)'; fctx.fill();
+            fctx.strokeStyle = 'rgba(255,90,70,0.9)'; fctx.lineWidth = 2.5; fctx.stroke();
+            fctx.restore();
+        });
+    }
     // "go"-Ziele (wohin bewegen/platzieren/werfen) - goldener Hex-Rahmen.
     hl.go.forEach(t => {
         const x = (hexSize*1.5*t.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(t.r+t.q/2))*camera.zoom+camera.y;
@@ -4430,6 +4497,21 @@ function renderFX() {
         fctx.strokeStyle = `rgba(241,196,15,${0.75+phase*0.25})`; fctx.lineWidth = 3; fctx.stroke();
         fctx.restore();
     });
+    // Kurze Kosten-/Verhaltens-Hinweise auf Nachbarfeldern beim Bewegen (siehe moveHintForHex()) -
+    // nur auf Feldern, die JETZT tatsaechlich Zielfeld sind (identisch zu hl.go oben), und bewusst
+    // vom Zugfeld WEG versetzt (Richtung Aussenrand des jeweiligen Hex), damit das Label nie ein
+    // anderes begehbares Nachbarfeld verdeckt - alle Nachbarfelder liegen im selben Abstand um die
+    // Figur, das naechste Feld in dieselbe Richtung DAHINTER ist dagegen nie selbst ein Zielfeld.
+    if (gameState === 'MOVING' && selectedUnit) {
+        const ux = (hexSize*1.5*selectedUnit.q)*camera.zoom+camera.x, uy = (hexSize*Math.sqrt(3)*(selectedUnit.r+selectedUnit.q/2))*camera.zoom+camera.y;
+        hl.go.forEach(t => {
+            const hintText = moveHintForHex(mapData.hexes[`${t.q},${t.r}`]);
+            if (!hintText) return;
+            const x = (hexSize*1.5*t.q)*camera.zoom+camera.x, y = (hexSize*Math.sqrt(3)*(t.r+t.q/2))*camera.zoom+camera.y;
+            const dx = x - ux, dy = y - uy, len = Math.hypot(dx, dy) || 1;
+            drawMoveHintBadge(fctx, x + (dx/len) * s * 0.68, y + (dy/len) * s * 0.68, hintText);
+        });
+    }
     // "select"-Ziele (was man zuerst anklicken kann, z.B. eigene Figur) - hellblauer gestrichelter
     // Ring, bewusst anders als das Gold der Zielfelder, damit man beide Schritte auseinanderhaelt.
     hl.select.forEach(t => {
