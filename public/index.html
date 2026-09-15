@@ -229,6 +229,23 @@
             90% { transform: translate(-3px, 2px) rotate(-0.1deg); }
         }
         body.screen-shake { animation: screenShake 0.5s ease-in-out 2; }
+
+        /* ---------- Ring-Kollaps: kleinere, oefter wiederholte "Erdbeben"-Erschuetterung statt des
+           einen grossen Wirbelsturm-Rucks - synchron zu den Meteor-Einschlagsgeraeuschen (siehe
+           triggerKollaps()/renderFX()). Bewusst deutlich kleinere Ausschlaege als screenShake, da das
+           hier MEHRFACH ueber mehrere Sekunden verteilt passiert (nicht nur einmal) und - anders als
+           beim Wirbelsturm - waehrend eines normalen (nicht todbringenden) Kollaps die Spielfigur des
+           aktiven Spielers weiterhin bedienbar bleibt, also kein Interaktions-Lock die Klick-Treffer-
+           genauigkeit waehrend der Animation absichert. ---------- */
+        @keyframes hexShake {
+            0%, 100% { transform: translate(0, 0); }
+            20% { transform: translate(-4px, 2px) rotate(-0.12deg); }
+            40% { transform: translate(3px, -3px) rotate(0.1deg); }
+            60% { transform: translate(-3px, 1px) rotate(-0.08deg); }
+            80% { transform: translate(2px, -1px) rotate(0.06deg); }
+        }
+        body.collapse-shake-light { animation: hexShake 0.32s ease-out 1; }
+        body.collapse-shake-strong { animation: screenShake 0.45s ease-in-out 1; }
         #tornado-overlay {
             position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column; align-items: center; justify-content: center;
             background: radial-gradient(circle at 50% 50%, rgba(60,50,20,0.35), rgba(5,5,8,0.88) 75%);
@@ -824,6 +841,9 @@ const LOOT_BURST_DURATION = 0.85;
 let pendingMeteors = [];
 const METEOR_DURATION = 0.7;     // Gesamtdauer EINES Einschlags (Anflug+Blitz+Rauch)
 const METEOR_IMPACT_FRACTION = 0.42; // Anteil der Dauer bis zum eigentlichen Einschlagsmoment (Anflugende)
+// Zeitstempel (performance.now()), bis zu dem Klicks wegen eines Kollaps-Rucklers gesperrt sind -
+// siehe triggerHexShake()/isInputLockedByShake().
+let inputLockedUntilMs = 0;
 // Zeitfenster, ueber das die Einschlaege EINES Kollaps gestaffelt starten - bewusst mit einer Obergrenze
 // gedeckelt (statt z.B. "0.15s pro Feld"), weil ein Ring je nach Kartengroesse auch mehrere hundert
 // Felder umfassen kann - ohne Deckel wuerde die Kaskade dann viele Sekunden bis Minuten dauern statt,
@@ -2798,16 +2818,41 @@ function triggerKollaps(baseTerrains, key) {
     if (hexesToCollapse.length > 0) {
         showNotification(`💥 ${RING_LABELS[key] || key} kollabiert! ${hexesToCollapse.length} Feld(er) wurden zerstört (auch bereits bebaute).`);
     }
-    if (hexesToCollapse.length > 0) playSoundMeteor(); // einmal pro Kollaps, nicht pro Einzel-Einschlag (sonst Laermteppich)
     const now = performance.now() / 1000;
     // Alle Einschlaege eines Kollaps starten zufaellig irgendwann INNERHALB desselben, gedeckelten
     // Zeitfensters (statt jedes Feld einzeln um einen festen Betrag zu verzoegern) - ein Ring mit
     // wenigen Feldern bekommt so automatisch ein kurzes, knackiges Fenster, waehrend ein Ring mit
     // hunderten Feldern (z.B. ein grosser Wuesten-Ring) nicht ewig braucht, weil das Fenster gedeckelt ist.
     const cascadeWindow = Math.min(METEOR_CASCADE_WINDOW_MAX, 0.05 + hexesToCollapse.length * 0.02);
-    hexesToCollapse.forEach(hex => {
-        const delay = Math.random() * cascadeWindow;
-        pendingMeteors.push({ q: hex.q, r: hex.r, impactAt: now + delay, voided: false });
+    // Ton: statt EINEM lauten Knall zu Beginn (alter Ansatz - passte nicht mehr zur jetzt bis zu ~3s
+    // laufenden visuellen Kaskade, siehe cascadeWindow/METEOR_DURATION) klingt jetzt ueber dieselbe
+    // Kaskade verteilt mehrfach ein LEISERES Einschlagsgeraeusch nach - der erste, praegnanteste noch
+    // fast in voller Lautstaerke (das eigentliche "es geht los"), alle weiteren deutlich leiser. Bei
+    // riesigen Ringen (hunderte Felder) wuerde ein Sound PRO Feld wieder zum Laermteppich fuehren,
+    // deshalb feste Obergrenze an Einschlagsgeraeuschen, egal wie viele Felder tatsaechlich kollabieren.
+    // WICHTIG: bewusst NICHT ueber setTimeout(delayMs) geplant - bei einem grossen Ring (hunderte
+    // gleichzeitig animierte Einschlaege) kann der Haupt-Thread kurz genug beschaeftigt sein, dass
+    // setTimeout-Callbacks sichtbar spaet feuern und der Ton dann dem laengst abgeschlossenen visuellen
+    // Einschlag hinterherhinkt. Stattdessen wird jedem ausgewaehlten Meteor direkt ein playSoundGain
+    // mitgegeben, das renderFX() im selben Moment abspielt, in dem es den Einschlag auch sichtbar macht
+    // (hex.terrain -> void) - exakt derselbe pro-Frame-Vergleich gegen performance.now(), also immer
+    // synchron, egal wie sehr ein Frame mal verzoegert wird.
+    const meteorEntries = hexesToCollapse.map(hex => ({ hex, delay: Math.random() * cascadeWindow }));
+    meteorEntries.sort((a, b) => a.delay - b.delay);
+    const MAX_COLLAPSE_SOUNDS = 7;
+    const soundGainByIdx = new Map();
+    if (meteorEntries.length > 0) {
+        const sampleCount = Math.min(meteorEntries.length, MAX_COLLAPSE_SOUNDS);
+        // Gleichmaessig ueber die (zeitlich sortierten) Einschlaege verteilte Indizes auswaehlen, statt
+        // rein zufaellig - so bleibt der Nachhall über die ganze Kaskadendauer gleichmaessig hoerbar,
+        // statt sich z.B. zufaellig alle am Anfang zu haeufen.
+        for (let i = 0; i < sampleCount; i++) {
+            const idx = Math.floor(i * (meteorEntries.length - 1) / Math.max(1, sampleCount - 1));
+            soundGainByIdx.set(idx, i === 0 ? 0.85 : (0.25 + Math.random() * 0.2));
+        }
+    }
+    meteorEntries.forEach((entry, idx) => {
+        pendingMeteors.push({ q: entry.hex.q, r: entry.hex.r, impactAt: now + entry.delay, voided: false, playSoundGain: soundGainByIdx.get(idx) || null });
     });
     updateApoUI();
     const activePlayers = players.filter(p => p.units.length > 0);
@@ -3566,14 +3611,48 @@ function playSoundLoot() {
         sndNoiseBurst(c, { duration: 0.4, filterFreq: 6000, filterType: 'highpass', filterQ: 0.7, gain: 0.05, startTime: 0.1 });
     } catch (e) { console.warn('Sound-Fehler:', e); }
 }
-function playSoundMeteor() {
+// gainMul: Lautstaerke-Multiplikator, 1 = wie frueher (einzelner voller Knall). Wird jetzt fuer den
+// ueber die Kollaps-Kaskade verteilten Nachhall mit kleineren Werten wiederverwendet (siehe triggerKollaps()).
+function playSoundMeteor(gainMul = 1) {
     if (soundMuted) return;
     try {
         const c = audioCtx();
-        sndTone(c, { freq: 160, freqEnd: 38, type: 'sine', duration: 0.35, gain: 0.5, startTime: 0 });
-        sndNoiseBurst(c, { duration: 0.3, filterFreq: 300, filterType: 'lowpass', filterQ: 0.8, gain: 0.35, startTime: 0 });
-        sndNoiseBurst(c, { duration: 0.12, filterFreq: 2000, filterType: 'bandpass', filterQ: 1, gain: 0.12, startTime: 0.01 });
+        sndTone(c, { freq: 160, freqEnd: 38, type: 'sine', duration: 0.35, gain: 0.5 * gainMul, startTime: 0 });
+        sndNoiseBurst(c, { duration: 0.3, filterFreq: 300, filterType: 'lowpass', filterQ: 0.8, gain: 0.35 * gainMul, startTime: 0 });
+        sndNoiseBurst(c, { duration: 0.12, filterFreq: 2000, filterType: 'bandpass', filterQ: 1, gain: 0.12 * gainMul, startTime: 0.01 });
     } catch (e) { console.warn('Sound-Fehler:', e); }
+}
+// Kurzer Bildschirm-Ruckler zu einem Meteor-Einschlag (siehe triggerKollaps()/renderFX()) - "strong"
+// fuer den ersten, praegnantesten Einschlag (etwas groesserer Ausschlag, reutilisiert screenShake),
+// "light" (kleiner, eigenes hexShake) fuer die leiseren Nachhall-Einschlaege. Entfernt zuerst beide
+// Klassen + erzwingt einen Reflow, damit ein erneutes Ausloesen die CSS-Animation zuverlaessig neu
+// startet, statt bei bereits gesetzter Klasse stillschweigend zu ignorieren.
+function triggerHexShake(strong) {
+    const b = document.body;
+    const cls = strong ? 'collapse-shake-strong' : 'collapse-shake-light';
+    b.classList.remove('collapse-shake-light', 'collapse-shake-strong');
+    void b.offsetWidth;
+    b.classList.add(cls);
+    // Klasse nach Ablauf der Animation wieder entfernen (wie beim Wirbelsturm-screen-shake) - rein
+    // kosmetisch, die einmalige Animation ist zu dem Zeitpunkt laengst fertig, aber so bleibt am Ende
+    // einer Kollaps-Kaskade keine "tote" Klasse dauerhaft am body haengen.
+    setTimeout(() => b.classList.remove(cls), strong ? 450 : 320);
+    // Eingabe-Stopp waehrend des Rucklers: der CSS-transform auf <body> verschiebt kurz das ganze
+    // Spielfeld, die Klick-Koordinaten-Umrechnung (siehe canvas 'click'-Listener) geht aber von einem
+    // Canvas an Viewport-Position (0,0) aus - ein Klick genau waehrend des Ausschlags wuerde also auf
+    // dem falschen Feld landen. Deshalb sperren wir Klicks fuer die Dauer der Animation. Bewusst NICHT
+    // in isControllable() eingebaut (das wuerde faelschlich "Gegner ist am Zug" anzeigen), sondern nur
+    // dort, wo tatsaechlich auf einen Klick reagiert wird - siehe isInputLockedByShake(). Betrifft nur
+    // Maus-/Touch-Eingaben; die KI (npcStep()/npcDo*) liest/schreibt den Spielzustand direkt und geht
+    // nie ueber den Klick-Handler oder isControllable(), ist also von dieser Sperre nicht betroffen.
+    const until = performance.now() + (strong ? 450 : 320);
+    if (until > inputLockedUntilMs) inputLockedUntilMs = until;
+}
+// Liefert true, waehrend ein kurzer Kollaps-Ruckler laeuft (siehe triggerHexShake()) - blendet in
+// dem Fenster Klicks/Zielmarkierungen aus, damit kein Klick durch den Bildschirm-Versatz auf dem
+// falschen Feld landet. Ausserhalb von Kollaps-Rucklern immer false, kostet also praktisch nichts.
+function isInputLockedByShake() {
+    return performance.now() < inputLockedUntilMs;
 }
 function playSoundClick() {
     if (soundMuted) return;
@@ -3888,6 +3967,9 @@ function performHexClick(rx, rz, hex) {
 
 canvas.addEventListener('click', e => {
     if (!isControllable()) return;
+    // Kollaps-Ruckler: Bildschirm ist gerade kurz per CSS-transform verschoben, Klick-Koordinaten
+    // waeren also falsch umgerechnet - siehe triggerHexShake()/isInputLockedByShake().
+    if (isInputLockedByShake()) return;
     // Wenn zwischen mousedown und mouseup tatsaechlich gezogen wurde (Karte verschieben), soll dieser
     // Klick NICHT zusaetzlich noch ein Feld setzen/anklicken - siehe hasDragged weiter oben.
     if (hasDragged) { hasDragged = false; return; }
@@ -4289,6 +4371,9 @@ function computeHighlightTargets() {
     const none = { select: [], go: [] };
     const p = players[currentPlayerIdx];
     if (!p || !isControllable()) return none;
+    // Waehrend eines Kollaps-Rucklers keine Zielfelder markieren - sie waeren ohnehin kurz nicht
+    // anklickbar (siehe canvas 'click'-Listener/isInputLockedByShake()).
+    if (isInputLockedByShake()) return none;
     const isOccupied = (q, r) => players.some(pl => pl.units.some(u => u.q === q && u.r === r));
     switch (gameState) {
         case 'PLACING':
@@ -4385,6 +4470,11 @@ function renderFX() {
             if (!m.voided && (now - m.impactAt) / METEOR_DURATION >= METEOR_IMPACT_FRACTION) {
                 const hex = mapData.hexes[`${m.q},${m.r}`];
                 if (hex && hex.terrain !== 'void') { hex.terrain = 'void'; bakeHex(hex); render(); }
+                // Nachhall-Sound + kurzer Bildschirm-Ruckler (siehe triggerKollaps()) im selben Frame wie
+                // der sichtbare Einschlag, damit alles garantiert synchron bleibt statt ueber separat
+                // geplante Timer zu laufen. Nutzt dieselbe Auswahl/Lautstaerke wie der Sound (siehe
+                // triggerKollaps()) - der lauteste erste Einschlag bekommt den staerkeren Ruckler.
+                if (m.playSoundGain) { playSoundMeteor(m.playSoundGain); triggerHexShake(m.playSoundGain >= 0.7); }
                 m.voided = true;
             }
         });
