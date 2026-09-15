@@ -125,9 +125,58 @@
             transition: border-color 0.4s, box-shadow 0.4s, right 0.28s ease;
         }
         #ui-panel { top: 20px; left: 20px; --panel-color: var(--gold); z-index: 10; }
-        #inventory-panel { bottom: 20px; right: 20px; --panel-color: #5dade2; z-index: 20; }
-        #apo-panel { bottom: 20px; left: 20px; --panel-color: #e57368; z-index: 10; font-size: 0.92em; }
+        #inventory-panel { --panel-color: #5dade2; z-index: 20; bottom: 20px; right: 20px; }
+        #apo-panel {
+            --panel-color: #e57368; z-index: 10; font-size: 0.92em;
+            /* Etwas kompakter als die anderen Panels: auf kleineren PC-/Laptop-Aufloesungen (z.B.
+               1366x768 oder darunter) ragte das Apokalypse-Panel in der Ecke spuerbar ins Spielfeld
+               hinein und verdeckte dort Spielfiguren/Felder - Nutzerfeedback. Schmaler und mit
+               weniger Innenabstand nimmt es weniger vom Spielfeld weg, ohne unleserlich zu werden.
+               Bleibt in dieser Form als Erscheinungsbild fuer Handy/Tablet bestehen (siehe
+               .mobile-open weiter unten) - fuer Desktop siehe die Leisten-Darstellung direkt danach. */
+            width: 230px; padding: 12px 14px 14px;
+        }
         #victory-panel { top: 20px; left: 20px; --panel-color: #f1c40f; z-index: 2000; text-align: center; }
+        /* ---------- Apokalypse-Status als Leiste am unteren Bildschirmrand (Desktop) ----------
+           Vorgeschichte: #apo-panel wuchs frueher unabhaengig links unten direkt unter #ui-panel -
+           da #ui-panel je nach Spielzustand stark in der Hoehe schwankt (Kartenvorschau+Wuerfel,
+           Fluss-Dreh-/Setz-Buttons etc. bis ueber 600px), kollidierten beide auf kleineren PC-/
+           Laptop-Fenstern. Zwei Loesungen wurden verworfen (Nutzerfeedback "gefaellt mir nicht"):
+           ein interner Scrollbalken in #ui-panel und ein Stapeln von #apo-panel ueber #inventory-panel
+           in der rechten unteren Ecke. Stattdessen wandert der Apokalypse-Status auf Desktop-Breiten
+           komplett aus der Ecke heraus in eine schmale Leiste ueber die volle Bildschirmbreite am
+           unteren Rand (analog zum Handy-Dock, nur fuer breite Bildschirme) - dadurch gibt es
+           grundsaetzlich keine Ueberlappung mit #ui-panel mehr, egal wie hoch es gerade ist.
+           #inventory-panel bleibt unveraendert in seiner alten Ecke unten rechts.
+           Auf Handy/Tablet (@media max-width:700px weiter unten) aendert sich NICHTS: #apo-panel wird
+           dort weiterhin unveraendert per .mobile-open als eigenes Bottom-Sheet-Panel dargestellt -
+           die Leiste hier greift erst ab 701px Breite. */
+        @media (min-width: 701px) {
+            #apo-panel {
+                /* Bewusst KEIN explizites width:100% - erst so bestimmen left:0 + right:0 zusammen
+                   die Breite automatisch ("auto"-Breite fuellt den Abstand zwischen beiden). Nur so
+                   kann body.chat-open weiter unten die Leiste per right:300px sauber schmaler machen -
+                   mit hartem width:100% wuerde "right" sonst wirkungslos bleiben. */
+                position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 480;
+                width: auto; box-sizing: border-box;
+                display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+                gap: 7px 26px; padding: 9px 24px; font-size: 0.85em;
+                border: none; border-top: 1px solid rgba(212,175,55,0.4);
+                box-shadow: 0 -8px 22px rgba(0,0,0,0.45), inset 0 0 18px rgba(0,0,0,0.35);
+            }
+            /* Eck-Ornamente passen nur zur Box-Form, nicht zur vollen-Breite-Leiste. */
+            #apo-panel > i.corner-tl, #apo-panel > i.corner-tr,
+            #apo-panel > i.corner-bl, #apo-panel > i.corner-br { display: none; }
+            #apo-panel .apo-header { padding: 0; margin: 0; border: none; font-size: 0.92em; }
+            #apo-panel .apo-header::after { display: none; }
+            #apo-panel .apo-row { padding: 0; margin: 0; border: none; display: flex; align-items: center; gap: 8px; }
+            #apo-panel .apo-next { margin: 0; padding: 0; border: none; font-size: 0.85em; }
+            /* #inventory-panel haengt der Leiste sonst direkt in der unteren rechten Ecke drin (die
+               Leiste liegt ueber ihr, da hoeherer z-index) - --apo-bar-h wird live per ResizeObserver
+               auf die tatsaechliche Leisten-Hoehe gesetzt (siehe Skript), 58px ist nur ein NAherungs-
+               Fallback bevor JS das erste Mal misst bzw. falls ResizeObserver fehlen sollte. */
+            #inventory-panel { bottom: calc(var(--apo-bar-h, 58px) + 12px); }
+        }
 
         .panel-header { font-family: 'Cinzel', serif; font-weight: 700; text-align: center; letter-spacing: 2px; text-transform: uppercase; font-size: 0.88em; color: var(--panel-color, var(--gold)); text-shadow: 0 0 10px color-mix(in srgb, var(--panel-color, var(--gold)) 60%, transparent); padding-bottom: 9px; margin-bottom: 12px; position: relative; }
         .panel-header::after { content: '❖'; display: block; font-size: 0.7em; color: var(--panel-color, var(--gold)); margin-top: 7px; opacity: 0.85; }
@@ -160,9 +209,9 @@
         .inv-icon { font-size: 1.3em; margin-right: 11px; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 35% 30%, #2c3a44, #0e1518); border: 1px solid rgba(93,173,226,0.5); flex-shrink: 0; pointer-events: none; }
         .inv-name { font-family: 'Cinzel', serif; font-weight: bold; font-size: 0.8em; letter-spacing: 0.5px; text-transform: uppercase; color: #cfe7f7; pointer-events: none; }
 
-        .apo-header { font-family: 'Cinzel', serif; color: #e57368; font-weight: bold; text-transform: uppercase; text-align: center; padding-bottom: 9px; margin-bottom: 10px; letter-spacing: 2px; font-size: 0.88em; position: relative; }
-        .apo-header::after { content: '❖'; display: block; font-size: 0.7em; margin-top: 7px; opacity: 0.85; }
-        .apo-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 1px; border-bottom: 1px solid rgba(229,115,104,0.18); font-family: 'Cinzel', serif; font-size: 0.85em; letter-spacing: 0.5px; }
+        .apo-header { font-family: 'Cinzel', serif; color: #e57368; font-weight: bold; text-transform: uppercase; text-align: center; padding-bottom: 5px; margin-bottom: 6px; letter-spacing: 2px; font-size: 0.82em; position: relative; }
+        .apo-header::after { content: '❖'; display: block; font-size: 0.7em; margin-top: 4px; opacity: 0.85; }
+        .apo-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 1px; border-bottom: 1px solid rgba(229,115,104,0.18); font-family: 'Cinzel', serif; font-size: 0.8em; letter-spacing: 0.5px; }
         .apo-row:last-of-type { border-bottom: none; }
         .apo-status-safe { color: #8fe6ac; font-weight: bold; text-shadow: 0 0 6px rgba(111,207,151,0.5); }
         .apo-status-safe::before { content: '◆ '; }
@@ -170,7 +219,7 @@
         .apo-status-danger::before { content: '◆ '; }
         .apo-status-dead { color: #e57368; font-weight: bold; text-decoration: line-through; }
         .apo-status-dead::before { content: '◆ '; }
-        .apo-next { margin-top: 10px; font-size: 0.85em; color: #cbb; text-align: center; padding-top: 9px; border-top: 1px solid rgba(229,115,104,0.25); font-family: 'Cormorant Garamond', serif; }
+        .apo-next { margin-top: 6px; font-size: 0.78em; color: #cbb; text-align: center; padding-top: 6px; border-top: 1px solid rgba(229,115,104,0.25); font-family: 'Cormorant Garamond', serif; }
         /* Augen-Button pro Ring: zeigt auf Wunsch (statt dauerhaft) die zugehoerigen Felder rot auf
            der Karte an - siehe toggleRingPreview()/renderFX(). Status+Button zusammen rechts gruppiert,
            damit .apo-row weiterhin nur zwei Flex-Kinder hat (Label links, Rest rechts). */
@@ -431,9 +480,12 @@
         #chat-input-row button { background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08; border: 1px solid #fff2cf; border-radius: 2px; padding: 0 16px; cursor: pointer; font-weight: bold; }
         #chat-input-row.disabled input, #chat-input-row.disabled button { opacity: 0.4; pointer-events: none; }
 
-        /* Wenn die Leiste offen ist, den anderen rechten UI-Elementen Platz machen, damit die
-           Leiste nichts verdeckt (siehe Mockup-Hinweis zur Ueberschneidung mit dem Inventar). */
+        /* Wenn die Chat-Seitenleiste offen ist, den anderen rechten UI-Elementen Platz machen, damit
+           sie nichts verdeckt. Die Apokalypse-Leiste (siehe @media min-width:701px oben) bekommt
+           denselben Rand-Abstand wie das Inventar, nur etwas schmaler, da sie keinen eigenen Rahmen
+           an der rechten Kante hat. */
         body.chat-open #inventory-panel { right: 340px; }
+        body.chat-open #apo-panel { right: 300px; }
         body.chat-open #feedback-fab { right: 340px; }
         body.chat-open #help-fab { right: 340px; }
         body.chat-open #sound-toggle-fab { right: 392px; }
@@ -917,14 +969,10 @@
     <div id="hover-info" style="display: none;"><div id="hover-terrain" style="color: #fff2cf; font-weight: bold;"></div><div id="hover-extra" style="color: var(--gold-light); font-weight: bold;"></div></div>
 </div>
 
-<div id="inventory-panel" class="hidden">
-    <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
-    <div class="inv-header">Inventar (Max 3)</div>
-    <div id="inv-slot-0" class="inv-slot" onclick="handleInventoryClick(0)"><span class="inv-icon"></span><span class="inv-name">Leer</span></div>
-    <div id="inv-slot-1" class="inv-slot" onclick="handleInventoryClick(1)"><span class="inv-icon"></span><span class="inv-name">Leer</span></div>
-    <div id="inv-slot-2" class="inv-slot" onclick="handleInventoryClick(2)"><span class="inv-icon"></span><span class="inv-name">Leer</span></div>
-</div>
-
+<!-- #apo-panel: Apokalypse-Status. Auf Desktop (siehe @media min-width:701px im <style>) als
+     schmale Leiste ueber die volle Bildschirmbreite am unteren Rand dargestellt. Auf Handy/Tablet
+     (siehe @media max-width:700px) unveraendert als eigenes Bottom-Sheet-Panel ueber .mobile-open,
+     genau wie zuvor - die Leiste betrifft nur breite Bildschirme. -->
 <div id="apo-panel" class="hidden">
     <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
     <div class="apo-header">Apokalypse Status</div>
@@ -932,6 +980,14 @@
     <div class="apo-row"><span>Ring 2</span> <span class="apo-status-group"><span id="apo-2" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="middle" onclick="toggleRingPreview('middle')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
     <div class="apo-row"><span>Ring 3</span> <span class="apo-status-group"><span id="apo-3" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="inner" onclick="toggleRingPreview('inner')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
     <div class="apo-next">Nächster Kollaps bei <span id="apo-next-trigger" style="color:#f3e2a9; font-weight:bold;">3</span> Artefakten</div>
+</div>
+
+<div id="inventory-panel" class="hidden">
+    <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
+    <div class="inv-header">Inventar (Max 3)</div>
+    <div id="inv-slot-0" class="inv-slot" onclick="handleInventoryClick(0)"><span class="inv-icon"></span><span class="inv-name">Leer</span></div>
+    <div id="inv-slot-1" class="inv-slot" onclick="handleInventoryClick(1)"><span class="inv-icon"></span><span class="inv-name">Leer</span></div>
+    <div id="inv-slot-2" class="inv-slot" onclick="handleInventoryClick(2)"><span class="inv-icon"></span><span class="inv-name">Leer</span></div>
 </div>
 
 <!-- Handy/Tablet-Layout (schmaler Bildschirm): #ui-panel/#apo-panel/#inventory-panel oben bleiben
@@ -3060,6 +3116,25 @@ function toggleRingPreview(key) {
     ringPreviewKey = (ringPreviewKey === key) ? null : key;
     updateApoUI();
 }
+
+// Damit #inventory-panel (unten rechts) der Apokalypse-Leiste (siehe @media min-width:701px im
+// <style>) nie ins Gehege kommt, wird deren tatsaechliche gerenderte Hoehe live per ResizeObserver
+// in die CSS-Variable --apo-bar-h geschrieben - #inventory-panel haelt sich per calc() automatisch
+// genau so viel Abstand vom unteren Bildschirmrand frei, wie hoch die Leiste GERADE wirklich ist
+// (sie kann z.B. auf schmaleren Desktop-Fensterbreiten in zwei Zeilen umbrechen und dadurch hoeher
+// werden als im Normalfall - fixer Pixel-Wert waere hier nicht robust genug gewesen). Auf Mobile
+// ohne jede Wirkung, da dort `.mobile-open` die Positionierung von #inventory-panel ohnehin komplett
+// per position:fixed !important uebernimmt.
+(function () {
+    const apoPanelEl = document.getElementById('apo-panel');
+    if (apoPanelEl && typeof ResizeObserver !== 'undefined') {
+        const syncApoBarHeight = () => {
+            document.documentElement.style.setProperty('--apo-bar-h', apoPanelEl.getBoundingClientRect().height + 'px');
+        };
+        new ResizeObserver(syncApoBarHeight).observe(apoPanelEl);
+        syncApoBarHeight();
+    }
+})();
 
 // --- Handy/Tablet-Dock: oeffnet/schliesst #ui-panel/#apo-panel/#inventory-panel als Bottom-Sheet ---
 // (siehe #mobile-dock/.mobile-open im HTML/CSS weiter oben). Auf breiten Bildschirmen ohne Wirkung,
