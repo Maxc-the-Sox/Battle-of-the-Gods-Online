@@ -2212,10 +2212,40 @@ function npcLeadingOpponentTargetUnit(p) {
     return best.unit;
 }
 
+// ---------- KI: Ring-Kollaps-Gefahr einschaetzen ----------
+// Ordnet ein Hexfeld anhand seines UNVERAENDERLICHEN baseTerrain (siehe applyTerrain()-Kommentar
+// und triggerKollaps()) einem Ring zu - exakt dieselbe Zuordnung wie in checkApocalypse(). Damit
+// kann die KI erkennen, ob ein Feld bald wegbricht, BEVOR sie sich dort hinbewegt oder etwas
+// platziert. Vorher wurde das komplett ignoriert - ein Hauptgrund, warum die KI sorglos in
+// einstuerzende Ringe gelaufen ist.
+function npcRingKeyForHex(hex) {
+    if (!hex) return null;
+    if (hex.baseTerrain === 'desert' || hex.baseTerrain === 'swamp') return 'outer';
+    if (hex.baseTerrain === 'plains') return 'middle';
+    if (hex.baseTerrain === 'hills') return 'inner';
+    return null; // water/tundra - stuerzt nie ein
+}
+// Grobe Gefahrenstufe: 0 = sicher, 1 = in 2 Artefakten dran, 2 = beim naechsten Artefakt akut
+// dran, 3 = eigentlich schon faellig (Sicherheitsfall, sollte normalerweise nicht vorkommen).
+function npcHexCollapseRisk(hex) {
+    const key = npcRingKeyForHex(hex);
+    if (!key || closedRings[key]) return 0;
+    const idx = key === 'outer' ? 0 : key === 'middle' ? 1 : 2;
+    const remaining = ringThresholds[idx] - collectedArtifacts;
+    if (remaining <= 0) return 3;
+    if (remaining === 1) return 2;
+    if (remaining === 2) return 1;
+    return 0;
+}
+
 // ---------- Anfangsaufstellung ----------
 function npcDoPlacing(p, diff) {
-    const candidates = Object.values(mapData.hexes).filter(h => h.terrain === 'swamp' && !players.some(pl => pl.units.some(u => u.q === h.q && u.r === h.r)));
+    let candidates = Object.values(mapData.hexes).filter(h => h.terrain === 'swamp' && !players.some(pl => pl.units.some(u => u.q === h.q && u.r === h.r)));
     if (candidates.length === 0) return; // sollte nicht vorkommen
+    // Auch bei Leicht: nicht wissentlich auf einem bald einstuerzenden Feld starten, falls es
+    // Alternativen gibt - reine Grundabsicherung, keine echte Strategie.
+    const safeStart = candidates.filter(h => npcHexCollapseRisk(h) < 2);
+    if (safeStart.length > 0) candidates = safeStart;
     let hex;
     if (diff === 'easy') { hex = pickRandom(candidates); }
     else {
@@ -2225,7 +2255,7 @@ function npcDoPlacing(p, diff) {
             const db = temple ? getHexDistance(b.q, b.r, temple.q, temple.r) : 0;
             return da - db;
         });
-        const poolSize = diff === 'hard' ? 3 : 6;
+        const poolSize = diff === 'hard' ? 2 : 5;
         hex = pickRandom(sorted.slice(0, Math.min(poolSize, sorted.length)));
     }
     performHexClick(hex.q, hex.r, hex);
@@ -2253,17 +2283,38 @@ function npcValidTerrainPlacementHexes() {
     return Object.values(mapData.hexes).filter(h => h.terrain !== 'void' && !['mountains', 'forest', 'river', 'road'].includes(h.terrain));
 }
 function npcDoPlacingTerrain(p, diff) {
-    const candidates = npcValidTerrainPlacementHexes();
+    let candidates = npcValidTerrainPlacementHexes();
     if (candidates.length === 0) { cancelCurrentCard(); return; }
     let hex;
     if (diff === 'easy' || p.units.length === 0) { hex = pickRandom(candidates); }
     else {
-        const sorted = candidates.slice().sort((a, b) => {
-            const da = Math.min(...p.units.map(u => getHexDistance(u.q, u.r, a.q, a.r)));
-            const db = Math.min(...p.units.map(u => getHexDistance(u.q, u.r, b.q, b.r)));
-            return da - db;
-        });
-        const poolSize = diff === 'hard' ? 3 : 6;
+        // Nicht auf einem Feld bauen, das ohnehin bald wegbricht - waere eine verschwendete
+        // Platzierung (siehe npcHexCollapseRisk).
+        const safe = candidates.filter(h => npcHexCollapseRisk(h) < 2);
+        if (safe.length > 0) candidates = safe;
+
+        // Wald/Berge sind fuer den, der draufzieht, teuer bzw. blockierend - bei Schwer gezielt in
+        // den Weg des fuehrenden Gegners legen statt nur in die eigene Naehe (echtes Behindern,
+        // statt wie bisher rein selbstbezogen zu planen). Strasse/Fluss bleiben selbstbezogen, da
+        // eine Strasse fuer JEDEN kostenlos ist, der sie zuerst betritt - auch fuer einen selbst.
+        const cardType = currentCard ? currentCard.type : null;
+        const hindersWhoeverWalksIt = cardType === 'mountains' || cardType === 'forest';
+        let sorted;
+        if (hindersWhoeverWalksIt && diff === 'hard') {
+            const leader = npcLeadingOpponentTargetUnit(p);
+            sorted = candidates.slice().sort((a, b) => {
+                const da = leader ? getHexDistance(leader.q, leader.r, a.q, a.r) : Infinity;
+                const db = leader ? getHexDistance(leader.q, leader.r, b.q, b.r) : Infinity;
+                return da - db;
+            });
+        } else {
+            sorted = candidates.slice().sort((a, b) => {
+                const da = Math.min(...p.units.map(u => getHexDistance(u.q, u.r, a.q, a.r)));
+                const db = Math.min(...p.units.map(u => getHexDistance(u.q, u.r, b.q, b.r)));
+                return da - db;
+            });
+        }
+        const poolSize = diff === 'hard' ? 2 : 5;
         hex = pickRandom(sorted.slice(0, Math.min(poolSize, sorted.length)));
     }
     performHexClick(hex.q, hex.r, hex);
@@ -2289,7 +2340,12 @@ function npcSafeRiverDirection(preferredDir) {
 }
 function npcDoRotatingRiver(p, diff) {
     let preferredDir = pendingRiverHex.direction || 0;
-    if (diff === 'hard') {
+    if (diff === 'easy') {
+        preferredDir = Math.floor(Math.random() * 6);
+    } else {
+        // Mittel UND Schwer richten den Fluss jetzt gezielt Richtung eigenem Ziel aus (frueher
+        // konnte nur Schwer das - ein Fluss ist eine zu grosse Festlegung, um sie bei Mittel
+        // weiterhin dem Zufall zu ueberlassen).
         const obj = objectiveHexFor(p.units[0] || { q: pendingRiverHex.q, r: pendingRiverHex.r });
         let bestDir = preferredDir, bestD = Infinity;
         for (let d = 0; d < 6; d++) {
@@ -2298,8 +2354,6 @@ function npcDoRotatingRiver(p, diff) {
             if (dist < bestD) { bestD = dist; bestDir = d; }
         }
         preferredDir = bestDir;
-    } else {
-        preferredDir = Math.floor(Math.random() * 6);
     }
     const safeDir = npcSafeRiverDirection(preferredDir);
     if (safeDir !== null) {
@@ -2380,28 +2434,74 @@ function npcCandidateStepsForUnit(unit, player) {
     });
     return out;
 }
-function npcScoreHexForUnit(unit, hex, diff, lookahead) {
+// Bewertet ein Zielfeld fuer eine Figur: Fortschritt Richtung Ziel, minus Wald-Abzug, minus
+// Ring-Kollaps-Gefahr (NEU - vorher komplett ignoriert). Bei Schwer zusaetzlich ein 2-stufiger
+// Ausblick (frueher nur 1 Stufe) UND ein kleiner Bonus, wenn die Figur damit dem fuehrenden
+// Gegner in die Quere kommt (naeher an DESSEN Ziel als der Gegner selbst gerade ist - ein
+// leichtes "im Weg stehen", kein echtes Vollblocking, aber spuerbar stoerender als vorher).
+function npcScoreHexForUnit(unit, hex, diff, player, depth) {
     const obj = objectiveHexFor(unit);
     if (!obj) return 0;
     let score = getHexDistance(unit.q, unit.r, obj.q, obj.r) - getHexDistance(hex.q, hex.r, obj.q, obj.r);
     if (hex.terrain === 'forest') score -= 0.4;
-    if (diff === 'hard' && lookahead !== false) {
+    const risk = npcHexCollapseRisk(hex);
+    if (risk > 0) score -= risk * 2.5; // akute Gefahr macht ein sonst gutes Feld praktisch unattraktiv
+
+    if (diff === 'hard') {
+        const leader = npcLeadingOpponentTargetUnit(player);
+        if (leader) {
+            const leaderObj = objectiveHexFor(leader);
+            if (leaderObj) {
+                const leaderCurD = getHexDistance(leader.q, leader.r, leaderObj.q, leaderObj.r);
+                const hexToLeaderObjD = getHexDistance(hex.q, hex.r, leaderObj.q, leaderObj.r);
+                if (hexToLeaderObjD < leaderCurD) score += 0.3;
+            }
+        }
+        const d = depth || 0;
+        if (d < 2) {
+            const virtualUnit = { q: hex.q, r: hex.r };
+            let bestNext = -Infinity;
+            npcCandidateStepsForUnit(virtualUnit, player).forEach(h2 => {
+                const s2 = npcScoreHexForUnit(virtualUnit, h2, diff, player, d + 1);
+                if (s2 > bestNext) bestNext = s2;
+            });
+            if (bestNext > -Infinity) score += bestNext * (d === 0 ? 0.5 : 0.25);
+        }
+    } else if (diff === 'medium') {
+        // Mittel bekommt einen einfachen 1-Schritt-Ausblick (das, was frueher exklusiv "Schwer"
+        // hatte) inklusive Gefahren-Check, aber keinen Gegner-Bonus und kein Mehrschritt-Denken -
+        // klar schwaecher als Schwer, aber deutlich vorausschauender als vorher.
         const virtualUnit = { q: hex.q, r: hex.r };
-        let bestNext = 0;
-        npcCandidateStepsForUnit(virtualUnit, { inventory: [] }).forEach(h2 => {
-            const s2 = npcScoreHexForUnit(virtualUnit, h2, diff, false);
+        let bestNext = -Infinity;
+        npcCandidateStepsForUnit(virtualUnit, player).forEach(h2 => {
+            const s2 = (getHexDistance(virtualUnit.q, virtualUnit.r, obj.q, obj.r) - getHexDistance(h2.q, h2.r, obj.q, obj.r)) - (npcHexCollapseRisk(h2) * 2.5);
             if (s2 > bestNext) bestNext = s2;
         });
-        score += bestNext * 0.5;
+        if (bestNext > -Infinity) score += bestNext * 0.4;
     }
     return score;
 }
 function npcBestStepForUnit(p, unit, diff) {
     const steps = npcCandidateStepsForUnit(unit, p);
     if (steps.length === 0) return null;
-    if (diff === 'easy') return pickRandom(steps);
+    if (diff === 'easy') {
+        // Leicht: ueberwiegend zufaellig, aber mit einer schwachen Tendenz zum Ziel UND einer
+        // Grundabsicherung gegen offensichtlich toedliche Felder (auch ein Anfaenger liefe nicht
+        // wissentlich in ein Feld, das gleich einstuerzt). Klar schwaecher als Mittel/Schwer,
+        // aber nicht mehr reiner Zufall.
+        const safeSteps = steps.filter(h => npcHexCollapseRisk(h) < 2);
+        const pool = safeSteps.length > 0 ? safeSteps : steps;
+        if (Math.random() < 0.55) return pickRandom(pool);
+        const obj = objectiveHexFor(unit);
+        let best = null, bestScore = -Infinity;
+        pool.forEach(hex => {
+            const s = obj ? (getHexDistance(unit.q, unit.r, obj.q, obj.r) - getHexDistance(hex.q, hex.r, obj.q, obj.r)) : 0;
+            if (s > bestScore) { bestScore = s; best = hex; }
+        });
+        return best || pickRandom(pool);
+    }
     let best = null, bestScore = -Infinity;
-    steps.forEach(hex => { const s = npcScoreHexForUnit(unit, hex, diff); if (s > bestScore) { bestScore = s; best = hex; } });
+    steps.forEach(hex => { const s = npcScoreHexForUnit(unit, hex, diff, p, 0); if (s > bestScore) { bestScore = s; best = hex; } });
     return best;
 }
 function npcBestMovePlan(p, diff) {
@@ -2414,7 +2514,7 @@ function npcBestMovePlan(p, diff) {
     let best = null, bestScore = -Infinity;
     p.units.forEach(unit => {
         npcCandidateStepsForUnit(unit, p).forEach(hex => {
-            const score = npcScoreHexForUnit(unit, hex, diff);
+            const score = npcScoreHexForUnit(unit, hex, diff, p, 0);
             if (score > bestScore) { bestScore = score; best = { unit, hex }; }
         });
     });
@@ -2437,27 +2537,32 @@ function npcDoMoving(p, diff) {
 // ---------- Fluss-/Boot-Sonderfaelle ----------
 function npcDoRiverEscape(p, diff) {
     if (!riverEscapeHexes || riverEscapeHexes.length === 0) return;
+    let pool = riverEscapeHexes;
+    const safe = pool.filter(h => npcHexCollapseRisk(mapData.hexes[`${h.q},${h.r}`]) < 2);
+    if (safe.length > 0) pool = safe;
     let target;
-    if (diff === 'easy') { target = pickRandom(riverEscapeHexes); }
+    if (diff === 'easy') { target = pickRandom(pool); }
     else {
         const unit = selectedUnit || currentPushUnit;
         const forSelf = gameState === 'RIVER_ESCAPE';
         const obj = unit ? objectiveHexFor(unit) : null;
         let best = null, bestScore = -Infinity;
-        riverEscapeHexes.forEach(h => {
+        pool.forEach(h => {
             const d = obj ? getHexDistance(h.q, h.r, obj.q, obj.r) : 0;
             const score = forSelf ? -d : d;
             if (score > bestScore) { bestScore = score; best = h; }
         });
-        target = best || pickRandom(riverEscapeHexes);
+        target = best || pickRandom(pool);
     }
     performHexClick(target.q, target.r, mapData.hexes[`${target.q},${target.r}`]);
 }
 function npcDoBoatLanding(p, diff) {
     if (!boatLandingTargets || boatLandingTargets.length === 0) { finishPath(); return; }
     const hasHook = p.inventory.some(c => c.type === 'tool_hook');
-    const valid = boatLandingTargets.filter(h => { const hex = mapData.hexes[`${h.q},${h.r}`]; return hex && (hex.terrain !== 'mountains' || hasHook); });
+    let valid = boatLandingTargets.filter(h => { const hex = mapData.hexes[`${h.q},${h.r}`]; return hex && (hex.terrain !== 'mountains' || hasHook); });
     if (valid.length === 0) { boatLandingTargets = []; actionPoints = 0; finishPath(); return; }
+    const safe = valid.filter(h => npcHexCollapseRisk(mapData.hexes[`${h.q},${h.r}`]) < 2);
+    if (safe.length > 0) valid = safe;
     let target;
     if (diff === 'easy') { target = pickRandom(valid); }
     else {
@@ -2516,7 +2621,18 @@ function npcDoSelectPushDestination(p, diff) {
     if (candidates.length === 0) { npcCancelPendingCard(); return; }
     let target;
     if (diff === 'easy') { target = pickRandom(candidates); }
-    else {
+    else if (diff === 'hard') {
+        // Schwer schubst bevorzugt Richtung eines bald einstuerzenden Rings - fies, aber
+        // konsequent zuende gedacht, statt wie bisher nur auf Distanz-vom-Ziel zu schauen.
+        const obj = objectiveHexFor(currentPushUnit);
+        let best = candidates[0], bestScore = -Infinity;
+        candidates.forEach(h => {
+            const d = obj ? getHexDistance(h.q, h.r, obj.q, obj.r) : 0;
+            const score = d + npcHexCollapseRisk(h) * 2;
+            if (score > bestScore) { bestScore = score; best = h; }
+        });
+        target = best;
+    } else {
         const obj = objectiveHexFor(currentPushUnit);
         let best = candidates[0], bestD = -Infinity;
         candidates.forEach(h => { const d = obj ? getHexDistance(h.q, h.r, obj.q, obj.r) : 0; if (d > bestD) { bestD = d; best = h; } });
