@@ -2102,7 +2102,11 @@ async function loadStandardMap() {
                 ruinsLooted: 0, collapsesSurvived: 0
             };
         });
-        processLoadedMap(data, count, presetPlayers);
+        // Zugreihenfolge einmalig zufaellig mischen (Nutzerwunsch) - id/Farbe/Name bleiben pro Spieler
+        // unveraendert, nur ihre Position im Array (und damit die Zugreihenfolge/#turnorder-panel)
+        // aendert sich. presetPlayers selbst bleibt absichtlich unangetastet (siehe
+        // randomizeTurnOrder()-Kommentar), processLoadedMap() bekommt direkt die gemischte Kopie.
+        processLoadedMap(data, count, randomizeTurnOrder(presetPlayers));
     } catch (e) {
         alert("Ladefehler: " + e.message);
         if (btn) { btn.disabled = false; btn.innerText = 'LOKAL SPIELEN'; }
@@ -2313,6 +2317,21 @@ let net = {
 };
 
 function playerLabel(p) { return p ? (p.name || `Spieler ${p.id}`) : '?'; }
+// Zufallsgenerator fuer die Zugreihenfolge (Nutzerwunsch): mischt eine NEUE, unabhaengige Kopie des
+// Spieler-Arrays per Fisher-Yates - das Original bleibt bewusst unveraendert, da die Aufrufer
+// (loadStandardMap()/startOnlineGame()) direkt danach z.B. noch net.myIndex ueber den urspruenglichen
+// Slot-Index (netId-Zuordnung) suchen und das nur auf Basis des ZURUECKGEGEBENEN gemischten Arrays
+// tun duerfen, nicht auf einer inzwischen mutierten Variable. Jedes Spieler-Objekt (inkl. seiner
+// stabilen id, siehe playerLabel()) wandert dabei einfach unveraendert an seine neue Array-Position -
+// nur die REIHENFOLGE aendert sich, keine Spieler-Eigenschaften.
+function randomizeTurnOrder(arr) {
+    const shuffled = arr.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
 function isMyTurn() { return !net.active || net.myIndex === currentPlayerIdx; }
 // Darf GERADE ein Mensch an der Maus/Tastatur etwas tun? (blockt sowohl "nicht mein Online-Zug"
 // als auch "gerade ist eine KI am Zug" - die KI selbst umgeht diese Funktion und ruft ihre
@@ -2576,10 +2595,19 @@ async function startOnlineGame() {
         net.localNpcs.forEach(n => {
             presetPlayers.push({ id: presetPlayers.length + 1, netId: null, name: n.name, color: n.color, units: [], inventory: [], skipped: false, isNPC: true, npcDifficulty: n.difficulty, ruinsLooted: 0, collapsesSurvived: 0 });
         });
+        // Zugreihenfolge einmalig zufaellig mischen (Nutzerwunsch) - WICHTIG: nur der Host fuehrt
+        // startOnlineGame() ueberhaupt aus (siehe Guard ganz oben), das Ergebnis (inkl. der gemischten
+        // Reihenfolge) erreicht alle anderen Clients automatisch ueber den ohnehin schon bestehenden
+        // Zustands-Sync (processLoadedMap() -> updateUI() -> sendStateUpdate() -> applyRemoteState()
+        // bei allen anderen) - es muss also NICHT extra zwischen den Clients abgestimmt werden.
+        // net.myIndex MUSS auf der gemischten Kopie berechnet werden, nicht auf presetPlayers davor -
+        // sonst wuerde der Host am Ende auf den FALSCHEN (vor-gemischten) Index zeigen und glauben, er
+        // waere/waere nicht am Zug, obwohl tatsaechlich jemand anderes dran ist.
+        const shuffledPlayers = randomizeTurnOrder(presetPlayers);
         net.active = true;
-        net.myIndex = presetPlayers.findIndex(pl => pl.netId === net.clientId);
+        net.myIndex = shuffledPlayers.findIndex(pl => pl.netId === net.clientId);
         document.getElementById('lobby-overlay').classList.add('hidden');
-        processLoadedMap(data, presetPlayers.length, presetPlayers);
+        processLoadedMap(data, shuffledPlayers.length, shuffledPlayers);
     } catch (e) {
         alert('Ladefehler: ' + e.message);
         btn.disabled = false; btn.innerText = '⚔ SPIEL STARTEN';
@@ -3425,10 +3453,14 @@ function updateApoUI() {
 // bleibt, ohne jeden einzelnen Aufrufer von updateUI() einzeln anfassen zu muessen. Laeuft waehrend
 // des Replays NICHT mit, da der Replay-Viewer updateUI() bewusst umgeht (siehe applyReplaySnapshot()).
 // Wird sowohl vom echten Spiel (aus updateUI()) als auch vom Replay-Viewer (aus
-// updateReplayControlsUI()) aufgerufen - deshalb bewusst NICHT playerLabel()/p.id verwenden: p.id
-// existiert in den per buildReplaySnapshot() aufgezeichneten Spieler-Objekten gar nicht (dort werden
-// nur name/color/isNPC/units/inventory/... gespeichert). Der Array-Index (i+1) entspricht sowohl live
-// als auch im Replay immer korrekt der Zugreihenfolge/Spielernummer, ganz ohne p.id noetig zu haben.
+// updateReplayControlsUI()) aufgerufen. Zwei bewusst unterschiedliche Quellen pro Token: die
+// Positions-NUMMER (i+1) zeigt die tatsaechliche Zugreihenfolge (seit der Zufalls-Zugreihenfolge,
+// siehe randomizeTurnOrder(), NICHT mehr zwangslaeufig die urspruengliche Spieler-Slot-Nummer!) -
+// der NAME dagegen laeuft weiterhin ueber playerLabel()/p.id (stabile Spieler-Identitaet, komplett
+// unabhaengig von der Zugreihenfolge), damit ein unbenannter Spieler ueberall im Spiel (Verlauf,
+// "XY ist dran"-Anzeige, hier) konsistent denselben "Spieler N" nutzt - egal an welcher Position er
+// gerade steht. p.id wird seit Kurzem auch in buildReplaySnapshot() mit aufgezeichnet, funktioniert
+// also identisch live UND im Replay.
 function updateTurnOrderUI() {
     const row = document.getElementById('turnorder-row');
     if (!row || !players || !players.length) return;
@@ -3436,7 +3468,7 @@ function updateTurnOrderUI() {
     players.forEach((p, i) => {
         if (i > 0) html += '<span class="to-arrow">›</span>';
         const isCurrent = i === currentPlayerIdx;
-        const name = (p.name || `Spieler ${i + 1}`) + (p.isNPC ? ' (KI)' : '');
+        const name = playerLabel(p) + (p.isNPC ? ' (KI)' : '');
         html += `<div class="to-player${isCurrent ? ' current' : ''}" style="--pc:${p.color};">
             <div class="to-token">${i + 1}</div>
             <div class="to-name">${name}</div>
@@ -4412,8 +4444,10 @@ function buildReplaySnapshot() {
         collectedArtifacts, targetArtifacts, closedRings: { ...closedRings },
         hexes,
         landmarks: mapData.landmarks.map(l => ({ q: l.q, r: l.r, icon: l.icon, looted: !!l.looted })),
+        // id mit aufzeichnen (fehlte hier bisher) - playerLabel()/Namens-Fallbacks brauchen sie fuer
+        // "Spieler N" bei unbenannten Spielern, siehe updateTurnOrderUI()/updateReplayControlsUI().
         players: players.map(p => ({
-            name: p.name, color: p.color, isNPC: !!p.isNPC,
+            id: p.id, name: p.name, color: p.color, isNPC: !!p.isNPC,
             units: p.units.map(u => ({ q: u.q, r: u.r })),
             inventory: p.inventory.map(c => c.name || c.type),
             ruinsLooted: p.ruinsLooted || 0, collapsesSurvived: p.collapsesSurvived || 0
@@ -4599,13 +4633,12 @@ function updateReplayControlsUI(snap) {
     // Spieler des jeweils gerade angezeigten Zuges (siehe updateTurnOrderUI()-Kommentar).
     updateTurnOrderUI();
     const p = players[currentPlayerIdx];
-    // Gleicher Namens-Fallback wie in updateTurnOrderUI() (Spieler ohne eigenen Namen - z.B. ein
-    // lokaler Mensch, der keinen Custom-Namen gesetzt hat - bekommt "Spieler N" statt einem
-    // nichtssagenden "?"; war vorher inkonsistent mit der neuen Zugreihenfolge-Leiste, die fuer
-    // denselben Spieler bereits korrekt "Spieler N" zeigt).
+    // playerLabel() (p.id-basierter Namens-Fallback) statt eines nichtssagenden "?" - konsistent mit
+    // der Zugreihenfolge-Leiste direkt darueber und mit dem Rest des Spiels (Verlauf usw.), seit p.id
+    // auch in buildReplaySnapshot() mit aufgezeichnet wird.
     document.getElementById('replay-bar-title').innerHTML =
         `📼 Runde <b>${roundCount}</b> · Zug <b>${replayViewerIdx + 1} / ${data.verlauf.length}</b>` +
-        (p ? ` · <b>${escapeHtml(p.name || `Spieler ${currentPlayerIdx + 1}`)}</b> war dran` : '') +
+        (p ? ` · <b>${escapeHtml(playerLabel(p))}</b> war dran` : '') +
         ` · 🏆 ${collectedArtifacts}/${targetArtifacts}`;
     document.getElementById('replay-prev-btn').disabled = replayViewerIdx <= 0;
     document.getElementById('replay-first-btn').disabled = replayViewerIdx <= 0;
