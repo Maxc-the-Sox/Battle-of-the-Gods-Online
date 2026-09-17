@@ -45,6 +45,51 @@
         #setup-overlay, #lobby-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.75)), url('bg.jpg') no-repeat center center; background-size: cover; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
         #setup-overlay::before, #lobby-overlay::before { content:''; position:absolute; inset:0; background: repeating-linear-gradient(115deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 90px); pointer-events:none; }
 
+        /* Title-/Splash-Screen: liegt VOR dem eigentlichen Hauptmenue, wird erst durch den ERSTEN
+           Klick/Tap/Tastendruck ausgeblendet - exakt dieselbe Geste, die ohnehin schon den
+           AudioContext/die Musik freischaltet (siehe unlockAudioOnce()/unlockMusicOnce() weiter
+           unten im Skript, beide an denselben document-Events haengen). Start-Gefuehl und
+           Musikfreigabe fallen dadurch bewusst zusammen, statt dass die Musik "zufaellig" erst beim
+           naechsten Menü-Klick lostutet. Nutzerwunsch nach Mockup-Abstimmung. */
+        #title-screen {
+            position: fixed; inset: 0; z-index: 9999;
+            background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.8)), url('bg.jpg') no-repeat center center;
+            background-size: cover;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; cursor: pointer;
+            transition: opacity 0.5s ease;
+        }
+        #title-screen::before {
+            content: ''; position: absolute; inset: 0;
+            background: repeating-linear-gradient(115deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 90px);
+            pointer-events: none;
+        }
+        #title-screen::after {
+            content: ''; position: absolute; inset: 0;
+            background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%);
+            pointer-events: none;
+        }
+        #title-screen.ts-hidden { opacity: 0; pointer-events: none; }
+        #title-screen .ts-glow { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); width: 620px; height: 340px; background: radial-gradient(ellipse, rgba(212,175,55,0.28), transparent 70%); filter: blur(10px); pointer-events: none; }
+        #title-screen h1 { font-size: 5.4em; z-index: 1; }
+        #title-screen .menu-subtitle { font-size: 1.35em; margin-bottom: 60px; z-index: 1; }
+        #title-screen .title-flourish { font-size: 0.85em; letter-spacing: 8px; z-index: 1; }
+        #title-screen .ts-prompt {
+            font-family: 'Cinzel', serif; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase;
+            font-size: 1.05em; color: var(--gold-light);
+            border: 1px solid rgba(212,175,55,0.55); border-radius: 2px;
+            padding: 14px 34px; background: rgba(20,17,10,0.35);
+            animation: ts-pulse 2.1s ease-in-out infinite;
+            z-index: 1;
+        }
+        #title-screen .ts-mobile-hint { display: none; }
+        #title-screen .ts-credit {
+            position: absolute; bottom: 26px; left: 0; right: 0; text-align: center;
+            font-family: 'Cinzel', serif; font-size: 0.72em; letter-spacing: 1.5px; text-transform: uppercase;
+            color: #7d7362; z-index: 1;
+        }
+        @keyframes ts-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+
         /* --- MENÜ DESIGN --- */
         .menu-box {
             position: relative;
@@ -942,6 +987,13 @@
             .menu-scroll { padding: 28px 16px 22px; }
             #lobby-overlay .menu-scroll { padding: 16px 14px 12px; }
             h1 { font-size: 2em; }
+            #title-screen h1 { font-size: 2.6em; letter-spacing: 2px; padding: 0 12px; }
+            #title-screen .menu-subtitle { font-size: 1.05em; margin-bottom: 46px; padding: 0 20px; }
+            #title-screen .title-flourish { letter-spacing: 5px; font-size: 0.7em; }
+            #title-screen .ts-prompt { font-size: 0.85em; padding: 12px 22px; letter-spacing: 1.5px; }
+            #title-screen .ts-desktop-hint { display: none; }
+            #title-screen .ts-mobile-hint { display: inline; }
+            #title-screen .ts-glow { width: 90vw; height: 220px; }
             .glow-orb { width: 220px; height: 130px; }
 
             /* Der Raum-Schritt ("Server hosten") hat auf kleinen Handys (z.B. 375x667) trotz
@@ -989,6 +1041,18 @@
 </head>
 <body>
 
+<div id="title-screen" onclick="dismissTitleScreen()">
+    <div class="ts-glow"></div>
+    <div class="title-flourish">⚜ ✦ ⚜</div>
+    <h1>Battle of the Gods</h1>
+    <p class="menu-subtitle">Ein Zeitalter der Titanen bricht an</p>
+    <div class="ts-prompt">
+        <span class="ts-desktop-hint">Taste oder Maus drücken, um zu beginnen</span>
+        <span class="ts-mobile-hint">Zum Beginnen tippen</span>
+    </div>
+    <div class="ts-credit">Dev: Johannes K aka Maxc the Sox</div>
+</div>
+
 <div id="setup-overlay">
     <div class="menu-box">
         <div class="glow-orb"></div>
@@ -1016,7 +1080,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.3</div>
+                <div class="version-tag">v1.4</div>
             </div>
         </div>
 
@@ -2092,6 +2156,21 @@ function drawMeteorImpact(fctx, cx, cy, s, lt) {
         }
     }
 }
+
+// Title-/Splash-Screen: blendet sich per Klick/Tap/Tastendruck weich aus (siehe #title-screen-CSS)
+// und wird danach wirklich aus dem Layout genommen (display:none) - rein kosmetisch, blockiert aber
+// zur Sicherheit trotzdem nichts mehr, falls die Fade-Transition aus irgendeinem Grund nicht greift
+// (z.B. reduzierte Bewegungseinstellungen o.ae.). Einmalig: ein zweiter Klick waehrend des Ausblendens
+// darf nicht nochmal den Timer neu anstossen.
+function dismissTitleScreen() {
+    const el = document.getElementById('title-screen');
+    if (!el || el.classList.contains('ts-hidden')) return;
+    el.classList.add('ts-hidden');
+    setTimeout(() => { el.style.display = 'none'; }, 550);
+}
+// Tastendruck soll genauso wie Klick/Tap wirken (siehe Prompt-Text "Taste ODER Maus druecken") -
+// eigener, unabhaengiger Listener statt den onclick-Handler zu verdoppeln.
+document.addEventListener('keydown', dismissTitleScreen, { once: true });
 
 // Analog zu showLobbyStep() im Online-Menue: schaltet zwischen dem kompakten Startbildschirm und dem
 // Lokal-Setup-Screen um, statt beides dauerhaft uebereinander anzuzeigen.
