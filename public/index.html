@@ -149,6 +149,29 @@
         .to-player.current { opacity: 1; transform: translateY(-1px) scale(1.08); }
         .to-player.current .to-token { border-color: var(--gold-light); box-shadow: inset 0 2px 4px rgba(255,255,255,0.35), inset 0 -3px 5px rgba(0,0,0,0.35), 0 0 14px var(--pc), 0 0 5px var(--gold-light); }
         .to-player.current .to-name { color: var(--gold-light); font-weight: 700; }
+        /* Replay-Viewer: Zugreihenfolge-Leiste hier bewusst UNABHAENGIG von der Bildschirmbreite
+           immer als volle obere Leiste (wie das Live-Spiel-Desktop) - es gibt im Replay-Modus gar
+           kein #mobile-dock, ueber das man sie auf dem Handy sonst einklappbar erreichen koennte,
+           und der Nutzerwunsch war explizit "wie am PC" auch fuers Handy. Wird nur waehrend einer
+           laufenden Wiedergabe gesetzt (siehe startReplayPlayback()/exitReplayViewer()). Hoehere
+           Spezifitaet (ID+Klasse) als die einfache #turnorder-panel-Basisregel gewinnt automatisch,
+           kein !important noetig. .to-row selbst bleibt hier absichtlich UNVERAENDERT (flex-wrap:wrap
+           per Basisregel) - bei bis zu 6 Spielern auf schmalen Handy-Breiten wird sonst ueberlaufen. */
+        #turnorder-panel.replay-mode {
+            position: fixed; left: 0; right: 0; top: 0; bottom: auto; transform: none; z-index: 480;
+            width: auto; max-width: none; box-sizing: border-box;
+            display: flex; align-items: center; justify-content: center;
+            /* Rechts bewusst deutlich mehr Innenabstand als links: #sound-toggle-fab (das 🔊-Icon,
+               immer sichtbar, auch im Replay) liegt fest bei right:72px/Breite 42px, also im Bereich
+               [Breite-114px, Breite-72px]. Der Hintergrund/Rahmen der Leiste bleibt dadurch ueber die
+               volle Breite (right:0) - nur der zentrierte Inhalt (.to-row) weicht durch das
+               unsymmetrische Padding nach links aus, damit auf schmalen Handy-Breiten kein
+               umgebrochenes Spieler-Token mehr unter dem Icon verschwindet (Nutzerfeedback beim Test). */
+            padding: 8px 118px 8px 14px; border: none; border-bottom: 1px solid rgba(212,175,55,0.4);
+            box-shadow: 0 8px 22px rgba(0,0,0,0.45), inset 0 0 18px rgba(0,0,0,0.35);
+        }
+        #turnorder-panel.replay-mode > i.corner-tl, #turnorder-panel.replay-mode > i.corner-tr,
+        #turnorder-panel.replay-mode > i.corner-bl, #turnorder-panel.replay-mode > i.corner-br { display: none; }
         @media (min-width: 701px) {
             #turnorder-panel {
                 position: fixed; left: 0; right: 0; top: 0; bottom: auto; transform: none; z-index: 480;
@@ -577,7 +600,10 @@
             background: linear-gradient(180deg, rgba(18,16,12,0.55), rgba(9,8,6,0.97));
             border-top: 1px solid var(--gold);
             box-shadow: 0 -8px 28px rgba(0,0,0,0.6);
-            padding: 10px 20px 14px;
+            /* Wie #mobile-dock/#feedback-fab/etc. (siehe env(safe-area-inset-bottom) an anderen
+               Stellen): auf Handys mit Home-Indicator (z.B. iPhone ohne Home-Button) sonst der
+               "Beenden"-Button und der untere Leisten-Rand zu nah an/hinter der Wischgeste sitzen wuerden. */
+            padding: 10px 20px calc(14px + env(safe-area-inset-bottom, 0px));
             backdrop-filter: blur(6px);
             font-family: 'Cormorant Garamond', serif;
         }
@@ -3398,6 +3424,11 @@ function updateApoUI() {
 // neu auf. Aus updateUI() heraus aufgerufen, damit sie automatisch mit jedem Zugwechsel synchron
 // bleibt, ohne jeden einzelnen Aufrufer von updateUI() einzeln anfassen zu muessen. Laeuft waehrend
 // des Replays NICHT mit, da der Replay-Viewer updateUI() bewusst umgeht (siehe applyReplaySnapshot()).
+// Wird sowohl vom echten Spiel (aus updateUI()) als auch vom Replay-Viewer (aus
+// updateReplayControlsUI()) aufgerufen - deshalb bewusst NICHT playerLabel()/p.id verwenden: p.id
+// existiert in den per buildReplaySnapshot() aufgezeichneten Spieler-Objekten gar nicht (dort werden
+// nur name/color/isNPC/units/inventory/... gespeichert). Der Array-Index (i+1) entspricht sowohl live
+// als auch im Replay immer korrekt der Zugreihenfolge/Spielernummer, ganz ohne p.id noetig zu haben.
 function updateTurnOrderUI() {
     const row = document.getElementById('turnorder-row');
     if (!row || !players || !players.length) return;
@@ -3405,9 +3436,9 @@ function updateTurnOrderUI() {
     players.forEach((p, i) => {
         if (i > 0) html += '<span class="to-arrow">›</span>';
         const isCurrent = i === currentPlayerIdx;
-        const name = playerLabel(p) + (p.isNPC ? ' (KI)' : '');
+        const name = (p.name || `Spieler ${i + 1}`) + (p.isNPC ? ' (KI)' : '');
         html += `<div class="to-player${isCurrent ? ' current' : ''}" style="--pc:${p.color};">
-            <div class="to-token">${p.id}</div>
+            <div class="to-token">${i + 1}</div>
             <div class="to-name">${name}</div>
         </div>`;
     });
@@ -4519,6 +4550,12 @@ function startReplayPlayback(data) {
     document.getElementById('setup-overlay').style.display = 'none';
     document.getElementById('replay-player-bar').classList.remove('hidden');
     document.getElementById('replay-slider').max = String(data.verlauf.length - 1);
+    // Zugreihenfolge-Leiste auch waehrend der Wiedergabe zeigen - bewusst auf Desktop UND Handy
+    // gleich als volle obere Leiste (siehe .replay-mode im <style>, Nutzerwunsch), nicht ueber ein
+    // Dock-Icon versteckt (das gibt es im Replay-Modus ohnehin nicht). Inhalt wird gleich von
+    // applyReplaySnapshot() -> updateReplayControlsUI() -> updateTurnOrderUI() befuellt.
+    document.getElementById('turnorder-panel').classList.remove('hidden');
+    document.getElementById('turnorder-panel').classList.add('replay-mode');
     applyReplaySnapshot(0);
     centerMap();
     render();
@@ -4557,10 +4594,18 @@ function applyReplaySnapshot(idx) {
 function updateReplayControlsUI(snap) {
     const data = replayViewerData;
     document.getElementById('replay-slider').value = String(replayViewerIdx);
+    // players/currentPlayerIdx sind zu diesem Zeitpunkt schon von applyReplaySnapshot() aktualisiert -
+    // Zugreihenfolge-Leiste zeigt dadurch automatisch die Reihenfolge UND den hervorgehobenen
+    // Spieler des jeweils gerade angezeigten Zuges (siehe updateTurnOrderUI()-Kommentar).
+    updateTurnOrderUI();
     const p = players[currentPlayerIdx];
+    // Gleicher Namens-Fallback wie in updateTurnOrderUI() (Spieler ohne eigenen Namen - z.B. ein
+    // lokaler Mensch, der keinen Custom-Namen gesetzt hat - bekommt "Spieler N" statt einem
+    // nichtssagenden "?"; war vorher inkonsistent mit der neuen Zugreihenfolge-Leiste, die fuer
+    // denselben Spieler bereits korrekt "Spieler N" zeigt).
     document.getElementById('replay-bar-title').innerHTML =
         `📼 Runde <b>${roundCount}</b> · Zug <b>${replayViewerIdx + 1} / ${data.verlauf.length}</b>` +
-        (p ? ` · <b>${escapeHtml(p.name || '?')}</b> war dran` : '') +
+        (p ? ` · <b>${escapeHtml(p.name || `Spieler ${currentPlayerIdx + 1}`)}</b> war dran` : '') +
         ` · 🏆 ${collectedArtifacts}/${targetArtifacts}`;
     document.getElementById('replay-prev-btn').disabled = replayViewerIdx <= 0;
     document.getElementById('replay-first-btn').disabled = replayViewerIdx <= 0;
@@ -4608,6 +4653,12 @@ function exitReplayViewer() {
     replayViewerData = null;
     replayViewerIdx = 0;
     document.getElementById('replay-player-bar').classList.add('hidden');
+    // Zugreihenfolge-Leiste wieder ausblenden UND die replay-mode-Klasse entfernen, damit sie beim
+    // naechsten echten Spielstart wieder ganz normal ueber die Live-Spiel-Regeln (Desktop-Leiste bzw.
+    // Handy-Dock-Panel) gesteuert wird, statt weiter im erzwungenen "immer volle obere Leiste"-Modus
+    // haengen zu bleiben.
+    document.getElementById('turnorder-panel').classList.add('hidden');
+    document.getElementById('turnorder-panel').classList.remove('replay-mode');
     // Zurueck zum Startbildschirm - dieselben globalen Variablen, die die Wiedergabe zum Zeichnen
     // benutzt hat (mapData/players/...), werden beim naechsten echten Spielstart ohnehin komplett
     // frisch aufgebaut (siehe processLoadedMap()/startOnlineGame()), deshalb reicht ein einfacher Reset.
