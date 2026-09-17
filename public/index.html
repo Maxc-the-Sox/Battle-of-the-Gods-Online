@@ -4043,9 +4043,12 @@ function submitFeedback() {
         statusEl.className = 'err';
         return;
     }
-    // Lokale Download-Datei bleibt IMMER erhalten (Schritt 1, Nutzerwunsch "soll immer mit rein") -
-    // unabhaengig davon, ob der Mailversand weiter unten klappt oder ob der Verlauf dafuer zu gross ist.
-    downloadReplayFile({ note: `${title}\n\n${desc}`, filenamePrefix: 'bug' });
+    // Bis inkl. Schritt 1 loeste "Bug melden" hier zusaetzlich IMMER einen lokalen Download aus - das
+    // war damals der einzige Weg, den Verlauf ueberhaupt "loszuschicken", bevor es den automatischen
+    // Mailversand (Schritt 2) gab. Seit der Mailversand steht, ist der Extra-Download beim Absenden
+    // nur noch verwirrend (Nutzer-Feedback: "wieso bekomm ich da ein Download, das soll doch nur an
+    // die Mail gehen") - auf Nutzerwunsch entfernt. Der separate "📥 Spielverlauf herunterladen"-Button
+    // im Sieg-Screen (downloadReplayFromVictory()) bleibt davon komplett unberuehrt.
     if (!FEEDBACK_WEBHOOK_URL || FEEDBACK_WEBHOOK_URL.indexOf('BITTE_HIER') !== -1) {
         statusEl.textContent = 'Feedback-System ist noch nicht eingerichtet (fehlende Webhook-URL).';
         statusEl.className = 'err';
@@ -4082,7 +4085,7 @@ function submitFeedback() {
         })
     }).then(() => {
         statusEl.textContent = replayTooLarge
-            ? 'Danke! Feedback gesendet (Spielverlauf war für die Mail zu groß, liegt aber als Download bei dir bereit).'
+            ? 'Danke! Feedback gesendet (Spielverlauf war für die Mail zu groß - bei Bedarf über den Button "Spielverlauf herunterladen" separat sichern).'
             : 'Danke! Feedback inkl. Spielverlauf wurde gesendet.';
         statusEl.className = 'ok';
         document.getElementById('feedback-title').value = '';
