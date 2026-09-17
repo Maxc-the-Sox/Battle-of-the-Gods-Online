@@ -161,6 +161,15 @@
             #turnorder-panel > i.corner-bl, #turnorder-panel > i.corner-br { display: none; }
             .to-row { flex-wrap: nowrap; gap: 22px; }
             body.chat-open #turnorder-panel { right: 300px; }
+            /* #ui-panel sass bisher fix bei top:20px - die neue, volle-Breite Zugreihenfolge-Leiste
+               (z-index 480, also UEBER #ui-panel mit z-index 10) lag oben direkt darueber und
+               verdeckte damit den Kopf von #ui-panel (Spieler-Anzeige, "Figur setzen" etc.) -
+               Nutzerfeedback. Fix nach demselben Muster wie --apo-bar-h/#inventory-panel weiter
+               unten: --turnorder-bar-h wird live per ResizeObserver auf die tatsaechliche
+               Leisten-Hoehe gesetzt (siehe Skript), #ui-panel haelt per calc() automatisch genau so
+               viel Abstand von oben frei, wie die Leiste GERADE hoch ist. 58px ist nur ein
+               Naeherungs-Fallback bevor JS das erste Mal misst bzw. falls ResizeObserver fehlen sollte. */
+            #ui-panel { top: calc(var(--turnorder-bar-h, 58px) + 20px); }
         }
         #apo-panel {
             --panel-color: #e57368; z-index: 10; font-size: 0.92em;
@@ -3431,6 +3440,21 @@ function toggleRingPreview(key) {
         };
         new ResizeObserver(syncApoBarHeight).observe(apoPanelEl);
         syncApoBarHeight();
+    }
+})();
+
+// Analoges Gegenstueck fuer die neue Zugreihenfolge-Leiste oben (siehe --turnorder-bar-h im
+// @media min-width:701px-Block): #ui-panel haelt sich dadurch automatisch so viel Abstand vom
+// oberen Bildschirmrand frei, wie die Leiste GERADE tatsaechlich hoch ist (kann z.B. bei vielen
+// Spielern/schmaleren Fensterbreiten umbrechen und dadurch hoeher werden).
+(function () {
+    const turnorderPanelEl = document.getElementById('turnorder-panel');
+    if (turnorderPanelEl && typeof ResizeObserver !== 'undefined') {
+        const syncTurnorderBarHeight = () => {
+            document.documentElement.style.setProperty('--turnorder-bar-h', turnorderPanelEl.getBoundingClientRect().height + 'px');
+        };
+        new ResizeObserver(syncTurnorderBarHeight).observe(turnorderPanelEl);
+        syncTurnorderBarHeight();
     }
 })();
 
