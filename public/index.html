@@ -1080,7 +1080,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.8</div>
+                <div class="version-tag">v1.9</div>
             </div>
         </div>
 
@@ -5472,16 +5472,8 @@ try {
     const storedVol = parseFloat(localStorage.getItem('botg_sound_volume'));
     if (!isNaN(storedVol) && storedVol >= 0 && storedVol <= 1) soundVolume = storedVol;
 } catch (e) {}
-// NUR zu Diagnose-Zwecken (Punkt 53-Nachfolger, siehe Handover): laesst sich per "?nosfx=1" in der
-// URL einschalten und verhindert dann komplett, dass ueberhaupt ein AudioContext fuer SFX erzeugt
-// wird - testet die Theorie, ob schon die blosse EXISTENZ eines aktiven AudioContext irgendwo auf
-// der Seite reicht, damit iOS den Stumm-Schalter fuer die GESAMTE Seite ignoriert (auch fuer davon
-// technisch unabhaengige <audio>-Elemente wie die Musik). Ohne den Parameter: keinerlei Aenderung
-// am normalen Verhalten.
-const SFX_DIAGNOSTIC_DISABLED = new URLSearchParams(location.search).has('nosfx');
 let sndCtx = null;
 function audioCtx() {
-    if (SFX_DIAGNOSTIC_DISABLED) return null;
     if (!sndCtx) sndCtx = new (window.AudioContext || window.webkitAudioContext)();
     // Browser starten einen neuen AudioContext oft im Zustand "suspended", wenn er nicht WAEHREND
     // einer echten Nutzer-Geste (Klick/Tastendruck) erzeugt wurde - z.B. wenn zufaellig zuerst ein
@@ -5508,7 +5500,6 @@ function sndNoiseBuffer(c, duration) {
     return buf;
 }
 function sndNoiseBurst(c, { duration = 0.05, filterFreq = 1200, filterType = 'bandpass', filterQ = 1, gain = 0.3, startTime = 0, attack = 0.002 } = {}) {
-    if (!c) return; // Diagnose-Modus (?nosfx=1) - siehe audioCtx()
     // Einziger Skalierungspunkt fuer den Lautstaerke-Regler (siehe soundVolume oben): ALLE
     // Sounds laufen durch sndTone()/sndNoiseBurst(), daher genuegt es, hier einmal zu
     // multiplizieren statt an jeder einzelnen playSound*()-Stelle im Code.
@@ -5526,7 +5517,6 @@ function sndNoiseBurst(c, { duration = 0.05, filterFreq = 1200, filterType = 'ba
     src.start(t0); src.stop(t0 + duration + 0.02);
 }
 function sndTone(c, { freq = 440, freqEnd = null, type = 'sine', duration = 0.3, gain = 0.25, startTime = 0, attack = 0.005 } = {}) {
-    if (!c) return; // Diagnose-Modus (?nosfx=1) - siehe audioCtx()
     gain = gain * soundVolume; // siehe Kommentar in sndNoiseBurst()
     const osc = c.createOscillator();
     osc.type = type;
