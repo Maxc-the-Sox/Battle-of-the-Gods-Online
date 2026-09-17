@@ -3804,6 +3804,23 @@ function closeTutorial() { document.getElementById('tutorial-overlay').classList
 // Formular zeigt einen ehrlichen Hinweis an, statt eine erfolgreiche Meldung nur vorzutäuschen.
 const FEEDBACK_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbx0nFsRpfasRjlKekdc5wvGfmKRXfLqzKKqXgAHlENAVxu23S4a0qwqnqz7AG2YxudG/exec';
 
+// ---------- Schritt 2: Spielverlauf automatisch per Mail (siehe apps-script-replay-mail.gs) ----------
+// Muss EXAKT mit REPLAY_APP_TOKEN im Apps-Script uebereinstimmen - dient nur dazu, zufaellige/
+// automatisierte Anfragen fernzuhalten, die die oben sichtbare Webhook-URL irgendwo aufschnappen,
+// OHNE das Spiel selbst je zu oeffnen (siehe Sicherheits-Absprache). Kann auf einen beliebigen
+// anderen String geaendert werden, solange er auf BEIDEN Seiten (hier + im Apps Script) gleich ist.
+const FEEDBACK_APP_TOKEN = 'botg-freunde-2026-xk9';
+// Gmail-Anhaenge sind auf ~25MB begrenzt, Base64-Kodierung blaeht die Rohgroesse um gut ein Drittel
+// auf - 15MB Rohtext bleibt mit Sicherheitsabstand darunter. Ist ein aufgezeichneter Spielverlauf
+// groesser (sehr lange Partie mit vielen Kollapsen), faellt NUR der Mail-Anhang weg - die Text-
+// Meldung und der lokale Download (siehe downloadReplayFile()) laufen trotzdem ganz normal weiter.
+const REPLAY_MAIL_MAX_BYTES = 15 * 1024 * 1024;
+
+// Wandelt einen Text (kann Umlaute/Emoji enthalten, z.B. aus dem Spiel-Log) in einen fuer Mail-
+// Anhaenge tauglichen Base64-String um - das einfache btoa() alleine kann mit solchen Zeichen nicht
+// umgehen und wirft sonst einen Fehler.
+function utf8ToBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
+
 function openFeedback() {
     const nameField = document.getElementById('feedback-name');
     if (!nameField.value) {
@@ -3826,10 +3843,8 @@ function submitFeedback() {
         statusEl.className = 'err';
         return;
     }
-    // Der Spielverlauf geht NICHT mit ueber den obigen Webhook raus (der ist nur fuer die kurze
-    // Text-Meldung gedacht, siehe FEEDBACK_WEBHOOK_URL-Kommentar) - stattdessen wird er hier lokal als
-    // eigene Datei heruntergeladen, IMMER wenn Titel+Beschreibung ausgefuellt sind (kein Haekchen noetig,
-    // Nutzerwunsch), egal ob der Webhook-Versand gleich klappt oder nicht.
+    // Lokale Download-Datei bleibt IMMER erhalten (Schritt 1, Nutzerwunsch "soll immer mit rein") -
+    // unabhaengig davon, ob der Mailversand weiter unten klappt oder ob der Verlauf dafuer zu gross ist.
     downloadReplayFile({ note: `${title}\n\n${desc}`, filenamePrefix: 'bug' });
     if (!FEEDBACK_WEBHOOK_URL || FEEDBACK_WEBHOOK_URL.indexOf('BITTE_HIER') !== -1) {
         statusEl.textContent = 'Feedback-System ist noch nicht eingerichtet (fehlende Webhook-URL).';
@@ -3839,6 +3854,15 @@ function submitFeedback() {
     btn.disabled = true;
     statusEl.textContent = 'Wird gesendet...';
     statusEl.className = '';
+
+    // Schritt 2: Spielverlauf zusaetzlich zur Text-Meldung mitschicken, damit ihn das (entsprechend
+    // erweiterte, siehe apps-script-replay-mail.gs) Apps Script automatisch als Mail-Anhang verschickt -
+    // nur wenn er nicht zu gross dafuer ist (siehe REPLAY_MAIL_MAX_BYTES-Kommentar oben).
+    const replayPayload = buildReplayPayloadObject({ note: `${title}\n\n${desc}` });
+    const replayJson = JSON.stringify(replayPayload);
+    const replayTooLarge = replayJson.length > REPLAY_MAIL_MAX_BYTES;
+    const replayBase64 = replayTooLarge ? null : utf8ToBase64(replayJson);
+
     fetch(FEEDBACK_WEBHOOK_URL, {
         method: 'POST',
         mode: 'no-cors', // Apps-Script-Webhooks setzen keine CORS-Header - die Antwort koennen wir eh
@@ -3850,15 +3874,21 @@ function submitFeedback() {
             description: desc,
             room: (typeof net !== 'undefined' && net.room) ? net.room : '',
             url: location.href,
-            userAgent: navigator.userAgent
+            userAgent: navigator.userAgent,
+            appToken: FEEDBACK_APP_TOKEN,
+            replayBase64: replayBase64,
+            replayFilename: `spielverlauf_bug_${new Date().toISOString().slice(0, 10)}.json`,
+            replayTooLarge: replayTooLarge
         })
     }).then(() => {
-        statusEl.textContent = 'Danke! Dein Feedback wurde gesendet.';
+        statusEl.textContent = replayTooLarge
+            ? 'Danke! Feedback gesendet (Spielverlauf war für die Mail zu groß, liegt aber als Download bei dir bereit).'
+            : 'Danke! Feedback inkl. Spielverlauf wurde gesendet.';
         statusEl.className = 'ok';
         document.getElementById('feedback-title').value = '';
         document.getElementById('feedback-desc').value = '';
         btn.disabled = false;
-        setTimeout(closeFeedback, 1800);
+        setTimeout(closeFeedback, 2200);
     }).catch(() => {
         statusEl.textContent = 'Senden fehlgeschlagen - bitte prüfe deine Internetverbindung.';
         statusEl.className = 'err';
@@ -4006,18 +4036,26 @@ function dismissOrphanedReplay() {
     if (el) el.remove();
 }
 
-// Zentrale Download-Funktion - wird von allen drei Stellen genutzt (Sieg-Bildschirm, Feedback-Formular,
-// Absturz-Wiederherstellung), siehe downloadReplayFromVictory()/submitFeedback()/recoverOrphanedReplay().
-function downloadReplayFile(opts) {
+// Baut das gemeinsame Datei-Format, das sowohl der lokale Download (downloadReplayFile()) als auch
+// der automatische Mailversand (siehe submitFeedback()) verwenden - ein Ort fuer die Struktur, damit
+// beide Wege garantiert dasselbe Format liefern.
+function buildReplayPayloadObject(opts) {
     opts = opts || {};
     const history = opts.history || replayHistory;
-    const payload = {
+    return {
         spiel: 'Battle of the Gods',
         exportiertAm: new Date().toISOString(),
         notiz: opts.note || null,
         zuegeAufgezeichnet: history.length,
         verlauf: history
     };
+}
+
+// Zentrale Download-Funktion - wird von allen drei Stellen genutzt (Sieg-Bildschirm, Feedback-Formular,
+// Absturz-Wiederherstellung), siehe downloadReplayFromVictory()/submitFeedback()/recoverOrphanedReplay().
+function downloadReplayFile(opts) {
+    opts = opts || {};
+    const payload = buildReplayPayloadObject(opts);
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
