@@ -1337,6 +1337,14 @@ let replayModeActive = false;
 let replayViewerData = null; // {spiel, exportiertAm, notiz, zuegeAufgezeichnet, verlauf: [...]}
 let replayViewerIdx = 0;
 let replayAutoplayTimer = null;
+// Rekonstruierter, kumulativer Text-Verlauf fuer neuere Dateien im "delta"-Format (siehe
+// lastCapturedLogEntry-Kommentar bei buildReplaySnapshot()): einmal beim Oeffnen der Datei
+// (startReplayPlayback()) durch Aneinanderhaengen aller pro-Zug-Deltas aufgebaut, damit
+// updateReplayControlsUI() beim Anzeigen eines Zuges trotzdem wie gewohnt "die letzten ~150 Zeilen bis
+// zu diesem Zeitpunkt" anzeigen kann, ohne dass die Datei selbst diese Redundanz enthalten muss.
+// replayViewerLogEnd[i] haelt fest, wie viele Eintraege in replayViewerFullLog nach Zug i existieren.
+let replayViewerFullLog = [];
+let replayViewerLogEnd = [];
 
 const terrainColors = { water: '#4fa3e0', river: '#81ecec', desert: '#d4bb7e', swamp: '#3d4a3d', plains: '#5a8d46', forest: '#1b4d3e', mountains: '#4d4d4d', road: '#333333', hills: '#8a7355', tundra: '#c3d3d9', void: '#000' };
 const terrainNames = { water: 'Wasser', river: 'Fluss', desert: 'Wüste', swamp: 'STARTBURG', plains: 'Ebene', forest: 'Wald', mountains: 'Gebirge', road: 'STRASSE', hills: 'Hügel', tundra: 'Tundra', void: 'VERNICHTET' };
@@ -2695,15 +2703,17 @@ function applyRemoteState(state) {
     Object.entries(state.hexes).forEach(([k, h]) => { mapData.hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction, sprite: null }; });
     mapData.landmarks = state.landmarks;
     Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
-    // Konservativ auf "geaendert" setzen (siehe mapChangedSinceLastSnapshot-Kommentar bei
-    // buildReplaySnapshot()): die eigenen mapChangedSinceLastSnapshot=true-Stellen (Landschaftskarte
-    // platzieren, Ring-Kollaps) sitzen nur im Code-Pfad des Spielers, der die Aktion selbst ausloest -
-    // ein passiver Online-Client, der die Karte NUR per Netzwerk-Sync empfaengt, wuerde diese Stellen
-    // nie durchlaufen und koennte sonst faelschlich denken, an der Karte haette sich seit dem letzten
-    // eigenen Schnappschuss nichts geaendert. Lieber hier zu oft als zu selten "geaendert" markieren -
-    // die Performance-Optimierung greift dadurch vor allem lokal/beim aktiv handelnden Spieler voll,
-    // bei passiven Mitspielern bleibt es sicherheitshalber beim alten (unkomprimierten) Verhalten.
-    mapChangedSinceLastSnapshot = true;
+    // Frueher stand hier ein bewusst KONSERVATIVES "immer als geaendert markieren" fuer passive Online-
+    // Clients, weil die alte Version dieses Fixes nur an ein paar einzelnen Code-Stellen (Kartenplatzierung,
+    // Ring-Kollaps) manuell festhielt, DASS sich die Karte geaendert hat, ohne zu wissen WAS genau. Ein
+    // passiver Client, der die Karte nur per Netzwerk-Sync empfaengt (genau hier), durchlaeuft diese Stellen
+    // nie selbst - mangels besserem Wissen musste er deshalb bei JEDER einzelnen Aktion IRGENDEINES
+    // Mitspielers sicherheitshalber die komplette 1120-Felder-Karte neu in seine eigene Aufzeichnung
+    // uebernehmen. Das war bei Online-Partien der mit Abstand groesste verbleibende Groessen-Faktor.
+    // Seit buildReplaySnapshot() die Karte stattdessen STRUKTURELL gegen den zuletzt aufgezeichneten Stand
+    // vergleicht (siehe lastSnapshottedHexesShadow-Kommentar dort), ist hier keine Sonderbehandlung mehr
+    // noetig - der Vergleich erkennt von selbst und exakt, welche Felder sich seit dem letzten eigenen
+    // Schnappschuss WIRKLICH geaendert haben, egal ob lokal ausgeloest oder per Sync erhalten.
 
     players = state.players.map(p => ({ ...p, units: p.units.map(u => ({ ...u })), inventory: p.inventory.map(c => ({ ...c })) }));
     net.myIndex = players.findIndex(p => p.netId === net.clientId);
@@ -4381,15 +4391,57 @@ let replayDb = null; // IndexedDB-Handle, lazy geoeffnet
 let pendingOrphanReplay = null; // von einer fruehreren, nicht sauber beendeten Partie liegen gebliebener Verlauf
 // PERFORMANCE-FIX (siehe buildReplaySnapshot()): die komplette Hex-Karte (bei der Standardkarte gut
 // 1000+ Felder!) aendert sich waehrend einer Partie nur SEHR selten (Landschaftskarte platzieren,
-// Ring-Kollaps) - trotzdem wurde sie bisher in JEDEM einzelnen Schnappschuss komplett neu mitgespeichert,
-// obwohl sich zwischen den meisten Zuegen gar nichts an der Karte aendert. Bei laengeren Partien (viele
-// Zuege, seit Punkt 33 auch viel feingranularer mitgeschrieben) hat das den Spielverlauf auf mehrere MB
-// aufgeblaeht - dadurch dauerte sowohl der E-Mail-Versand (Apps Script muss ein Vielfaches an Daten
-// Base64-dekodieren/anhaengen) als auch (in geringerem Mass) jedes einzelne IndexedDB-Zwischenspeichern
-// waehrend des Spiels spuerbar laenger. Diese Flagge haelt fest, ob sich seit dem letzten Schnappschuss
-// wirklich etwas an der Karte geaendert hat - nur dann wird sie erneut mit gespeichert (siehe die beiden
-// Stellen, die diese Flagge auf true setzen: Landschaftskarte platzieren, Ring-Kollaps).
-let mapChangedSinceLastSnapshot = true;
+// Ring-Kollaps) - trotzdem wurde sie urspruenglich in JEDEM einzelnen Schnappschuss komplett neu
+// mitgespeichert, obwohl sich zwischen den meisten Zuegen gar nichts an der Karte aendert. Bei laengeren
+// Partien (viele Zuege, seit Punkt 33 auch viel feingranularer mitgeschrieben) hat das den Spielverlauf
+// auf mehrere MB aufgeblaeht - dadurch dauerte sowohl der E-Mail-Versand (Apps Script muss ein Vielfaches
+// an Daten Base64-dekodieren/anhaengen) als auch (in geringerem Mass) jedes einzelne IndexedDB-
+// Zwischenspeichern waehrend des Spiels spuerbar laenger.
+// Erste Version dieses Fixes (siehe Punkt 40 im Handover-Dokument) nutzte dafuer ein simples, an ein
+// paar Code-Stellen (Kartenplatzierung, Ring-Kollaps) manuell gesetztes "hat sich was geaendert"-Flag.
+// Das funktionierte lokal gut, hatte aber eine Luecke: ein PASSIVER Online-Client (der die Karte nur per
+// Netzwerk-Sync empfaengt, nie selbst per Klick veraendert) durchlaeuft diese Code-Stellen nie und musste
+// deshalb sicherheitshalber JEDE einzelne Aktion IRGENDEINES Mitspielers als Kartenaenderung werten -
+// wodurch bei Online-Partien praktisch wieder jeder Schnappschuss die volle Karte enthielt und der
+// eigentliche Sinn der Optimierung dort weitgehend verpuffte.
+// Jetzt wird STRUKTURELL verglichen statt nur markiert: dieser "Schatten" haelt den Kartenstand fest, der
+// beim LETZTEN Schnappschuss tatsaechlich aufgezeichnet wurde. buildReplaySnapshot() vergleicht
+// mapData.hexes bei jedem Aufruf direkt dagegen und speichert nur die WIRKLICH abweichenden Felder
+// (hexDiff) - unabhaengig davon, WOMIT die Aenderung ausgeloest wurde (Kartenplatzierung, Ring-Kollaps
+// ODER Netzwerk-Sync). Der allererste Schnappschuss einer Aufzeichnung speichert einmalig die komplette
+// Karte als Basis (hexes); jeder folgende Schnappschuss nur noch das Diff dagegen (oder gar nichts, wenn
+// sich seit dem letzten Mal nichts geaendert hat).
+let lastSnapshottedHexesShadow = null;
+// GLEICHER Gedanke, aber fuer den TEXT-Verlauf (gameLog): buildReplaySnapshot() hat bisher bei JEDEM
+// Schnappschuss die letzten bis zu 150 Verlauf-Zeilen KOMPLETT erneut gespeichert (gameLog.slice(-150)) -
+// obwohl zwischen zwei Schnappschuessen (die nach fast jeder Spielhandlung entstehen, siehe Punkt 33)
+// so gut wie immer nur EINE einzige neue Zeile dazukommt. Dadurch wurde derselbe Zeilen-Text bis zu
+// 150-fach dupliziert - bei laengeren Partien war das sogar der mit Abstand groesste Anteil an der
+// Verlaufsgroesse, deutlich mehr als die Hex-Karte oben.
+// Bewusst KEIN reiner Positions-/Laengen-Zaehler (wie der Struktur-Schatten es fuer die Karte ist,
+// siehe lastSnapshottedHexesShadow oben) - gameLog kann sich naemlich auf zwei Arten "unter den Fuessen
+// wegdrehen", bei denen eine
+// blosse Array-Laenge in die Irre fuehren wuerde: (1) gameLog ist bei 300 Eintraegen gedeckelt
+// (addLogEntry() ruft danach bei jedem push() auch shift() auf) - die Laenge bleibt dann dauerhaft bei
+// 300, obwohl staendig neue Zeilen dazukommen; (2) im Online-Modus wird gameLog bei nicht gerade aktiven
+// Clients komplett vom Netzwerk ueberschrieben (siehe applyRemoteState()) - Positionen im alten und im
+// neuen Array haben dann gar nichts mehr miteinander zu tun. Stattdessen wird hier die tatsaechliche
+// OBJEKT-REFERENZ des zuletzt aufgezeichneten Eintrags gemerkt: die bleibt ueber ein shift() hinweg
+// gueltig, wird aber bei einer Netzwerk-Ueberschreibung (neue, per JSON deserialisierte Objekte) ganz
+// natuerlich NICHT mehr gefunden - buildReplaySnapshot() faellt in diesem (seltenen) Fall einfach auf
+// "alles im aktuellen gameLog ist neu" zurueck, exakt dieselbe konservative Grundidee wie beim
+// Struktur-Diff-Fix fuer die Karte oben (lieber einmal zu viel als zu wenig aufzeichnen).
+let lastCapturedLogEntry = null;
+// DRITTE Stelle mit demselben Muster, diesmal fuer die Landmarken (Ruinen): q/r und vor allem das
+// icon-Feld (eine komplette Icon-URL wie "https://api.iconify.design/...", kein kurzes Emoji) sind bei
+// jeder Landmarke ueber die gesamte Partie hinweg IMMER gleich - nur looted kann sich (pro Ruine genau
+// einmal) von false auf true aendern, wenn sie gepluendert wird. Wurden bisher trotzdem bei JEDEM
+// Schnappschuss alle Landmarken komplett neu gespeichert - bei den ueblichen ~25 Landmarken mit vollen
+// Icon-URLs war das nach den Hex-/Log-Fixes oben der mit Abstand groesste VERBLEIBENDE Anteil an der
+// Verlaufsgroesse (staerker als Karte UND Text-Verlauf zusammen). Exakt dasselbe Baseline+Diff-Prinzip
+// wie bei den Hexes: erster Schnappschuss speichert alle Landmarken einmal voll, jeder folgende nur die
+// tatsaechlich abweichenden (in der Praxis: eine einzelne Ruine, die gerade gepluendert wurde).
+let lastSnapshottedLandmarksShadow = null;
 
 function replayDbOpen() {
     return new Promise((resolve) => {
@@ -4455,23 +4507,76 @@ function replayDbFindOrphan() {
 // erhoeht als Nebeneffekt den Netzwerk-Sync-Zaehler stateSeq, was hier nichts verloren haette und die
 // Online-Synchronisation nur unnoetig verwirren wuerde).
 function buildReplaySnapshot() {
-    // hexes bleibt null, wenn sich seit dem letzten Schnappschuss nachweislich nichts an der Karte
-    // geaendert hat (siehe mapChangedSinceLastSnapshot-Kommentar oben) - applyReplaySnapshot() im
-    // Replay-Viewer sucht in diesem Fall beim Anzeigen rueckwaerts nach dem letzten Schnappschuss MIT
-    // hexes und nutzt den. Alte, bereits gespeicherte Spielverlauf-Dateien haben hexes immer gesetzt
-    // (frueheres Format) und funktionieren dadurch unveraendert weiter - rein additive Aenderung.
-    let hexes = null;
-    if (mapChangedSinceLastSnapshot) {
+    // Karte: siehe lastSnapshottedHexesShadow-Kommentar oben. Ganz erster Schnappschuss dieser
+    // Aufzeichnung -> volle Basis (hexes) + Schatten anlegen. Jeder weitere -> nur die Felder, die sich
+    // GEGENUEBER DEM SCHATTEN wirklich unterscheiden, landen im Diff (hexDiff); gibt es keine, bleibt
+    // hexDiff null. applyReplaySnapshot() im Replay-Viewer baut daraus beim Anzeigen wieder die volle
+    // Karte fuer den jeweiligen Zug zusammen. Alte, bereits gespeicherte Spielverlauf-Dateien (vor diesem
+    // Fix) haben hexes bei jedem Zug voll gesetzt und kein hexDiff-Feld - funktionieren dadurch
+    // unveraendert weiter (applyReplaySnapshot() erkennt das automatisch, rein additive Aenderung).
+    let hexes = null, hexDiff = null;
+    if (!lastSnapshottedHexesShadow) {
         hexes = {};
-        Object.entries(mapData.hexes).forEach(([k, h]) => { hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction }; });
+        lastSnapshottedHexesShadow = {};
+        Object.entries(mapData.hexes).forEach(([k, h]) => {
+            const rec = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction };
+            hexes[k] = rec;
+            lastSnapshottedHexesShadow[k] = rec;
+        });
+    } else {
+        const diff = {};
+        let anyChange = false;
+        Object.entries(mapData.hexes).forEach(([k, h]) => {
+            const prev = lastSnapshottedHexesShadow[k];
+            if (!prev || prev.terrain !== h.terrain || prev.baseTerrain !== h.baseTerrain || prev.direction !== h.direction) {
+                const rec = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction };
+                diff[k] = rec;
+                lastSnapshottedHexesShadow[k] = rec;
+                anyChange = true;
+            }
+        });
+        if (anyChange) hexDiff = diff;
+    }
+    // Position des zuletzt aufgezeichneten Verlauf-Eintrags im AKTUELLEN gameLog wiederfinden (siehe
+    // lastCapturedLogEntry-Kommentar oben) - alles danach ist neu seit dem letzten Schnappschuss. Wird
+    // die Referenz nicht mehr gefunden (Cap bei 300 hat sie rausgeschoben, oder gameLog wurde per
+    // Netzwerk-Sync komplett ersetzt), sicherheitshalber das komplette aktuelle gameLog als "neu" werten.
+    let logStartIdx = 0;
+    if (lastCapturedLogEntry) {
+        const foundIdx = gameLog.lastIndexOf(lastCapturedLogEntry);
+        logStartIdx = (foundIdx === -1) ? 0 : foundIdx + 1;
+    }
+    // Landmarken (Ruinen): siehe lastSnapshottedLandmarksShadow-Kommentar oben - gleiches Baseline+Diff-
+    // Prinzip wie bei den Hexes, per "q,r" als Schluessel (Koordinaten sind pro Landmarke eindeutig und
+    // aendern sich nie). Ganz erster Schnappschuss -> volle Basis (landmarks) + Schatten anlegen. Jeder
+    // weitere -> nur die WIRKLICH abweichenden Landmarken (landmarksDiff), meist keine oder genau eine.
+    let landmarksBase = null, landmarksDiff = null;
+    if (!lastSnapshottedLandmarksShadow) {
+        landmarksBase = mapData.landmarks.map(l => ({ q: l.q, r: l.r, icon: l.icon, looted: !!l.looted }));
+        lastSnapshottedLandmarksShadow = {};
+        landmarksBase.forEach(l => { lastSnapshottedLandmarksShadow[`${l.q},${l.r}`] = l; });
+    } else {
+        const diff = {};
+        let anyChange = false;
+        mapData.landmarks.forEach(l => {
+            const key = `${l.q},${l.r}`;
+            const prev = lastSnapshottedLandmarksShadow[key];
+            const cur = { q: l.q, r: l.r, icon: l.icon, looted: !!l.looted };
+            if (!prev || prev.icon !== cur.icon || prev.looted !== cur.looted) {
+                diff[key] = cur;
+                lastSnapshottedLandmarksShadow[key] = cur;
+                anyChange = true;
+            }
+        });
+        if (anyChange) landmarksDiff = diff;
     }
     return {
         t: Date.now(),
         round: roundCount,
         currentPlayerIdx, gameState,
         collectedArtifacts, targetArtifacts, closedRings: { ...closedRings },
-        hexes,
-        landmarks: mapData.landmarks.map(l => ({ q: l.q, r: l.r, icon: l.icon, looted: !!l.looted })),
+        hexes, hexDiff,
+        landmarks: landmarksBase, landmarksDiff,
         // id mit aufzeichnen (fehlte hier bisher) - playerLabel()/Namens-Fallbacks brauchen sie fuer
         // "Spieler N" bei unbenannten Spielern, siehe updateTurnOrderUI()/updateReplayControlsUI().
         players: players.map(p => ({
@@ -4481,7 +4586,10 @@ function buildReplaySnapshot() {
             ruinsLooted: p.ruinsLooted || 0, collapsesSurvived: p.collapsesSurvived || 0
         })),
         isGameOver,
-        gameLog: gameLog.slice(-150)
+        // Nur die seit dem LETZTEN Schnappschuss neu hinzugekommenen Zeilen (delta), nicht mehr das
+        // komplette 150er-Fenster - siehe lastCapturedLogEntry-Kommentar oben. Bei den meisten Zuegen
+        // ist das genau EINE Zeile statt bis zu 150.
+        gameLog: gameLog.slice(logStartIdx)
     };
 }
 
@@ -4491,7 +4599,10 @@ function buildReplaySnapshot() {
 function captureReplaySnapshot() {
     if (!replaySessionId || gameState === 'SETUP') return;
     replayHistory.push(buildReplaySnapshot());
-    mapChangedSinceLastSnapshot = false; // erst NACH dem Erstellen zuruecksetzen - siehe buildReplaySnapshot()
+    // lastSnapshottedHexesShadow wird bereits INNERHALB von buildReplaySnapshot() live aktualisiert (der
+    // Strukturvergleich braucht den neuen Stand sofort, kein nachtraeglicher Reset noetig, anders als
+    // frueher bei mapChangedSinceLastSnapshot).
+    lastCapturedLogEntry = gameLog.length ? gameLog[gameLog.length - 1] : null; // dito fuer den Text-Verlauf, siehe Kommentar oben
     replayDbSaveSnapshot();
 }
 
@@ -4502,7 +4613,9 @@ function startReplayRecording() {
     replayDbFindOrphan().then(orphan => { if (orphan) offerOrphanedReplayRecovery(orphan); });
     replaySessionId = uuid4();
     replayHistory = [];
-    mapChangedSinceLastSnapshot = true; // frische Partie -> der allererste Schnappschuss braucht die volle Karte
+    lastSnapshottedHexesShadow = null; // frische Partie -> der allererste Schnappschuss legt wieder eine neue volle Basis an
+    lastSnapshottedLandmarksShadow = null; // dito fuer die Landmarken, siehe Kommentar oben
+    lastCapturedLogEntry = null; // dito fuer den Text-Verlauf (gameLog ist an dieser Stelle bereits leer, siehe resetChatAndLogForNewGame())
 }
 
 function offerOrphanedReplayRecovery(orphan) {
@@ -4537,6 +4650,12 @@ function buildReplayPayloadObject(opts) {
         spiel: 'Battle of the Gods',
         exportiertAm: new Date().toISOString(),
         notiz: opts.note || null,
+        // Format-Markierung fuer den Verlauf-Text pro Zug (siehe lastCapturedLogEntry-Kommentar
+        // weiter oben): neue Dateien speichern pro Zug nur die NEU hinzugekommenen Verlauf-Zeilen
+        // (delta), keine 150er-Fenster mehr. Fehlt dieses Feld (aeltere, schon gespeicherte Dateien vor
+        // diesem Fix), interpretiert startReplayPlayback() snap.gameLog wie bisher als vollstaendiges
+        // Fenster - rein additive, abwaertskompatible Aenderung.
+        logFormat: 'delta',
         zuegeAufgezeichnet: history.length,
         verlauf: history
     };
@@ -4607,6 +4726,19 @@ function handleReplayFileSelected(event) {
 function startReplayPlayback(data) {
     replayViewerData = data;
     replayModeActive = true;
+    // Kumulativen Text-Verlauf einmalig beim Oeffnen aufbauen (siehe lastCapturedLogEntry-
+    // Kommentar): bei neueren Dateien (data.logFormat === 'delta') enthaelt snap.gameLog pro Zug nur die
+    // NEUEN Zeilen - hier einmal aneinandergehaengt, damit updateReplayControlsUI() spaeter trotzdem wie
+    // gewohnt "die letzten ~150 Zeilen bis zu diesem Zug" anzeigen kann. Aeltere Dateien (Feld fehlt)
+    // haben pro Zug weiterhin das komplette Fenster - dort bleibt alles wie bisher (siehe dort).
+    replayViewerFullLog = [];
+    replayViewerLogEnd = [];
+    if (data.logFormat === 'delta') {
+        (data.verlauf || []).forEach(snap => {
+            (snap.gameLog || []).forEach(e => replayViewerFullLog.push(e));
+            replayViewerLogEnd.push(replayViewerFullLog.length);
+        });
+    }
     // Zur Sicherheit: jeden interaktiven Auswahl-Zustand vom (theoretisch leeren) vorherigen
     // Spielaufbau zuruecksetzen, damit computeHighlightTargets()/renderFX() nichts Verwaistes zeigen.
     selectedUnit = null; currentPushUnit = null; riverEscapeHexes = []; boatLandingTargets = []; currentCard = null;
@@ -4636,17 +4768,36 @@ function applyReplaySnapshot(idx) {
     replayViewerIdx = idx;
     const snap = replayViewerData.verlauf[idx];
 
-    // snap.hexes kann fehlen (siehe mapChangedSinceLastSnapshot-Kommentar bei buildReplaySnapshot() -
-    // neuere Spielverlauf-Dateien lassen die Karte weg, wenn sie sich seit dem vorherigen Zug nicht
-    // geaendert hat) - dann rueckwaerts zum naechstgelegenen FRUEHEREN Zug mit vorhandener Karte
-    // suchen. Karten-Aenderungen sind selten, dieser Ruecklauf ist dadurch in der Praxis meist nur ein
-    // bis wenige Schritte lang. Aeltere, schon gespeicherte Dateien (vor diesem Fix) haben hexes IMMER
-    // gesetzt und funktionieren dadurch unveraendert weiter (die Schleife findet es sofort bei idx selbst).
-    let hexSourceIdx = idx;
-    while (hexSourceIdx > 0 && !replayViewerData.verlauf[hexSourceIdx].hexes) hexSourceIdx--;
-    const hexesForThisTurn = replayViewerData.verlauf[hexSourceIdx].hexes || {};
+    // Karte fuer den angezeigten Zug zusammensetzen (siehe lastSnapshottedHexesShadow-Kommentar bei
+    // buildReplaySnapshot()): rueckwaerts zur naechstgelegenen vollen Basis suchen (snap.hexes ist nur
+    // beim allerersten Schnappschuss einer Aufzeichnung gesetzt, bzw. bei AELTEREN Dateiformaten
+    // haeufiger/immer - die Schleife findet in jedem Fall die naechste echte Basis), dann von dort aus
+    // alle dazwischenliegenden hexDiff-Eintraege der Reihe nach aufaddieren. Bei Dateien ohne hexDiff-Feld
+    // (aeltere Formate) ist die Diff-Schleife ein reines No-Op und das Ergebnis entspricht exakt dem
+    // bisherigen Verhalten - rein additive, abwaertskompatible Aenderung.
+    let baseIdx = idx;
+    while (baseIdx > 0 && !replayViewerData.verlauf[baseIdx].hexes) baseIdx--;
+    const hexesForThisTurn = Object.assign({}, replayViewerData.verlauf[baseIdx].hexes || {});
+    for (let i = baseIdx + 1; i <= idx; i++) {
+        const diff = replayViewerData.verlauf[i].hexDiff;
+        if (diff) Object.assign(hexesForThisTurn, diff);
+    }
 
-    mapData = { hexes: hexesForThisTurn, landmarks: snap.landmarks || [] };
+    // Landmarken (Ruinen) genauso zusammensetzen wie die Karte oben (siehe lastSnapshottedLandmarksShadow-
+    // Kommentar bei buildReplaySnapshot()): naechstgelegene volle Basis rueckwaerts suchen, dann alle
+    // dazwischenliegenden landmarksDiff-Eintraege (per "q,r"-Schluessel) aufaddieren. Dateien ohne dieses
+    // Feld (aeltere Formate, snap.landmarks bei jedem Zug voll gesetzt) durchlaufen die Diff-Schleife
+    // einfach als No-Op - rein additive, abwaertskompatible Aenderung.
+    let landmarkBaseIdx = idx;
+    while (landmarkBaseIdx > 0 && !replayViewerData.verlauf[landmarkBaseIdx].landmarks) landmarkBaseIdx--;
+    const landmarksByKey = {};
+    (replayViewerData.verlauf[landmarkBaseIdx].landmarks || []).forEach(l => { landmarksByKey[`${l.q},${l.r}`] = l; });
+    for (let i = landmarkBaseIdx + 1; i <= idx; i++) {
+        const diff = replayViewerData.verlauf[i].landmarksDiff;
+        if (diff) Object.assign(landmarksByKey, diff);
+    }
+
+    mapData = { hexes: hexesForThisTurn, landmarks: Object.values(landmarksByKey) };
     Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
     players = (snap.players || []).map(p => ({ ...p }));
     currentPlayerIdx = snap.currentPlayerIdx || 0;
@@ -4688,7 +4839,13 @@ function updateReplayControlsUI(snap) {
     // Verlauf-Text zum aktuellen Zug - dieselbe Zeilen-Optik wie die normale Chat-Seitenleiste
     // (.chat-hist-row/.chat-hist-time/.chat-empty-hint), damit es sich vertraut anfuehlt.
     const logPanel = document.getElementById('replay-log-panel');
-    const entries = snap.gameLog || [];
+    // Neuere Dateien (delta-Format, siehe startReplayPlayback()): die letzten bis zu 150 Zeilen aus dem
+    // dort einmalig aufgebauten kumulativen Verlauf nehmen (entspricht exakt dem alten gameLog.slice(-150)
+    // -Verhalten, nur ohne die Redundanz in der Datei selbst). Aeltere Dateien: snap.gameLog direkt
+    // benutzen wie bisher (enthaelt dort schon das komplette Fenster).
+    const entries = data.logFormat === 'delta'
+        ? replayViewerFullLog.slice(Math.max(0, replayViewerLogEnd[replayViewerIdx] - 150), replayViewerLogEnd[replayViewerIdx])
+        : (snap.gameLog || []);
     logPanel.innerHTML = entries.length === 0
         ? '<div class="chat-empty-hint">Noch nichts passiert.</div>'
         : entries.map(e => {
@@ -4725,6 +4882,8 @@ function exitReplayViewer() {
     replayModeActive = false;
     replayViewerData = null;
     replayViewerIdx = 0;
+    replayViewerFullLog = [];
+    replayViewerLogEnd = [];
     document.getElementById('replay-player-bar').classList.add('hidden');
     // Zugreihenfolge-Leiste wieder ausblenden UND die replay-mode-Klasse entfernen, damit sie beim
     // naechsten echten Spielstart wieder ganz normal ueber die Live-Spiel-Regeln (Desktop-Leiste bzw.
@@ -5318,7 +5477,8 @@ function performHexClick(rx, rz, hex) {
             if (!canPlaceMountainOnHex(hex)) { alert("Hier steht eine Figur, deren Besitzer keinen Seil & Haken hat - hier kann kein Berg gesetzt werden!"); return; }
         }
         hex.terrain = currentCard.type; bakeHex(hex);
-        mapChangedSinceLastSnapshot = true; // siehe buildReplaySnapshot()/Performance-Kommentar oben
+        // Kein manuelles "hat sich geaendert"-Flag mehr noetig hier - buildReplaySnapshot() erkennt diese
+        // Aenderung von selbst per Strukturvergleich (siehe lastSnapshottedHexesShadow-Kommentar dort).
         addLogEntry(`🗺️ ${playerLabel(players[currentPlayerIdx])} platziert ${currentCard.icon} ${currentCard.name} auf Feld (${hex.q},${hex.r})`);
         if (currentCard.type === 'mountains') consumeHooksForMountainPlacement(hex);
         if (currentCard.type === 'river') { hex.direction = 0; pendingRiverHex = hex; gameState = "ROTATING_RIVER"; } else { placementsRemaining--; if (placementsRemaining <= 0) finishCard(); }
@@ -5955,7 +6115,7 @@ function renderFX() {
         pendingMeteors.forEach(m => {
             if (!m.voided && (now - m.impactAt) / METEOR_DURATION >= METEOR_IMPACT_FRACTION) {
                 const hex = mapData.hexes[`${m.q},${m.r}`];
-                if (hex && hex.terrain !== 'void') { hex.terrain = 'void'; bakeHex(hex); mapNeedsRerender = true; mapChangedSinceLastSnapshot = true; }
+                if (hex && hex.terrain !== 'void') { hex.terrain = 'void'; bakeHex(hex); mapNeedsRerender = true; } // buildReplaySnapshot() erkennt diese Aenderung selbst per Strukturvergleich
                 // Nachhall-Sound + kurzer Bildschirm-Ruckler (siehe triggerKollaps()) im selben Frame wie
                 // der sichtbare Einschlag, damit alles garantiert synchron bleibt statt ueber separat
                 // geplante Timer zu laufen. Nutzt dieselbe Auswahl/Lautstaerke wie der Sound (siehe
