@@ -234,6 +234,21 @@
         .victory-reason { font-size: 1.05em; color: #c9b98a; margin-bottom: 20px; font-style: italic; }
         .victory-btn { font-family: 'Cinzel', serif; background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08; font-size: 0.9em; letter-spacing: 1px; text-transform: uppercase; padding: 12px 0; border: 1px solid #fff2cf; border-radius: 2px; cursor: pointer; font-weight: bold; width: 100%; box-shadow: 0 8px 20px rgba(212,175,55,0.3); }
         .victory-btn:hover { background: linear-gradient(180deg, #fff2cf, #a4841f); }
+        /* ---------- Spielverlauf/Bug-Buttons unterm Sieges-Button (siehe downloadReplayFromVictory()/
+           openFeedback()) - bewusst kleiner/unauffaelliger als .victory-btn, damit "Neues Spiel" der
+           optisch fuehrende Button bleibt (Nutzerwunsch). ---------- */
+        .victory-btn-secondary { font-family: 'Cinzel', serif; font-size: 0.72em; letter-spacing: 0.5px; text-transform: uppercase; padding: 8px 0; border-radius: 2px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 8px; border: 1px solid; }
+        #victory-download-btn { background: rgba(60,90,130,0.22); color: #cbd8e8; border-color: rgba(90,114,145,0.55); }
+        #victory-download-btn:hover { background: rgba(60,90,130,0.38); }
+        #victory-bug-btn { background: rgba(130,60,60,0.18); color: #e8cbcb; border-color: rgba(138,74,74,0.5); }
+        #victory-bug-btn:hover { background: rgba(130,60,60,0.32); }
+
+        /* ---------- Absturz-Wiederherstellungs-Banner (siehe offerOrphanedReplayRecovery()) - taucht nur
+           auf, wenn beim Start einer NEUEN Partie noch ein nicht sauber beendeter Spielverlauf von einer
+           vorherigen Sitzung in der IndexedDB liegt (siehe replayDbFindOrphan()). ---------- */
+        #replay-recovery-banner { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 5000; background: rgba(20,16,8,0.96); border: 1px solid rgba(212,175,55,0.5); border-radius: 4px; padding: 10px 16px; display: flex; align-items: center; gap: 14px; font-family: 'Cormorant Garamond', serif; color: #e8d9a8; font-size: 0.95em; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+        #replay-recovery-banner button { font-family: 'Cinzel', serif; font-size: 0.75em; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 12px; border-radius: 2px; cursor: pointer; border: 1px solid rgba(212,175,55,0.5); background: rgba(212,175,55,0.15); color: #e8d9a8; white-space: nowrap; flex-shrink: 0; }
+        #replay-recovery-banner button:hover { background: rgba(212,175,55,0.3); }
 
         /* ---------- Sieges-Statistik (siehe showVictoryUI()) - lehnt sich bewusst an .apo-row/.apo-header
            an, damit es wie derselbe "Baukasten" wirkt statt wie ein Fremdkoerper im Sieges-Panel. ---------- */
@@ -926,6 +941,9 @@
             <label for="feedback-desc">Was ist passiert?</label>
             <textarea id="feedback-desc" maxlength="1000" placeholder="Beschreibe so genau wie möglich, was du gemacht hast und was passiert ist..."></textarea>
         </div>
+        <div style="display:flex; align-items:center; gap:8px; background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.35); border-radius:4px; padding:9px 12px; margin-bottom:14px; font-family:'Cormorant Garamond',serif; font-size:0.92em; color:#cbb99a;">
+            📎 <b style="color:#e8d9a8;">Spielverlauf wird automatisch angehängt</b>
+        </div>
         <div class="feedback-nav">
             <button class="btn btn-secondary" onclick="closeFeedback()">Abbrechen</button>
             <button id="feedback-submit-btn" class="btn btn-gold" onclick="submitFeedback()">Absenden</button>
@@ -956,6 +974,8 @@
     <div id="victory-reason" class="victory-reason">...</div>
     <div id="victory-stats"></div>
     <button class="victory-btn" onclick="location.reload()">NEUES SPIEL</button>
+    <button id="victory-download-btn" class="victory-btn-secondary" onclick="downloadReplayFromVictory()">📥 Spielverlauf herunterladen</button>
+    <button id="victory-bug-btn" class="victory-btn-secondary" onclick="openFeedback()">🐞 Bug melden</button>
 </div>
 
 <div id="ui-panel" class="hidden">
@@ -1914,6 +1934,7 @@ function processLoadedMap(data, count, presetPlayers) {
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
     resetChatAndLogForNewGame();
     gameState = "PLACING"; currentPlayerIdx = 0; roundCount = 1; ringPreviewKey = null; fitMapToScreen(); centerMap(); updateUI(); render(); updateApoUI();
+    startReplayRecording();
 }
 
 // --- GENERATOR ---
@@ -2406,6 +2427,10 @@ function applyRemoteState(state) {
         return;
     }
     if (typeof state.stateSeq === 'number') stateSeq = state.stateSeq;
+    // Falls dieser Client einer bereits laufenden Partie beitritt (statt sie selbst zu starten, siehe
+    // processLoadedMap()) hat er noch keine eigene Replay-Aufzeichnung begonnen - hier nachholen, damit
+    // ab dem Beitritt trotzdem mitgeschrieben wird (siehe SPIELVERLAUF/REPLAY-Sektion).
+    if (!replaySessionId) startReplayRecording();
     net.applyingRemote = true;
     mapData.hexes = {};
     Object.entries(state.hexes).forEach(([k, h]) => { mapData.hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction, sprite: null }; });
@@ -3801,6 +3826,11 @@ function submitFeedback() {
         statusEl.className = 'err';
         return;
     }
+    // Der Spielverlauf geht NICHT mit ueber den obigen Webhook raus (der ist nur fuer die kurze
+    // Text-Meldung gedacht, siehe FEEDBACK_WEBHOOK_URL-Kommentar) - stattdessen wird er hier lokal als
+    // eigene Datei heruntergeladen, IMMER wenn Titel+Beschreibung ausgefuellt sind (kein Haekchen noetig,
+    // Nutzerwunsch), egal ob der Webhook-Versand gleich klappt oder nicht.
+    downloadReplayFile({ note: `${title}\n\n${desc}`, filenamePrefix: 'bug' });
     if (!FEEDBACK_WEBHOOK_URL || FEEDBACK_WEBHOOK_URL.indexOf('BITTE_HIER') !== -1) {
         statusEl.textContent = 'Feedback-System ist noch nicht eingerichtet (fehlende Webhook-URL).';
         statusEl.className = 'err';
@@ -3834,6 +3864,174 @@ function submitFeedback() {
         statusEl.className = 'err';
         btn.disabled = false;
     });
+}
+
+// =====================================================================
+// SPIELVERLAUF / REPLAY & BUG-REPORT
+// Sammelt waehrend der Partie laufend Schnappschuesse des kompletten Spielstands (Sammelpunkt ist
+// updateUI() ganz unten, das nach so gut wie jeder spuerbaren Spielhandlung aufgerufen wird - egal ob
+// lokal, gegen KI oder online gespielt wird). Dient zwei Zwecken:
+//   1) Am Spielende oder beim Feedback-Melden als Datei herunterladbar, damit ein gemeldeter Bug
+//      anhand des TATSAECHLICHEN Spielverlaufs nachvollzogen werden kann statt nur einer Beschreibung.
+//   2) Laufende Zwischenspeicherung in der Browser-eigenen IndexedDB (nicht nur im RAM der Seite) -
+//      uebersteht dadurch auch einen Absturz/ein Schliessen des Tabs mitten in der Partie. Rein lokal
+//      im Browser, kein Server involviert (siehe replayDbOpen()).
+// =====================================================================
+let replayHistory = [];
+let replaySessionId = null;
+let replayDb = null; // IndexedDB-Handle, lazy geoeffnet
+let pendingOrphanReplay = null; // von einer fruehreren, nicht sauber beendeten Partie liegen gebliebener Verlauf
+
+function replayDbOpen() {
+    return new Promise((resolve) => {
+        if (replayDb) { resolve(replayDb); return; }
+        if (!window.indexedDB) { resolve(null); return; } // z.B. sehr alter Browser - Replay faellt dann
+                                                            // einfach auf "nur im RAM dieser Sitzung" zurueck
+        let req;
+        try { req = indexedDB.open('botg-replay', 1); } catch (e) { resolve(null); return; }
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains('sessions')) db.createObjectStore('sessions', { keyPath: 'sessionId' });
+        };
+        req.onsuccess = () => { replayDb = req.result; resolve(replayDb); };
+        req.onerror = () => resolve(null); // z.B. privater Modus mit blockiertem Storage
+    });
+}
+
+async function replayDbSaveSnapshot() {
+    const db = await replayDbOpen();
+    if (!db || !replaySessionId) return;
+    try {
+        db.transaction('sessions', 'readwrite').objectStore('sessions')
+            .put({ sessionId: replaySessionId, finished: false, updatedAt: Date.now(), history: replayHistory });
+    } catch (e) { /* z.B. Speicher voll - Verlauf bleibt dann nur im RAM dieser Sitzung erhalten */ }
+}
+
+async function replayDbMarkFinished() {
+    const db = await replayDbOpen();
+    if (!db || !replaySessionId) return;
+    try {
+        db.transaction('sessions', 'readwrite').objectStore('sessions')
+            .put({ sessionId: replaySessionId, finished: true, updatedAt: Date.now(), history: replayHistory });
+    } catch (e) {}
+}
+
+async function replayDbDeleteSession(sessionId) {
+    const db = await replayDbOpen();
+    if (!db) return;
+    try { db.transaction('sessions', 'readwrite').objectStore('sessions').delete(sessionId); } catch (e) {}
+}
+
+// Sucht nach einer liegen gebliebenen, NICHT sauber beendeten Partie irgendeiner fruehreren Sitzung -
+// wird beim Start einer neuen Partie aufgerufen, BEVOR die eigene neue Aufzeichnung beginnt (siehe
+// startReplayRecording()). Rein lokal im eigenen Browser, betrifft nie andere Spieler/Geraete.
+function replayDbFindOrphan() {
+    return replayDbOpen().then(db => new Promise((resolve) => {
+        if (!db) { resolve(null); return; }
+        try {
+            const req = db.transaction('sessions', 'readonly').objectStore('sessions').getAll();
+            req.onsuccess = () => {
+                const all = req.result || [];
+                const orphan = all.filter(s => !s.finished && s.history && s.history.length > 1)
+                    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+                resolve(orphan || null);
+            };
+            req.onerror = () => resolve(null);
+        } catch (e) { resolve(null); }
+    }));
+}
+
+// Baut EINEN vollstaendigen, in sich abgeschlossenen Schnappschuss des aktuellen Spielstands (bewusst
+// eine eigene, von serializeState() UNABHAENGIGE Funktion trotz aehnlichem Inhalt - serializeState()
+// erhoeht als Nebeneffekt den Netzwerk-Sync-Zaehler stateSeq, was hier nichts verloren haette und die
+// Online-Synchronisation nur unnoetig verwirren wuerde).
+function buildReplaySnapshot() {
+    const hexes = {};
+    Object.entries(mapData.hexes).forEach(([k, h]) => { hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction }; });
+    return {
+        t: Date.now(),
+        round: roundCount,
+        currentPlayerIdx, gameState,
+        collectedArtifacts, targetArtifacts, closedRings: { ...closedRings },
+        hexes,
+        landmarks: mapData.landmarks.map(l => ({ q: l.q, r: l.r, icon: l.icon, looted: !!l.looted })),
+        players: players.map(p => ({
+            name: p.name, color: p.color, isNPC: !!p.isNPC,
+            units: p.units.map(u => ({ q: u.q, r: u.r })),
+            inventory: p.inventory.map(c => c.name || c.type),
+            ruinsLooted: p.ruinsLooted || 0, collapsesSurvived: p.collapsesSurvived || 0
+        })),
+        isGameOver,
+        gameLog: gameLog.slice(-150)
+    };
+}
+
+// Haengt an updateUI() (siehe ganz unten in dieser Funktion) - laeuft also nach so gut wie jeder
+// spuerbaren Spielhandlung, egal ob lokal, gegen KI oder online. Kein Vergleich/Deduplizierung mit dem
+// letzten Schnappschuss - bewusst einfach gehalten (Robustheit vor Kompaktheit, siehe Chat-Verlauf).
+function captureReplaySnapshot() {
+    if (!replaySessionId || gameState === 'SETUP') return;
+    replayHistory.push(buildReplaySnapshot());
+    replayDbSaveSnapshot();
+}
+
+// Startet eine frische Aufzeichnung fuer eine neu beginnende Partie (siehe processLoadedMap()) - UND
+// prueft dabei beilaeufig, ob von einer fruehreren, nicht sauber beendeten Partie noch was liegen
+// geblieben ist (siehe replayDbFindOrphan()/offerOrphanedReplayRecovery()).
+function startReplayRecording() {
+    replayDbFindOrphan().then(orphan => { if (orphan) offerOrphanedReplayRecovery(orphan); });
+    replaySessionId = uuid4();
+    replayHistory = [];
+}
+
+function offerOrphanedReplayRecovery(orphan) {
+    if (document.getElementById('replay-recovery-banner')) return; // schon sichtbar - nicht doppelt anzeigen
+    pendingOrphanReplay = orphan;
+    const roundNr = orphan.history.length ? (orphan.history[orphan.history.length - 1].round || '?') : '?';
+    const banner = document.createElement('div');
+    banner.id = 'replay-recovery-banner';
+    banner.innerHTML = `<span>⚠️ Von einer vorherigen, nicht sauber beendeten Partie liegt noch ein Spielverlauf bereit (bis Runde ${roundNr}).</span>
+        <button onclick="recoverOrphanedReplay()">Sichern</button>
+        <button onclick="dismissOrphanedReplay()">Verwerfen</button>`;
+    document.body.appendChild(banner);
+}
+function recoverOrphanedReplay() {
+    if (pendingOrphanReplay) downloadReplayFile({ history: pendingOrphanReplay.history, filenamePrefix: 'absturz' });
+    dismissOrphanedReplay();
+}
+function dismissOrphanedReplay() {
+    if (pendingOrphanReplay) replayDbDeleteSession(pendingOrphanReplay.sessionId);
+    pendingOrphanReplay = null;
+    const el = document.getElementById('replay-recovery-banner');
+    if (el) el.remove();
+}
+
+// Zentrale Download-Funktion - wird von allen drei Stellen genutzt (Sieg-Bildschirm, Feedback-Formular,
+// Absturz-Wiederherstellung), siehe downloadReplayFromVictory()/submitFeedback()/recoverOrphanedReplay().
+function downloadReplayFile(opts) {
+    opts = opts || {};
+    const history = opts.history || replayHistory;
+    const payload = {
+        spiel: 'Battle of the Gods',
+        exportiertAm: new Date().toISOString(),
+        notiz: opts.note || null,
+        zuegeAufgezeichnet: history.length,
+        verlauf: history
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `spielverlauf_${opts.filenamePrefix || 'partie'}_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function downloadReplayFromVictory() {
+    downloadReplayFile({ filenamePrefix: 'sieg' });
+    showNotification('📥 Spielverlauf heruntergeladen');
 }
 
 // =====================================================================
@@ -4183,6 +4381,10 @@ function buildVictoryStatsHtml() {
 }
 
 function showVictoryUI(player, reason) {
+    // Partie ist sauber zu Ende gegangen - Verlauf in der IndexedDB als "finished" markieren, damit
+    // beim naechsten Spielstart KEIN Absturz-Wiederherstellungs-Banner dafuer auftaucht (siehe
+    // replayDbFindOrphan()/offerOrphanedReplayRecovery()).
+    replayDbMarkFinished();
     camera.zoom = 0.5;
     centerMap();
     render();
@@ -4503,6 +4705,7 @@ function updateUI() {
         document.getElementById('turn-lock-msg').classList.add('hidden');
     }
     if (net.active && !net.applyingRemote) sendStateUpdate();
+    captureReplaySnapshot();
     scheduleNpcCheck();
 }
 
