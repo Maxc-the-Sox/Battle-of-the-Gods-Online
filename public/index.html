@@ -1080,7 +1080,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.9</div>
+                <div class="version-tag">v1.10</div>
             </div>
         </div>
 
@@ -6251,7 +6251,17 @@ function performHexClick(rx, rz, hex) {
         if (pendingRiverHex && rx === pendingRiverHex.q && rz === pendingRiverHex.r) rotateRiver();
     } else if (gameState === "SELECT_SKIP") {
         const owner = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz));
-        if (owner) { addLogEntry(`🚫 ${playerLabel(players[currentPlayerIdx])} spielt Aussetzen-Karte gegen ${playerLabel(owner)}`); owner.skipped = true; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
+        if (owner && owner.skipped) {
+            // Nutzerwunsch: "skipped" ist nur ein An/Aus-Schalter pro Spieler, kein Stapel-Zaehler
+            // (siehe startTurn() - eine belegte Figur setzt IMMER nur eine einzige Runde aus, egal wie
+            // oft "Aussetzen" auf sie gespielt wird). Eine zweite Karte auf ein bereits belegtes Ziel
+            // waere bisher wirkungslos verpufft UND trotzdem aus dem Inventar verschwunden - jetzt gibt
+            // es stattdessen eine Warnung, die Karte bleibt erhalten, und die Zielwahl bleibt aktiv
+            // (andere Figur waehlbar), statt den ganzen Kartentyp abzubrechen.
+            showNotification(`⏭️ ${playerLabel(owner).toUpperCase()} SETZT SCHON AUS – KARTE WIRKUNGSLOS`);
+        } else if (owner) {
+            addLogEntry(`🚫 ${playerLabel(players[currentPlayerIdx])} spielt Aussetzen-Karte gegen ${playerLabel(owner)}`); owner.skipped = true; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING";
+        }
     } else if (gameState === "SELECT_TELEPORT_UNIT") {
         const u = players[currentPlayerIdx].units.find(u => u.q === rx && u.r === rz); if (u) { selectedUnit = u; gameState = "SELECT_TELEPORT_TARGET"; }
     } else if (gameState === "SELECT_TELEPORT_TARGET") {
