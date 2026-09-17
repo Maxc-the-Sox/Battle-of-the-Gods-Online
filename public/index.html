@@ -114,7 +114,7 @@
         select { padding: 12px; width: 100%; background: #0c0b08; color: #f3e2a9; border: 1px solid rgba(212,175,55,0.5); border-radius: 2px; font-size: 1.05em; font-family: 'Cinzel', serif; outline: none; box-sizing: border-box; }
 
         /* ---------- UI Panels (ornamentaler Rahmen, Spielerfarbe via --panel-color) ---------- */
-        #ui-panel, #inventory-panel, #apo-panel, #victory-panel {
+        #ui-panel, #inventory-panel, #apo-panel, #victory-panel, #turnorder-panel {
             position: absolute;
             background: linear-gradient(160deg, rgba(38,34,26,0.92), rgba(18,16,12,0.95));
             border: 1px solid var(--panel-color, var(--gold));
@@ -126,6 +126,42 @@
         }
         #ui-panel { top: 20px; left: 20px; --panel-color: var(--gold); z-index: 10; }
         #inventory-panel { --panel-color: #5dade2; z-index: 20; bottom: 20px; right: 20px; }
+        /* ---------- Zugreihenfolge-Panel: analog zum Apokalypse-Panel gleich darunter, nur als Leiste
+           oben statt unten (siehe @media min-width:701px weiter unten) und ohne Ring-Status-Inhalt -
+           auf Handy/Tablet (max-width:700px) unveraendert als eigenes Bottom-Sheet-Panel ueber
+           #mobile-dock/toggleMobilePanel('turnorder-panel'), exakt wie die drei bestehenden Panels. */
+        #turnorder-panel {
+            --panel-color: var(--gold); z-index: 10; font-size: 0.92em;
+            top: 20px; left: 50%; transform: translateX(-50%);
+            width: auto; max-width: 90vw; padding: 10px 22px;
+        }
+        .to-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 18px; }
+        .to-label { font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1.5px; text-transform: uppercase; color: #9a8f6f; white-space: nowrap; margin-right: 2px; }
+        .to-player { display: flex; flex-direction: column; align-items: center; gap: 3px; opacity: 0.55; transition: opacity 0.3s, transform 0.3s; }
+        .to-token {
+            width: 26px; height: 26px; border-radius: 50%; background: var(--pc); border: 2px solid rgba(0,0,0,0.4);
+            box-shadow: inset 0 2px 4px rgba(255,255,255,0.35), inset 0 -3px 5px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.72em; color: rgba(0,0,0,0.55);
+        }
+        .to-name { font-family: 'Cinzel', serif; font-size: 0.68em; letter-spacing: 0.5px; text-transform: uppercase; color: #b9a86c; max-width: 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .to-arrow { color: #6b6350; font-size: 0.85em; opacity: 0.6; }
+        .to-player.current { opacity: 1; transform: translateY(-1px) scale(1.08); }
+        .to-player.current .to-token { border-color: var(--gold-light); box-shadow: inset 0 2px 4px rgba(255,255,255,0.35), inset 0 -3px 5px rgba(0,0,0,0.35), 0 0 14px var(--pc), 0 0 5px var(--gold-light); }
+        .to-player.current .to-name { color: var(--gold-light); font-weight: 700; }
+        @media (min-width: 701px) {
+            #turnorder-panel {
+                position: fixed; left: 0; right: 0; top: 0; bottom: auto; transform: none; z-index: 480;
+                width: auto; max-width: none; box-sizing: border-box;
+                display: flex; align-items: center; justify-content: center;
+                padding: 10px 24px; border: none; border-bottom: 1px solid rgba(212,175,55,0.4);
+                box-shadow: 0 8px 22px rgba(0,0,0,0.45), inset 0 0 18px rgba(0,0,0,0.35);
+            }
+            #turnorder-panel > i.corner-tl, #turnorder-panel > i.corner-tr,
+            #turnorder-panel > i.corner-bl, #turnorder-panel > i.corner-br { display: none; }
+            .to-row { flex-wrap: nowrap; gap: 22px; }
+            body.chat-open #turnorder-panel { right: 300px; }
+        }
         #apo-panel {
             --panel-color: #e57368; z-index: 10; font-size: 0.92em;
             /* Etwas kompakter als die anderen Panels: auf kleineren PC-/Laptop-Aufloesungen (z.B.
@@ -720,14 +756,15 @@
             /* Panels: aus den festen Ecken raus, als Bottom-Sheet ueber dem Dock. Nur .mobile-open
                ist sichtbar - ohne die Klasse bleiben sie ausgeblendet (das Antippen eines anderen
                Dock-Buttons schliesst per closeMobilePanel() das vorherige automatisch). */
-            #ui-panel, #apo-panel, #inventory-panel { display: none; }
-            #ui-panel.mobile-open, #apo-panel.mobile-open, #inventory-panel.mobile-open {
+            #ui-panel, #apo-panel, #inventory-panel, #turnorder-panel { display: none; }
+            #ui-panel.mobile-open, #apo-panel.mobile-open, #inventory-panel.mobile-open, #turnorder-panel.mobile-open {
                 display: block !important; position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important;
                 bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important;
                 width: auto !important; max-height: 62vh; overflow-y: auto;
                 border-radius: 16px 16px 0 0; z-index: 499;
                 box-shadow: 0 -10px 30px rgba(0,0,0,0.65);
             }
+            #turnorder-panel.mobile-open { transform: none !important; }
             /* Tap-Ziele innerhalb der aufgeklappten Panels gross genug machen (Nutzerwunsch: "Karten
                ziehen"/"Bewegen" etc. muessen bequem drueckbar sein) - mind. 44px hoch. */
             #ui-panel.mobile-open button, #apo-panel.mobile-open button, #inventory-panel.mobile-open button {
@@ -1100,6 +1137,18 @@
     <div id="hover-info" style="display: none;"><div id="hover-terrain" style="color: #fff2cf; font-weight: bold;"></div><div id="hover-extra" style="color: var(--gold-light); font-weight: bold;"></div></div>
 </div>
 
+<!-- #turnorder-panel: Zugreihenfolge-Anzeige. Pendant zu #apo-panel, aber am oberen statt unteren
+     Rand angedockt. Auf Desktop (siehe @media min-width:701px im <style>) als schmale Leiste ueber
+     die volle Bildschirmbreite oben dargestellt. Auf Handy/Tablet ueber den Dock-Button (🔀) als
+     eigenes Bottom-Sheet-Panel, genau wie #ui-panel/#apo-panel/#inventory-panel. Inhalt wird von
+     updateTurnOrderUI() (aufgerufen aus updateUI()) aus dem players-Array + currentPlayerIdx gebaut. -->
+<div id="turnorder-panel" class="hidden">
+    <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
+    <div class="to-row" id="turnorder-row">
+        <span class="to-label">Zugreihenfolge</span>
+    </div>
+</div>
+
 <!-- #apo-panel: Apokalypse-Status. Auf Desktop (siehe @media min-width:701px im <style>) als
      schmale Leiste ueber die volle Bildschirmbreite am unteren Rand dargestellt. Auf Handy/Tablet
      (siehe @media max-width:700px) unveraendert als eigenes Bottom-Sheet-Panel ueber .mobile-open,
@@ -1132,6 +1181,7 @@
     <button class="mobile-dock-btn" id="dock-btn-ui-panel" onclick="toggleMobilePanel('ui-panel')" title="Spieler & Aktionen">👑</button>
     <button class="mobile-dock-btn" id="dock-btn-apo-panel" onclick="toggleMobilePanel('apo-panel')" title="Apokalypse-Status">💀</button>
     <button class="mobile-dock-btn" id="dock-btn-inventory-panel" onclick="toggleMobilePanel('inventory-panel')" title="Inventar">🎒<span id="dock-inv-badge" class="mobile-dock-badge hidden">0</span></button>
+    <button class="mobile-dock-btn" id="dock-btn-turnorder-panel" onclick="toggleMobilePanel('turnorder-panel')" title="Zugreihenfolge">🔀</button>
 </div>
 
 <!-- Schwebende Mini-Leiste nur fuer den Fluss-Dreh-/Setz-Schritt (gameState "ROTATING_RIVER"):
@@ -2039,6 +2089,7 @@ function processLoadedMap(data, count, presetPlayers) {
     document.getElementById('ui-panel').classList.remove('hidden');
     document.getElementById('apo-panel').classList.remove('hidden');
     document.getElementById('inventory-panel').classList.remove('hidden');
+    document.getElementById('turnorder-panel').classList.remove('hidden');
     document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
@@ -2610,6 +2661,7 @@ function applyRemoteState(state) {
     document.getElementById('ui-panel').classList.remove('hidden');
     document.getElementById('apo-panel').classList.remove('hidden');
     document.getElementById('inventory-panel').classList.remove('hidden');
+    document.getElementById('turnorder-panel').classList.remove('hidden');
     document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     document.getElementById('room-badge').classList.remove('hidden');
@@ -3333,6 +3385,26 @@ function updateApoUI() {
     });
 }
 
+// Baut die Zugreihenfolge-Anzeige (#turnorder-panel) aus dem aktuellen players-Array + currentPlayerIdx
+// neu auf. Aus updateUI() heraus aufgerufen, damit sie automatisch mit jedem Zugwechsel synchron
+// bleibt, ohne jeden einzelnen Aufrufer von updateUI() einzeln anfassen zu muessen. Laeuft waehrend
+// des Replays NICHT mit, da der Replay-Viewer updateUI() bewusst umgeht (siehe applyReplaySnapshot()).
+function updateTurnOrderUI() {
+    const row = document.getElementById('turnorder-row');
+    if (!row || !players || !players.length) return;
+    let html = '<span class="to-label">Zugreihenfolge</span>';
+    players.forEach((p, i) => {
+        if (i > 0) html += '<span class="to-arrow">›</span>';
+        const isCurrent = i === currentPlayerIdx;
+        const name = playerLabel(p) + (p.isNPC ? ' (KI)' : '');
+        html += `<div class="to-player${isCurrent ? ' current' : ''}" style="--pc:${p.color};">
+            <div class="to-token">${p.id}</div>
+            <div class="to-name">${name}</div>
+        </div>`;
+    });
+    row.innerHTML = html;
+}
+
 // Zeigt/versteckt auf Knopfdruck (siehe #apo-panel) die Felder eines Rings direkt auf der Karte -
 // als Alternative zu einer dauerhaften Markierung, die waehrend des normalen Spielens nur stoeren
 // wuerde. Rein informativ, unabhaengig vom Zug/isControllable() - jederzeit fuer jeden nutzbar, auch
@@ -3366,7 +3438,7 @@ function toggleRingPreview(key) {
 // (siehe #mobile-dock/.mobile-open im HTML/CSS weiter oben). Auf breiten Bildschirmen ohne Wirkung,
 // da die Dock-Buttons dort per Media Query gar nicht sichtbar/klickbar sind.
 function closeMobilePanel() {
-    document.querySelectorAll('#ui-panel.mobile-open, #apo-panel.mobile-open, #inventory-panel.mobile-open').forEach(p => p.classList.remove('mobile-open'));
+    document.querySelectorAll('#ui-panel.mobile-open, #apo-panel.mobile-open, #inventory-panel.mobile-open, #turnorder-panel.mobile-open').forEach(p => p.classList.remove('mobile-open'));
     document.querySelectorAll('.mobile-dock-btn.active').forEach(b => b.classList.remove('active'));
     document.getElementById('mobile-panel-backdrop').classList.remove('show');
 }
@@ -5155,6 +5227,7 @@ canvas.addEventListener('click', e => {
 function updateUI() {
     const p = players[currentPlayerIdx], guide = document.getElementById('guide-text');
     document.getElementById('player-turn-display').innerText = playerLabel(p);
+    updateTurnOrderUI();
     document.getElementById('ui-panel').style.setProperty('--panel-color', p?.color || '#d4af37');
     document.getElementById('artifact-display').innerText = `🏆 Artefakte: ${collectedArtifacts} / ${targetArtifacts}`;
     document.getElementById('cards-left-display').innerText = drawPoints;
