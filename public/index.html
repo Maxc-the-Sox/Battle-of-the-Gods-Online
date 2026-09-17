@@ -527,6 +527,31 @@
         }
         #sound-volume-slider { width: 100px; max-width: 32vw; accent-color: var(--gold-light); cursor: pointer; }
         body.chat-open #sound-popover { right: 392px; }
+        /* Musik-Regler: gleiches Muster wie #sound-toggle-fab/#sound-popover, naechster freier
+           52px-Slot rechts daneben (20/72/124 = Hilfe/Sound/Musik). */
+        #music-toggle-fab {
+            position: fixed; top: 20px; right: 124px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 1.15em;
+            color: var(--gold-light); background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
+            cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5); transition: transform 0.15s, right 0.28s ease;
+        }
+        #music-toggle-fab:hover { transform: scale(1.08); }
+        #music-popover {
+            position: fixed; top: 68px; right: 124px; z-index: 3001;
+            display: flex; align-items: center; gap: 10px;
+            background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
+            border-radius: 22px; padding: 8px 16px 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            transition: right 0.28s ease;
+        }
+        #music-popover.hidden { display: none; }
+        #music-mute-btn {
+            width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center;
+            justify-content: center; font-size: 1em; color: var(--gold-light); background: rgba(212,175,55,0.12);
+            border: 1px solid rgba(212,175,55,0.4); cursor: pointer; padding: 0;
+        }
+        #music-volume-slider { width: 100px; max-width: 32vw; accent-color: var(--gold-light); cursor: pointer; }
+        body.chat-open #music-toggle-fab { right: 444px; }
+        body.chat-open #music-popover { right: 444px; }
         #feedback-overlay {
             position: fixed; inset: 0; z-index: 3002; display: flex; align-items: center; justify-content: center;
             background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
@@ -991,7 +1016,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.2</div>
+                <div class="version-tag">v1.3</div>
             </div>
         </div>
 
@@ -1032,6 +1057,14 @@
 <div id="sound-popover" class="hidden">
     <button type="button" id="sound-mute-btn" onclick="toggleSoundMute()" title="Stumm/Ton an">🔊</button>
     <input type="range" id="sound-volume-slider" min="0" max="100" step="1" value="100" oninput="onVolumeSliderInput(this.value)" title="Lautstärke">
+</div>
+<!-- Eigener, von den Soundeffekten unabhaengiger Regler fuer die Hintergrundmusik (Nutzerwunsch:
+     getrennt an-/ausschaltbar und getrennt in der Lautstaerke regelbar) - identisches Klick/Tap-
+     Popover-Muster wie #sound-popover oben, siehe dortigen Kommentar. -->
+<div id="music-toggle-fab" onclick="toggleMusicPopover(event)" title="Musik">🎵</div>
+<div id="music-popover" class="hidden">
+    <button type="button" id="music-mute-btn" onclick="toggleMusicMute()" title="Musik stumm/an">🎵</button>
+    <input type="range" id="music-volume-slider" min="0" max="100" step="1" value="70" oninput="onMusicVolumeSliderInput(this.value)" title="Musik-Lautstärke">
 </div>
 <div id="feedback-fab" onclick="openFeedback()" title="Feedback / Bug melden">🐞</div>
 <div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
@@ -2267,8 +2300,13 @@ function processLoadedMap(data, count, presetPlayers) {
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
     updateSpectatorBadge(); // beim Host (der applyRemoteState() fuer den eigenen Spielstart NICHT durchlaeuft) sonst nie initial gesetzt
     resetChatAndLogForNewGame();
+    // Ring-Stand zur Sicherheit frisch zuruecksetzen (falls jemals ein zweiter lokaler/Host-Start
+    // in derselben Seite ohne Zwischen-Reload vorkaeme) - betrifft neben der eigentlichen Kollaps-
+    // Logik auch die neue Ring-Musik (siehe enterCombatMusicMode()/syncCombatMusicToRingState()).
+    closedRings = { outer: false, middle: false, inner: false };
     gameState = "PLACING"; currentPlayerIdx = 0; roundCount = 1; ringPreviewKey = null; fitMapToScreen(); centerMap(); updateUI(); render(); updateApoUI();
     startReplayRecording();
+    enterCombatMusicMode();
 }
 
 // --- GENERATOR ---
@@ -2909,6 +2947,8 @@ function applyRemoteState(state) {
     currentPlayerIdx = state.currentPlayerIdx; gameState = state.gameState; roundCount = state.roundCount || 1;
     drawPoints = state.drawPoints; actionPoints = state.actionPoints; collectedArtifacts = state.collectedArtifacts;
     targetArtifacts = state.targetArtifacts; ringThresholds = state.ringThresholds; closedRings = state.closedRings;
+    enterCombatMusicMode(); // No-Op nach dem allerersten Sync dieser Partie, siehe dortigen Kommentar
+    syncCombatMusicToRingState(); // faengt auch alle SPAETEREN Ring-Kollaps-Syncs ab (passiver Client/Zuschauer)
     pathDrawn = state.pathDrawn; pathMoved = state.pathMoved;
     currentCard = state.currentCard; diceValue = state.diceValue; placementsRemaining = state.placementsRemaining;
     pendingRiverHex = state.pendingRiverHex ? mapData.hexes[`${state.pendingRiverHex.q},${state.pendingRiverHex.r}`] : null;
@@ -3785,6 +3825,7 @@ function toggleMobilePanel(panelId) {
 const RING_LABELS = { outer: 'Außenring', middle: 'Mittelring', inner: 'Innenring' };
 function triggerKollaps(baseTerrains, key) {
     closedRings[key] = true;
+    syncCombatMusicToRingState(); // aktiv handelnder Client - passive Clients/Zuschauer siehe applyRemoteState()
     const hexesToCollapse = Object.values(mapData.hexes).filter(hex =>
         baseTerrains.includes(hex.baseTerrain) && hex.baseTerrain !== 'water' && hex.baseTerrain !== 'tundra');
     // Das eigentliche Spielgeschehen (Ring geschlossen, Einheiten dort entfernt, Sieg-Check) passiert
@@ -4990,6 +5031,7 @@ function startReplayPlayback(data) {
     // applyReplaySnapshot() -> updateReplayControlsUI() -> updateTurnOrderUI() befuellt.
     document.getElementById('turnorder-panel').classList.remove('hidden');
     document.getElementById('turnorder-panel').classList.add('replay-mode');
+    enterCombatMusicMode(); // Nutzerwunsch: Ring-Musik auch im Replay, siehe applyReplaySnapshot()
     applyReplaySnapshot(0);
     centerMap();
     render();
@@ -5044,6 +5086,7 @@ function applyReplaySnapshot(idx) {
     targetArtifacts = snap.targetArtifacts || 7;
     closedRings = snap.closedRings || { outer: false, middle: false, inner: false };
     isGameOver = !!snap.isGameOver;
+    syncCombatMusicToRingState(); // passt Musik an JEDEN angezeigten Zug an - auch bei Zeitleistenspruengen vor/zurueck
 
     render();
     updateReplayControlsUI(snap);
@@ -5117,6 +5160,7 @@ function stopReplayAutoplay() {
 
 function exitReplayViewer() {
     stopReplayAutoplay();
+    leaveCombatMusicMode();
     replayModeActive = false;
     replayViewerData = null;
     replayViewerIdx = 0;
@@ -5534,6 +5578,198 @@ function onVolumeSliderInput(value) {
 document.addEventListener('click', e => {
     const pop = document.getElementById('sound-popover');
     if (pop && !pop.classList.contains('hidden') && !pop.contains(e.target) && e.target.id !== 'sound-toggle-fab') {
+        pop.classList.add('hidden');
+    }
+});
+
+// =====================================================================
+// HINTERGRUNDMUSIK - im Unterschied zu den Soundeffekten oben (komplett synthetisiert, keine
+// Dateien) sind das echte, vom Nutzer selbst erstellte MP3s. Liegen NICHT mit in dieser HTML-Datei
+// (waere fuer Musikstuecke unpraktikabel gross), sondern als eigene Dateien in einem "audio/"-Ordner
+// neben index.html - genau wie schon bg.jpg/map.json ueber relative Pfade geladen werden. Der
+// Ordner muss beim Hochladen ins Repo mit angelegt werden (siehe Handover-Doku).
+// Eigener, von soundVolume/soundMuted UNABHAENGIGER Lautstaerke-/Stumm-Zustand (Nutzerwunsch:
+// Musik und Soundeffekte getrennt regelbar) - gleiches OS-Lautstaerke-Muster wie oben (Regler und
+// Stumm-Schalter sind unabhaengig voneinander, siehe soundVolume-Kommentar).
+// =====================================================================
+let musicMuted = false;
+try { musicMuted = localStorage.getItem('botg_music_muted') === '1'; } catch (e) {}
+let musicVolume = 0.7;
+try {
+    const storedMusicVol = parseFloat(localStorage.getItem('botg_music_volume'));
+    if (!isNaN(storedMusicVol) && storedMusicVol >= 0 && storedMusicVol <= 1) musicVolume = storedMusicVol;
+} catch (e) {}
+
+const MUSIC_MENU_TRACK_SRC = 'audio/00.01_Sanctuary_at_Dawn.mp3';
+// Reihenfolge = Ring-Stand: Index 0 laeuft ab Partiebeginn, 1 ab Aussenring-Kollaps, 2 ab
+// Mittelring-Kollaps, 3 ab Innenring-Kollaps bis Spielende (siehe ringStageFromClosedRings()).
+const MUSIC_COMBAT_TRACK_SRCS = [
+    'audio/01.01_Pillars_of_the_Sun.mp3',
+    'audio/02.01_Beneath_the_Cracked_Pillar.mp3',
+    'audio/03.01_After_the_Unmaking.mp3',
+    'audio/04.01_Sovereign_of_Ruin.mp3'
+];
+const MUSIC_RING_CROSSFADE_SEC = 2.5; // Nutzerwunsch: weicher Uebergang bei Ring-Kollaps (2-3s)
+const MUSIC_SCENE_FADE_SEC = 0.6; // schnellerer Wechsel Menue<->Kampf (Szenenwechsel, kein dramaturgischer Ring-Moment)
+
+let musicMasterGain = null; // eine gemeinsame Gain-Stufe fuer ALLE Musik-Tracks - hier greift musicVolume/musicMuted
+let menuTrackEl = null, menuTrackGain = null;
+let combatTrackEls = [], combatTrackGains = [];
+let musicUnlocked = false; // erst nach der ersten echten Nutzer-Geste darf ueberhaupt play() versucht werden (Autoplay-Policy)
+let musicMode = 'menu'; // 'menu' waehrend Hauptmenue/Lokal-Setup/Online-Lobby/Tutorial/Replay-Auswahl, 'combat' waehrend laufender Partie ODER Replay-Wiedergabe
+let musicRingStage = -1; // -1 = in diesem "combat"-Aufenthalt noch kein Kampf-Track gestartet
+
+// Baut den Web-Audio-Graphen fuer die Musik genau EINMAL auf (wiederverwendet denselben geteilten
+// AudioContext wie die Soundeffekte, siehe audioCtx() oben) - dadurch lassen sich Uebergaenge per
+// GainNode weich per linearRampToValueAtTime ueberblenden, was mit dem blossen .volume eines
+// <audio>-Elements nicht in dieser Praezision moeglich waere.
+function ensureMusicGraph() {
+    if (musicMasterGain) return;
+    const c = audioCtx();
+    musicMasterGain = c.createGain();
+    musicMasterGain.gain.value = musicMuted ? 0 : musicVolume;
+    musicMasterGain.connect(c.destination);
+
+    menuTrackEl = new Audio(MUSIC_MENU_TRACK_SRC);
+    menuTrackEl.loop = true; menuTrackEl.preload = 'auto';
+    menuTrackGain = c.createGain(); menuTrackGain.gain.value = 1;
+    c.createMediaElementSource(menuTrackEl).connect(menuTrackGain).connect(musicMasterGain);
+
+    combatTrackEls = MUSIC_COMBAT_TRACK_SRCS.map(src => { const el = new Audio(src); el.loop = true; el.preload = 'auto'; return el; });
+    combatTrackGains = combatTrackEls.map(el => {
+        const g = c.createGain(); g.gain.value = 0;
+        c.createMediaElementSource(el).connect(g).connect(musicMasterGain);
+        return g;
+    });
+}
+
+// Wie unlockAudioOnce() oben (eigener, unabhaengiger Listener, damit dieser Code komplett additiv
+// bleibt): erst nach einer echten ersten Nutzer-Geste darf ueberhaupt Musik gestartet werden, sonst
+// blockt der Browser das leise (Autoplay-Policy).
+function unlockMusicOnce() {
+    if (musicUnlocked) return;
+    musicUnlocked = true;
+    ensureMusicGraph();
+    if (musicMode === 'menu') menuTrackEl.play().catch(() => {});
+    else syncCombatMusicToRingState(); // Sicherheitsnetz, falls ein Kampf theoretisch schon vor der ersten Geste begonnen haette
+}
+['pointerdown', 'keydown', 'touchstart'].forEach(evt => document.addEventListener(evt, unlockMusicOnce, { once: true, passive: true }));
+
+function ringStageFromClosedRings(cr) {
+    if (!cr) return 0;
+    if (cr.inner) return 3;
+    if (cr.middle) return 2;
+    if (cr.outer) return 1;
+    return 0;
+}
+
+// Blendet EINEN Kampf-Track ein und alle anderen aus. "instant" (kaum hoerbare 50ms statt der
+// vollen Ueberblendzeit) wird nur fuer den allerersten Track eines Kampf-Aufenthalts gebraucht -
+// der kommt aus Stille, ist also kein Uebergang zwischen zwei Stuecken im eigentlichen Sinn.
+function crossfadeToCombatTrack(stage, instant) {
+    if (!musicMasterGain) return;
+    const c = audioCtx(), now = c.currentTime;
+    const fadeSec = instant ? 0.05 : MUSIC_RING_CROSSFADE_SEC;
+    combatTrackGains.forEach((g, i) => {
+        if (i === stage || combatTrackEls[i].paused) return;
+        g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value, now);
+        g.gain.linearRampToValueAtTime(0, now + fadeSec);
+        const elToStop = combatTrackEls[i];
+        setTimeout(() => { elToStop.pause(); }, fadeSec * 1000 + 80);
+    });
+    const targetEl = combatTrackEls[stage], targetGain = combatTrackGains[stage];
+    if (targetEl.paused) { targetEl.currentTime = 0; targetEl.play().catch(() => {}); }
+    targetGain.gain.cancelScheduledValues(now); targetGain.gain.setValueAtTime(targetGain.gain.value, now);
+    targetGain.gain.linearRampToValueAtTime(1, now + fadeSec);
+}
+
+function fadeOutAllCombatTracks() {
+    if (!musicMasterGain) return;
+    const c = audioCtx(), now = c.currentTime;
+    combatTrackGains.forEach((g, i) => {
+        if (combatTrackEls[i].paused) return;
+        g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value, now);
+        g.gain.linearRampToValueAtTime(0, now + MUSIC_SCENE_FADE_SEC);
+        const elToStop = combatTrackEls[i];
+        setTimeout(() => { elToStop.pause(); }, MUSIC_SCENE_FADE_SEC * 1000 + 80);
+    });
+}
+
+// Zentraler Abgleich "welcher Kampf-Track passt zum aktuellen Ring-Stand" - wird sowohl beim
+// tatsaechlichen Ring-Kollaps (triggerKollaps(), aktiv handelnder Client) als auch beim Netzwerk-
+// Sync (applyRemoteState(), alle anderen Clients/Zuschauer) UND beim Anzeigen eines Replay-
+// Schnappschusses (applyReplaySnapshot()) aufgerufen - exakt dasselbe Architekturmuster wie schon
+// bei updateSpectatorBadge()/mapChangedSinceLastSnapshot (siehe Punkte 41/46 im Handover): der reine
+// Wertevergleich (stage === musicRingStage) erkennt von selbst, ob wirklich ein Wechsel noetig ist,
+// unabhaengig davon, WOMIT die Aenderung ausgeloest wurde - funktioniert dadurch auch bei Replay-
+// Zeitleistenspruengen in beide Richtungen (vor UND zurueck) korrekt.
+function syncCombatMusicToRingState() {
+    if (musicMode !== 'combat' || !musicUnlocked) return;
+    const stage = ringStageFromClosedRings(closedRings);
+    if (stage === musicRingStage) return;
+    crossfadeToCombatTrack(stage, musicRingStage === -1);
+    musicRingStage = stage;
+}
+
+// Menue -> Partie/Replay: per Guard bewusst nur EINMAL beim echten Uebergang wirksam (verhindert,
+// dass z.B. applyRemoteState() bei jedem weiteren Sync waehrend derselben Partie erneut den
+// Menue-Track ausblendet/den Kampf-Track neu anstuppst).
+function enterCombatMusicMode() {
+    if (musicMode === 'combat') return;
+    musicMode = 'combat'; musicRingStage = -1;
+    if (!musicUnlocked) return; // noch keine Nutzer-Geste - unlockMusicOnce() holt das gleich nach
+    if (menuTrackEl && !menuTrackEl.paused) {
+        const c = audioCtx(), now = c.currentTime;
+        menuTrackGain.gain.cancelScheduledValues(now); menuTrackGain.gain.setValueAtTime(menuTrackGain.gain.value, now);
+        menuTrackGain.gain.linearRampToValueAtTime(0, now + MUSIC_SCENE_FADE_SEC);
+        const elToStop = menuTrackEl;
+        setTimeout(() => { elToStop.pause(); }, MUSIC_SCENE_FADE_SEC * 1000 + 80);
+    }
+    syncCombatMusicToRingState();
+}
+
+// Partie/Replay -> Menue. Aktuell nur vom Verlassen des Replay-Viewers erreichbar - eine echte
+// Partie verlaesst man bisher immer per location.reload() (siehe "NEUES SPIEL"-Button), das setzt
+// ohnehin automatisch alles zurueck (inkl. dieser Musik-Variablen).
+function leaveCombatMusicMode() {
+    if (musicMode === 'menu') return;
+    musicMode = 'menu'; musicRingStage = -1;
+    if (!musicUnlocked) return;
+    fadeOutAllCombatTracks();
+    if (menuTrackEl) {
+        menuTrackGain.gain.setValueAtTime(1, audioCtx().currentTime);
+        menuTrackEl.play().catch(() => {});
+    }
+}
+
+function musicIcon() { return (musicMuted || musicVolume <= 0) ? '🔇' : '🎵'; }
+function updateMusicMuteUI() {
+    const icon = musicIcon();
+    const fab = document.getElementById('music-toggle-fab'); if (fab) fab.textContent = icon;
+    const muteBtn = document.getElementById('music-mute-btn'); if (muteBtn) muteBtn.textContent = icon;
+    const slider = document.getElementById('music-volume-slider'); if (slider) slider.value = Math.round(musicVolume * 100);
+    if (musicMasterGain) musicMasterGain.gain.setTargetAtTime(musicMuted ? 0 : musicVolume, audioCtx().currentTime, 0.05);
+}
+function toggleMusicMute() {
+    musicMuted = !musicMuted;
+    try { localStorage.setItem('botg_music_muted', musicMuted ? '1' : '0'); } catch (e) {}
+    updateMusicMuteUI();
+}
+function toggleMusicPopover(e) {
+    e.stopPropagation();
+    document.getElementById('music-popover').classList.toggle('hidden');
+}
+function onMusicVolumeSliderInput(value) {
+    musicVolume = Math.max(0, Math.min(100, parseInt(value, 10))) / 100;
+    try { localStorage.setItem('botg_music_volume', String(musicVolume)); } catch (e) {}
+    // Regler waehrend "Stumm" hochziehen hebt Stumm automatisch wieder auf - gleiches OS-Verhalten
+    // wie beim Soundeffekt-Regler (siehe onVolumeSliderInput()).
+    if (musicVolume > 0 && musicMuted) { musicMuted = false; try { localStorage.setItem('botg_music_muted', '0'); } catch (e) {} }
+    updateMusicMuteUI();
+}
+document.addEventListener('click', e => {
+    const pop = document.getElementById('music-popover');
+    if (pop && !pop.classList.contains('hidden') && !pop.contains(e.target) && e.target.id !== 'music-toggle-fab') {
         pop.classList.add('hidden');
     }
 });
@@ -6540,7 +6776,7 @@ function fxLoop() {
 }
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; fxCanvas.width = window.innerWidth; fxCanvas.height = window.innerHeight; render(); }
 window.addEventListener('resize', resizeCanvas);
-resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); updateSoundMuteUI(); requestAnimationFrame(fxLoop);
+resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); updateSoundMuteUI(); updateMusicMuteUI(); requestAnimationFrame(fxLoop);
 </script>
 </body>
 </html>
