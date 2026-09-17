@@ -2695,6 +2695,15 @@ function applyRemoteState(state) {
     Object.entries(state.hexes).forEach(([k, h]) => { mapData.hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction, sprite: null }; });
     mapData.landmarks = state.landmarks;
     Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
+    // Konservativ auf "geaendert" setzen (siehe mapChangedSinceLastSnapshot-Kommentar bei
+    // buildReplaySnapshot()): die eigenen mapChangedSinceLastSnapshot=true-Stellen (Landschaftskarte
+    // platzieren, Ring-Kollaps) sitzen nur im Code-Pfad des Spielers, der die Aktion selbst ausloest -
+    // ein passiver Online-Client, der die Karte NUR per Netzwerk-Sync empfaengt, wuerde diese Stellen
+    // nie durchlaufen und koennte sonst faelschlich denken, an der Karte haette sich seit dem letzten
+    // eigenen Schnappschuss nichts geaendert. Lieber hier zu oft als zu selten "geaendert" markieren -
+    // die Performance-Optimierung greift dadurch vor allem lokal/beim aktiv handelnden Spieler voll,
+    // bei passiven Mitspielern bleibt es sicherheitshalber beim alten (unkomprimierten) Verhalten.
+    mapChangedSinceLastSnapshot = true;
 
     players = state.players.map(p => ({ ...p, units: p.units.map(u => ({ ...u })), inventory: p.inventory.map(c => ({ ...c })) }));
     net.myIndex = players.findIndex(p => p.netId === net.clientId);
@@ -4370,6 +4379,17 @@ let replayHistory = [];
 let replaySessionId = null;
 let replayDb = null; // IndexedDB-Handle, lazy geoeffnet
 let pendingOrphanReplay = null; // von einer fruehreren, nicht sauber beendeten Partie liegen gebliebener Verlauf
+// PERFORMANCE-FIX (siehe buildReplaySnapshot()): die komplette Hex-Karte (bei der Standardkarte gut
+// 1000+ Felder!) aendert sich waehrend einer Partie nur SEHR selten (Landschaftskarte platzieren,
+// Ring-Kollaps) - trotzdem wurde sie bisher in JEDEM einzelnen Schnappschuss komplett neu mitgespeichert,
+// obwohl sich zwischen den meisten Zuegen gar nichts an der Karte aendert. Bei laengeren Partien (viele
+// Zuege, seit Punkt 33 auch viel feingranularer mitgeschrieben) hat das den Spielverlauf auf mehrere MB
+// aufgeblaeht - dadurch dauerte sowohl der E-Mail-Versand (Apps Script muss ein Vielfaches an Daten
+// Base64-dekodieren/anhaengen) als auch (in geringerem Mass) jedes einzelne IndexedDB-Zwischenspeichern
+// waehrend des Spiels spuerbar laenger. Diese Flagge haelt fest, ob sich seit dem letzten Schnappschuss
+// wirklich etwas an der Karte geaendert hat - nur dann wird sie erneut mit gespeichert (siehe die beiden
+// Stellen, die diese Flagge auf true setzen: Landschaftskarte platzieren, Ring-Kollaps).
+let mapChangedSinceLastSnapshot = true;
 
 function replayDbOpen() {
     return new Promise((resolve) => {
@@ -4435,8 +4455,16 @@ function replayDbFindOrphan() {
 // erhoeht als Nebeneffekt den Netzwerk-Sync-Zaehler stateSeq, was hier nichts verloren haette und die
 // Online-Synchronisation nur unnoetig verwirren wuerde).
 function buildReplaySnapshot() {
-    const hexes = {};
-    Object.entries(mapData.hexes).forEach(([k, h]) => { hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction }; });
+    // hexes bleibt null, wenn sich seit dem letzten Schnappschuss nachweislich nichts an der Karte
+    // geaendert hat (siehe mapChangedSinceLastSnapshot-Kommentar oben) - applyReplaySnapshot() im
+    // Replay-Viewer sucht in diesem Fall beim Anzeigen rueckwaerts nach dem letzten Schnappschuss MIT
+    // hexes und nutzt den. Alte, bereits gespeicherte Spielverlauf-Dateien haben hexes immer gesetzt
+    // (frueheres Format) und funktionieren dadurch unveraendert weiter - rein additive Aenderung.
+    let hexes = null;
+    if (mapChangedSinceLastSnapshot) {
+        hexes = {};
+        Object.entries(mapData.hexes).forEach(([k, h]) => { hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction }; });
+    }
     return {
         t: Date.now(),
         round: roundCount,
@@ -4463,6 +4491,7 @@ function buildReplaySnapshot() {
 function captureReplaySnapshot() {
     if (!replaySessionId || gameState === 'SETUP') return;
     replayHistory.push(buildReplaySnapshot());
+    mapChangedSinceLastSnapshot = false; // erst NACH dem Erstellen zuruecksetzen - siehe buildReplaySnapshot()
     replayDbSaveSnapshot();
 }
 
@@ -4473,6 +4502,7 @@ function startReplayRecording() {
     replayDbFindOrphan().then(orphan => { if (orphan) offerOrphanedReplayRecovery(orphan); });
     replaySessionId = uuid4();
     replayHistory = [];
+    mapChangedSinceLastSnapshot = true; // frische Partie -> der allererste Schnappschuss braucht die volle Karte
 }
 
 function offerOrphanedReplayRecovery(orphan) {
@@ -4606,7 +4636,17 @@ function applyReplaySnapshot(idx) {
     replayViewerIdx = idx;
     const snap = replayViewerData.verlauf[idx];
 
-    mapData = { hexes: snap.hexes, landmarks: snap.landmarks || [] };
+    // snap.hexes kann fehlen (siehe mapChangedSinceLastSnapshot-Kommentar bei buildReplaySnapshot() -
+    // neuere Spielverlauf-Dateien lassen die Karte weg, wenn sie sich seit dem vorherigen Zug nicht
+    // geaendert hat) - dann rueckwaerts zum naechstgelegenen FRUEHEREN Zug mit vorhandener Karte
+    // suchen. Karten-Aenderungen sind selten, dieser Ruecklauf ist dadurch in der Praxis meist nur ein
+    // bis wenige Schritte lang. Aeltere, schon gespeicherte Dateien (vor diesem Fix) haben hexes IMMER
+    // gesetzt und funktionieren dadurch unveraendert weiter (die Schleife findet es sofort bei idx selbst).
+    let hexSourceIdx = idx;
+    while (hexSourceIdx > 0 && !replayViewerData.verlauf[hexSourceIdx].hexes) hexSourceIdx--;
+    const hexesForThisTurn = replayViewerData.verlauf[hexSourceIdx].hexes || {};
+
+    mapData = { hexes: hexesForThisTurn, landmarks: snap.landmarks || [] };
     Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
     players = (snap.players || []).map(p => ({ ...p }));
     currentPlayerIdx = snap.currentPlayerIdx || 0;
@@ -5278,6 +5318,7 @@ function performHexClick(rx, rz, hex) {
             if (!canPlaceMountainOnHex(hex)) { alert("Hier steht eine Figur, deren Besitzer keinen Seil & Haken hat - hier kann kein Berg gesetzt werden!"); return; }
         }
         hex.terrain = currentCard.type; bakeHex(hex);
+        mapChangedSinceLastSnapshot = true; // siehe buildReplaySnapshot()/Performance-Kommentar oben
         addLogEntry(`🗺️ ${playerLabel(players[currentPlayerIdx])} platziert ${currentCard.icon} ${currentCard.name} auf Feld (${hex.q},${hex.r})`);
         if (currentCard.type === 'mountains') consumeHooksForMountainPlacement(hex);
         if (currentCard.type === 'river') { hex.direction = 0; pendingRiverHex = hex; gameState = "ROTATING_RIVER"; } else { placementsRemaining--; if (placementsRemaining <= 0) finishCard(); }
@@ -5914,7 +5955,7 @@ function renderFX() {
         pendingMeteors.forEach(m => {
             if (!m.voided && (now - m.impactAt) / METEOR_DURATION >= METEOR_IMPACT_FRACTION) {
                 const hex = mapData.hexes[`${m.q},${m.r}`];
-                if (hex && hex.terrain !== 'void') { hex.terrain = 'void'; bakeHex(hex); mapNeedsRerender = true; }
+                if (hex && hex.terrain !== 'void') { hex.terrain = 'void'; bakeHex(hex); mapNeedsRerender = true; mapChangedSinceLastSnapshot = true; }
                 // Nachhall-Sound + kurzer Bildschirm-Ruckler (siehe triggerKollaps()) im selben Frame wie
                 // der sichtbare Einschlag, damit alles garantiert synchron bleibt statt ueber separat
                 // geplante Timer zu laufen. Nutzt dieselbe Auswahl/Lautstaerke wie der Sound (siehe
