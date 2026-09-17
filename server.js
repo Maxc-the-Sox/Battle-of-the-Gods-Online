@@ -91,8 +91,17 @@ function lobbyPayload(code, room) {
         room: code,
         hostId: room.hostId,
         started: !!room.latestState,
-        members: Array.from(room.members.entries()).map(([clientId, m]) => ({ clientId, name: m.name, color: m.color }))
+        members: Array.from(room.members.entries()).map(([clientId, m]) => ({ clientId, name: m.name, color: m.color, spectator: !!m.spectator }))
     };
+}
+
+// Nicht-Zuschauer ("echte" Mitspieler) eines Raums zaehlen - fuer die 6-Spieler-Obergrenze und die
+// Host-Uebergabe beim Verbindungsabbruch (siehe unten). Zuschauer zaehlen bewusst nicht mit, sie
+// belegen keinen der 6 Spielplaetze.
+function nonSpectatorCount(room, excludeClientId) {
+    let n = 0;
+    room.members.forEach((m, id) => { if (!m.spectator && id !== excludeClientId) n++; });
+    return n;
 }
 
 function broadcastLobby(code, room) {
@@ -125,11 +134,20 @@ function sanitizeColor(color) {
 // Muss dieselbe Palette sein wie PLAYER_COLORS im Client (public/index.html).
 const PLAYER_COLORS = ["#ff4757", "#2e86de", "#2ecc71", "#f1c40f", "#9b59b6", "#e67e22"];
 
+// Erlaubte Chat-Reaktionen - fester Katalog (kein Freitext), gegen Missbrauch UND identisch mit
+// der Liste im Client (public/index.html, REACTION_EMOJIS).
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
+
 // Verhindert, dass zwei Spieler (z.B. durch gleichzeitiges Klicken) dieselbe Farbe bekommen -
 // der Client blockt das zwar schon visuell, aber das hier ist die verbindliche, serverseitige
 // Absicherung gegen die seltene Race Condition.
-function resolveColor(room, clientId, requestedColor) {
-    const takenByOthers = new Set(Array.from(room.members.entries()).filter(([id]) => id !== clientId).map(([, m]) => m.color));
+// Zuschauer (siehe Punkt "Zuschauer-Modus") nehmen an diesem Mechanismus bewusst NICHT teil: sie
+// spielen nie mit, brauchen also keine der 6 eindeutigen Spielerfarben und sollen umgekehrt auch
+// keinem echten Mitspieler "ihre" Farbe wegnehmen koennen - weder als Quelle noch als Ziel des
+// Farb-Abgleichs.
+function resolveColor(room, clientId, requestedColor, isSpectator) {
+    if (isSpectator) return requestedColor;
+    const takenByOthers = new Set(Array.from(room.members.entries()).filter(([id, m]) => id !== clientId && !m.spectator).map(([, m]) => m.color));
     if (!takenByOthers.has(requestedColor)) return requestedColor;
     const free = PLAYER_COLORS.find(c => !takenByOthers.has(c));
     return free || requestedColor; // alle 6 vergeben (>6 Spieler) - dann eben doppelt
@@ -151,9 +169,22 @@ wss.on('connection', ws => {
             if (!clientId) return;
             const name = sanitizeName(msg.name);
             let color = sanitizeColor(msg.color);
+            let spectator = !!msg.spectator;
 
             const { code, room } = getOrCreateRoom(msg.room, clientId);
-            color = resolveColor(room, clientId, color);
+
+            // Raum schon voll (6 echte Mitspieler, dieser Client selbst nicht mitgezaehlt - wichtig
+            // bei einem Reconnect, sonst wuerde er sich versehentlich selbst rauswerfen) UND nicht
+            // bewusst als Zuschauer beigetreten -> automatisch als Zuschauer aufnehmen statt den
+            // Beitritt ganz abzulehnen. So fliegt niemand raus, nur weil ein Raum gerade voll ist -
+            // er schaut eben zu (und der Client bekommt das per forcedSpectator unten mitgeteilt).
+            let forcedSpectator = false;
+            if (!spectator && nonSpectatorCount(room, clientId) >= 6) {
+                spectator = true;
+                forcedSpectator = true;
+            }
+
+            color = resolveColor(room, clientId, color, spectator);
 
             // Falls dieser Client (gleiche persistente ID) schon mit einer alten
             // Verbindung im Raum war (z.B. Seite neu geladen), die alte sauber ersetzen.
@@ -162,12 +193,12 @@ wss.on('connection', ws => {
                 try { existing.ws.close(); } catch (e) {}
             }
 
-            room.members.set(clientId, { ws, name, color });
+            room.members.set(clientId, { ws, name, color, spectator });
             room.emptyAt = null;
             ws.roomCode = code;
             ws.clientId = clientId;
 
-            safeSend(ws, JSON.stringify({ type: 'joined', room: code, clientId, hostId: room.hostId }));
+            safeSend(ws, JSON.stringify({ type: 'joined', room: code, clientId, hostId: room.hostId, isSpectator: spectator, forcedSpectator }));
             if (room.latestState) {
                 safeSend(ws, JSON.stringify({ type: 'state', state: room.latestState }));
             }
@@ -194,9 +225,34 @@ wss.on('connection', ws => {
             if (!member) return; // nicht (mehr) im Raum - Nachricht verwerfen
             const text = sanitizeChatText(msg.text);
             if (!text) return;
+            // id kommt vom sendenden Client (siehe uuid4() dort) - wird unveraendert durchgereicht,
+            // damit spaetere Reaktionen (type:'reaction') dieselbe Nachricht bei ALLEN Clients
+            // wiederfinden koennen, inklusive dem eigenen optimistisch angezeigten Echo des Senders.
+            const id = (typeof msg.id === 'string') ? msg.id.slice(0, 64) : null;
+            if (!id) return;
             // Name/Farbe kommen bewusst vom Server (aus der Mitgliederliste), nicht vom Client -
-            // so kann sich niemand als jemand anderes ausgeben.
-            const payload = JSON.stringify({ type: 'chat', clientId: ws.clientId, name: member.name, color: member.color, text });
+            // so kann sich niemand als jemand anderes ausgeben. Ebenso spectator: true/false kommt
+            // vom Server, damit sich ein Zuschauer nicht als Mitspieler ausgeben kann (oder umgekehrt).
+            const payload = JSON.stringify({ type: 'chat', clientId: ws.clientId, name: member.name, color: member.color, text, id, spectator: !!member.spectator });
+            room.members.forEach((m, clientId) => { if (clientId !== ws.clientId) safeSend(m.ws, payload); });
+            return;
+        }
+
+        if (msg.type === 'reaction') {
+            // Reaktionen werden (wie der Chat selbst) NICHT serverseitig gespeichert, nur durchgereicht -
+            // jeder Client haelt seinen eigenen lokalen Stand der Reaktionen pro Nachricht (siehe
+            // applyReaction() im Client). Ein spaeter beitretender Client sieht daher weder alte
+            // Chat-Nachrichten noch deren Reaktionen - dieselbe, bereits bestehende Einschraenkung wie
+            // beim Chat selbst.
+            const code = ws.roomCode;
+            if (!code || !rooms.has(code)) return;
+            const room = rooms.get(code);
+            const member = room.members.get(ws.clientId);
+            if (!member) return;
+            const messageId = (typeof msg.messageId === 'string') ? msg.messageId.slice(0, 64) : null;
+            const emoji = (typeof msg.emoji === 'string' && REACTION_EMOJIS.includes(msg.emoji)) ? msg.emoji : null;
+            if (!messageId || !emoji) return;
+            const payload = JSON.stringify({ type: 'reaction', clientId: ws.clientId, name: member.name, messageId, emoji });
             room.members.forEach((m, clientId) => { if (clientId !== ws.clientId) safeSend(m.ws, payload); });
             return;
         }
@@ -219,8 +275,13 @@ function handleDisconnect(ws) {
     if (member && member.ws === ws) {
         room.members.delete(ws.clientId);
         if (room.hostId === ws.clientId) {
-            const next = room.members.keys().next();
-            room.hostId = next.done ? null : next.value;
+            // Host-Nachfolge bevorzugt einen echten Mitspieler (kann tatsaechlich ein neues Spiel
+            // starten) - erst wenn wirklich NUR NOCH Zuschauer im Raum sind, wird notgedrungen einer
+            // von ihnen Host (kann dann zwar nichts starten, aber der Raum braucht trotzdem einen
+            // hostId-Eintrag fuer die Lobby-Anzeige).
+            const players = Array.from(room.members.entries()).filter(([, m]) => !m.spectator);
+            const next = players.length ? players[0] : room.members.entries().next().value;
+            room.hostId = next ? next[0] : null;
         }
         if (room.members.size === 0) {
             room.emptyAt = Date.now();
@@ -229,7 +290,9 @@ function handleDisconnect(ws) {
             // Nur waehrend eines schon laufenden Spiels benachrichtigen (room.latestState existiert erst
             // ab dem ersten Spielstand-Broadcast) - vorher, im reinen Lobby-Warten, ist ein Beitritts-/
             // Verlassen-Wechsel normal und braucht keine Extra-Meldung im (noch gar nicht existierenden) Verlauf.
-            if (room.latestState) {
+            // Nur fuer echte Mitspieler, nicht fuer Zuschauer - deren Kommen und Gehen betrifft das
+            // eigentliche Spielgeschehen nicht und soll den Verlauf nicht mit Meldungen vollspammen.
+            if (room.latestState && !member.spectator) {
                 const payload = JSON.stringify({ type: 'player_left', name: member.name });
                 room.members.forEach(m => safeSend(m.ws, payload));
             }
