@@ -511,6 +511,52 @@
         #chat-input-row button { background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08; border: 1px solid #fff2cf; border-radius: 2px; padding: 0 16px; cursor: pointer; font-weight: bold; }
         #chat-input-row.disabled input, #chat-input-row.disabled button { opacity: 0.4; pointer-events: none; }
 
+        /* ---------- Replay-Viewer: Datei-Auswahl-Mini-Modal + Wiedergabe-Leiste unten ---------- */
+        #replay-load-overlay {
+            position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center;
+            background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
+        }
+        .replay-load-box {
+            position: relative; width: 420px; max-width: 90vw; text-align: center;
+            background: linear-gradient(165deg, rgba(28,25,19,0.96), rgba(12,11,8,0.98));
+            border: 1px solid rgba(212,175,55,0.65);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7), inset 0 0 40px rgba(0,0,0,0.4);
+            padding: 32px 28px 28px;
+        }
+        .replay-load-box .tutorial-icon { font-size: 2.2em; margin-bottom: 6px; }
+        #replay-load-status { margin-top: 14px; font-family: 'Cormorant Garamond', serif; font-size: 0.95em; color: #e0a0a0; min-height: 1.2em; }
+        #replay-load-status.ok { color: #a8d8a0; }
+
+        #replay-player-bar {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 2200;
+            background: linear-gradient(180deg, rgba(18,16,12,0.55), rgba(9,8,6,0.97));
+            border-top: 1px solid var(--gold);
+            box-shadow: 0 -8px 28px rgba(0,0,0,0.6);
+            padding: 10px 20px 14px;
+            backdrop-filter: blur(6px);
+            font-family: 'Cormorant Garamond', serif;
+        }
+        #replay-player-bar.hidden { display: none; }
+        .replay-bar-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .replay-bar-title { font-family: 'Cinzel', serif; font-size: 0.85em; letter-spacing: 0.5px; color: var(--gold-light); white-space: nowrap; }
+        .replay-bar-title b { color: #fff2cf; }
+        #replay-slider { flex: 1; min-width: 120px; accent-color: var(--gold); cursor: pointer; }
+        .replay-bar-btn {
+            background: linear-gradient(180deg, #3a3226, #211c14); color: var(--gold-light);
+            border: 1px solid rgba(212,175,55,0.5); border-radius: 2px; padding: 7px 12px;
+            font-family: 'Cinzel', serif; font-size: 0.85em; cursor: pointer; white-space: nowrap;
+        }
+        .replay-bar-btn:hover { background: linear-gradient(180deg, #4a4030, #2b2418); }
+        .replay-bar-btn:disabled { opacity: 0.35; cursor: default; }
+        #replay-exit-btn { border-color: rgba(200,90,90,0.6); color: #e0a0a0; }
+        #replay-log-panel { margin-top: 8px; max-height: 96px; overflow-y: auto; background: rgba(0,0,0,0.3); border: 1px solid rgba(212,175,55,0.25); border-radius: 3px; padding: 6px 12px; font-size: 0.9em; }
+        #replay-log-panel::-webkit-scrollbar { width: 7px; }
+        #replay-log-panel::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 4px; }
+        @media (max-width: 640px) {
+            .replay-bar-title { flex-basis: 100%; }
+            #replay-slider { order: 1; flex-basis: 100%; }
+        }
+
         /* Wenn die Chat-Seitenleiste offen ist, den anderen rechten UI-Elementen Platz machen, damit
            sie nichts verdeckt. Die Apokalypse-Leiste (siehe @media min-width:701px oben) bekommt
            denselben Rand-Abstand wie das Inventar, nur etwas schmaler, da sie keinen eigenen Rahmen
@@ -772,6 +818,7 @@
                 <button class="menu-btn btn-network" onclick="startNetworkMode()">🌐 Online spielen</button>
             </div>
             <button class="help-btn" onclick="openTutorial()">📖 Wie spielt man?</button>
+            <button class="help-btn" style="margin-top:8px;" onclick="openReplayLoader()">📼 Replay ansehen</button>
 
             <div class="dev-credits">
                 Dev: <span class="dev-name">Johannes K aka Maxc the Sox</span>
@@ -965,6 +1012,34 @@
         <input type="text" id="chat-input" maxlength="300" placeholder="Nachricht schreiben..." onkeydown="if (event.key === 'Enter') sendChatMessage();">
         <button onclick="sendChatMessage()">➤</button>
     </div>
+</div>
+
+<div id="replay-load-overlay" class="hidden">
+    <div class="replay-load-box">
+        <div class="corner-tl"></div><div class="corner-tr"></div>
+        <div class="corner-bl"></div><div class="corner-br"></div>
+        <button class="tutorial-close" onclick="closeReplayLoader()">✕</button>
+        <div class="tutorial-icon">📼</div>
+        <div class="tutorial-title">Replay ansehen</div>
+        <p class="menu-subtitle" style="margin-bottom:20px;">Wähle eine zuvor gespeicherte <code>spielverlauf_*.json</code>-Datei aus.</p>
+        <input type="file" id="replay-file-input" accept="application/json,.json" style="display:none;" onchange="handleReplayFileSelected(event)">
+        <button class="btn btn-gold" onclick="document.getElementById('replay-file-input').click()">📁 Datei auswählen</button>
+        <div id="replay-load-status"></div>
+    </div>
+</div>
+
+<div id="replay-player-bar" class="hidden">
+    <div class="replay-bar-top">
+        <div class="replay-bar-title" id="replay-bar-title">Runde <b>1</b> · Zug <b>1 / 1</b></div>
+        <button class="replay-bar-btn" id="replay-first-btn" onclick="replayGoTo(0)" title="Zum Anfang">⏮</button>
+        <button class="replay-bar-btn" id="replay-prev-btn" onclick="replayStep(-1)">◀ Zurück</button>
+        <button class="replay-bar-btn" id="replay-play-btn" onclick="toggleReplayAutoplay()">▶ Abspielen</button>
+        <button class="replay-bar-btn" id="replay-next-btn" onclick="replayStep(1)">Weiter ▶</button>
+        <button class="replay-bar-btn" id="replay-last-btn" onclick="replayGoTo(replayViewerData ? replayViewerData.verlauf.length - 1 : 0)" title="Zum Ende">⏭</button>
+        <input type="range" id="replay-slider" min="0" max="0" value="0" step="1" oninput="replayGoTo(parseInt(this.value))">
+        <button class="replay-bar-btn" id="replay-exit-btn" onclick="exitReplayViewer()">✕ Beenden</button>
+    </div>
+    <div id="replay-log-panel"></div>
 </div>
 
 <div id="victory-panel" class="hidden">
@@ -1161,8 +1236,22 @@ let riverInterstitial = false;
 // Aktionspunkt - danach normal. Wird bei jedem Zugstart zurueckgesetzt (siehe startTurn()).
 let roadBonusUsedThisTurn = false;
 let pendingCardSlot = null, pushRemaining = 0, currentPushUnit = null;
-let boatLandingTargets = []; 
+let boatLandingTargets = [];
 let isGameOver = false;
+
+// =====================================================================
+// REPLAY-VIEWER: rein lokales Nachschauen einer zuvor gespeicherten spielverlauf_*.json.
+// Siehe replayModeActive-Nutzung in isControllable() weiter unten - das ist der EINE Schalter,
+// der dafuer sorgt, dass waehrend der Wiedergabe niemand aus Versehen echte Spiellogik antriggert
+// (Klicks/Highlights/updateUI() werden alle darueber blockiert). Die Wiedergabe schreibt direkt in
+// dieselben globalen Variablen, die auch das echte Spiel benutzt (mapData/players/... - siehe
+// applyReplaySnapshot()), weil render()/renderFX() nur DIESE globalen Variablen kennen. Ein echtes
+// Spiel kann waehrend einer offenen Wiedergabe nicht gleichzeitig laufen - der Menüpunkt ist nur vom
+// Startbildschirm aus erreichbar (siehe openReplayLoader()).
+let replayModeActive = false;
+let replayViewerData = null; // {spiel, exportiertAm, notiz, zuegeAufgezeichnet, verlauf: [...]}
+let replayViewerIdx = 0;
+let replayAutoplayTimer = null;
 
 const terrainColors = { water: '#4fa3e0', river: '#81ecec', desert: '#d4bb7e', swamp: '#3d4a3d', plains: '#5a8d46', forest: '#1b4d3e', mountains: '#4d4d4d', road: '#333333', hills: '#8a7355', tundra: '#c3d3d9', void: '#000' };
 const terrainNames = { water: 'Wasser', river: 'Fluss', desert: 'Wüste', swamp: 'STARTBURG', plains: 'Ebene', forest: 'Wald', mountains: 'Gebirge', road: 'STRASSE', hills: 'Hügel', tundra: 'Tundra', void: 'VERNICHTET' };
@@ -2143,6 +2232,7 @@ function isMyTurn() { return !net.active || net.myIndex === currentPlayerIdx; }
 // als auch "gerade ist eine KI am Zug" - die KI selbst umgeht diese Funktion und ruft ihre
 // Aktionen direkt auf, siehe NPC-Modul weiter unten.)
 function isControllable() {
+    if (replayModeActive) return false; // Wiedergabe ist reines Zuschauen, siehe REPLAY-VIEWER oben
     if (isGameOver) return false;
     const p = players[currentPlayerIdx];
     if (p && p.isNPC) return false;
@@ -3700,9 +3790,9 @@ function sweepUnitAlongRiver(unit, owner) {
             }
             return;
         } else if (nH.terrain === 'river') {
-            unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); curH = nH;
+            unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR, owner); curH = nH;
         } else {
-            unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR);
+            unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR, owner);
             selectedUnit = null;
             processNextRiverInterstitial();
             return;
@@ -4283,6 +4373,155 @@ function downloadReplayFromVictory() {
 }
 
 // =====================================================================
+// REPLAY-VIEWER: laedt eine zuvor gespeicherte spielverlauf_*.json wieder und erlaubt, komplett
+// offline (kein Server/Mailversand involviert) mit Vor/Zurueck/Zeitleiste durch die aufgezeichneten
+// Zuege zu blaettern, inkl. dem passenden Verlauf-Text je Zug. Siehe replayModeActive-Deklaration
+// weiter oben fuer die Grundidee: die Wiedergabe schreibt direkt in dieselben globalen Variablen wie
+// das echte Spiel (mapData/players/currentPlayerIdx/...), weil render()/renderFX() nur DIESE
+// globalen Variablen kennen - eine komplett separate Wiedergabe-Engine haette render() faktisch
+// duplizieren muessen. Deshalb ist "Replay ansehen" bewusst nur vom Startbildschirm aus erreichbar
+// (siehe Button in #setup-step-start) - da ist noch kein echtes Spiel im Gange, dessen Zustand man
+// versehentlich ueberschreiben koennte.
+// =====================================================================
+function openReplayLoader() {
+    const statusEl = document.getElementById('replay-load-status');
+    statusEl.textContent = ''; statusEl.className = '';
+    document.getElementById('replay-file-input').value = '';
+    document.getElementById('replay-load-overlay').classList.remove('hidden');
+}
+function closeReplayLoader() { document.getElementById('replay-load-overlay').classList.add('hidden'); }
+
+function handleReplayFileSelected(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById('replay-load-status');
+    statusEl.className = ''; statusEl.textContent = 'Lese Datei...';
+    const reader = new FileReader();
+    reader.onload = e => {
+        let data;
+        try { data = JSON.parse(e.target.result); }
+        catch (err) { statusEl.textContent = '⚠️ Das ist keine gültige JSON-Datei.'; return; }
+        if (!data || !Array.isArray(data.verlauf) || data.verlauf.length === 0) {
+            statusEl.textContent = '⚠️ Das scheint keine gültige Spielverlauf-Datei zu sein (das Feld "verlauf" fehlt oder ist leer).';
+            return;
+        }
+        statusEl.className = 'ok';
+        statusEl.textContent = `✓ ${data.verlauf.length} Züge gefunden - wird geöffnet...`;
+        setTimeout(() => startReplayPlayback(data), 300);
+    };
+    reader.onerror = () => { statusEl.textContent = '⚠️ Datei konnte nicht gelesen werden.'; };
+    reader.readAsText(file);
+}
+
+function startReplayPlayback(data) {
+    replayViewerData = data;
+    replayModeActive = true;
+    // Zur Sicherheit: jeden interaktiven Auswahl-Zustand vom (theoretisch leeren) vorherigen
+    // Spielaufbau zuruecksetzen, damit computeHighlightTargets()/renderFX() nichts Verwaistes zeigen.
+    selectedUnit = null; currentPushUnit = null; riverEscapeHexes = []; boatLandingTargets = []; currentCard = null;
+    document.getElementById('replay-load-overlay').classList.add('hidden');
+    document.getElementById('setup-overlay').style.display = 'none';
+    document.getElementById('replay-player-bar').classList.remove('hidden');
+    document.getElementById('replay-slider').max = String(data.verlauf.length - 1);
+    applyReplaySnapshot(0);
+    centerMap();
+    render();
+}
+
+// Zentrale Funktion, die einen einzelnen aufgezeichneten Schnappschuss auf das Spielbrett "aufspielt" -
+// wird von jedem Vor/Zurueck/Zeitleiste/Autoplay-Aufruf genutzt. Baut aus den in der JSON gespeicherten
+// rohen Feldern (nur {q,r,terrain,baseTerrain,direction}, siehe buildReplaySnapshot()) wieder vollwertige,
+// zeichenbare Hex-Objekte (bakeHex() ergaenzt Sprite/Deko), analog zum Bake-Durchlauf nach echtem
+// Kartenaufbau (siehe processLoadedMap()/applyRemoteState()).
+function applyReplaySnapshot(idx) {
+    if (!replayViewerData) return;
+    idx = Math.max(0, Math.min(replayViewerData.verlauf.length - 1, idx));
+    replayViewerIdx = idx;
+    const snap = replayViewerData.verlauf[idx];
+
+    mapData = { hexes: snap.hexes, landmarks: snap.landmarks || [] };
+    Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
+    players = (snap.players || []).map(p => ({ ...p }));
+    currentPlayerIdx = snap.currentPlayerIdx || 0;
+    roundCount = snap.round || 1;
+    collectedArtifacts = snap.collectedArtifacts || 0;
+    targetArtifacts = snap.targetArtifacts || 7;
+    closedRings = snap.closedRings || { outer: false, middle: false, inner: false };
+    isGameOver = !!snap.isGameOver;
+
+    render();
+    updateReplayControlsUI(snap);
+}
+
+// Eigene, schlanke UI-Aktualisierung statt des echten updateUI() - updateUI() ist voll von Dingen, die
+// waehrend einer Wiedergabe keinen Sinn ergeben oder sogar schaden wuerden (schreibt u.a. per
+// captureReplaySnapshot()/sendStateUpdate() in die ECHTE Aufzeichnung/den Online-Sync, erwartet in
+// p.inventory echte Kartenobjekte statt der Namens-Strings aus der JSON). Deshalb ein eigenes,
+// kleines Infofeld + der zum jeweiligen Zug gehoerende Verlauf-Text (snap.gameLog).
+function updateReplayControlsUI(snap) {
+    const data = replayViewerData;
+    document.getElementById('replay-slider').value = String(replayViewerIdx);
+    const p = players[currentPlayerIdx];
+    document.getElementById('replay-bar-title').innerHTML =
+        `📼 Runde <b>${roundCount}</b> · Zug <b>${replayViewerIdx + 1} / ${data.verlauf.length}</b>` +
+        (p ? ` · <b>${escapeHtml(p.name || '?')}</b> war dran` : '') +
+        ` · 🏆 ${collectedArtifacts}/${targetArtifacts}`;
+    document.getElementById('replay-prev-btn').disabled = replayViewerIdx <= 0;
+    document.getElementById('replay-first-btn').disabled = replayViewerIdx <= 0;
+    document.getElementById('replay-next-btn').disabled = replayViewerIdx >= data.verlauf.length - 1;
+    document.getElementById('replay-last-btn').disabled = replayViewerIdx >= data.verlauf.length - 1;
+
+    // Verlauf-Text zum aktuellen Zug - dieselbe Zeilen-Optik wie die normale Chat-Seitenleiste
+    // (.chat-hist-row/.chat-hist-time/.chat-empty-hint), damit es sich vertraut anfuehlt.
+    const logPanel = document.getElementById('replay-log-panel');
+    const entries = snap.gameLog || [];
+    logPanel.innerHTML = entries.length === 0
+        ? '<div class="chat-empty-hint">Noch nichts passiert.</div>'
+        : entries.map(e => {
+            const t = new Date(e.ts);
+            const hh = String(t.getHours()).padStart(2, '0'), mm = String(t.getMinutes()).padStart(2, '0');
+            return `<div class="chat-hist-row"><span class="chat-hist-time">${hh}:${mm}</span><span>${escapeHtml(e.text)}</span></div>`;
+        }).join('');
+    logPanel.scrollTop = logPanel.scrollHeight;
+
+    if (replayViewerIdx >= data.verlauf.length - 1) stopReplayAutoplay();
+}
+
+function replayStep(delta) { applyReplaySnapshot(replayViewerIdx + delta); }
+function replayGoTo(idx) { applyReplaySnapshot(idx); }
+
+function toggleReplayAutoplay() {
+    if (replayAutoplayTimer) { stopReplayAutoplay(); return; }
+    if (!replayViewerData) return;
+    if (replayViewerIdx >= replayViewerData.verlauf.length - 1) applyReplaySnapshot(0);
+    document.getElementById('replay-play-btn').textContent = '⏸ Pause';
+    replayAutoplayTimer = setInterval(() => {
+        if (!replayViewerData || replayViewerIdx >= replayViewerData.verlauf.length - 1) { stopReplayAutoplay(); return; }
+        applyReplaySnapshot(replayViewerIdx + 1);
+    }, 1200);
+}
+function stopReplayAutoplay() {
+    if (replayAutoplayTimer) { clearInterval(replayAutoplayTimer); replayAutoplayTimer = null; }
+    const btn = document.getElementById('replay-play-btn');
+    if (btn) btn.textContent = '▶ Abspielen';
+}
+
+function exitReplayViewer() {
+    stopReplayAutoplay();
+    replayModeActive = false;
+    replayViewerData = null;
+    replayViewerIdx = 0;
+    document.getElementById('replay-player-bar').classList.add('hidden');
+    // Zurueck zum Startbildschirm - dieselben globalen Variablen, die die Wiedergabe zum Zeichnen
+    // benutzt hat (mapData/players/...), werden beim naechsten echten Spielstart ohnehin komplett
+    // frisch aufgebaut (siehe processLoadedMap()/startOnlineGame()), deshalb reicht ein einfacher Reset.
+    mapData = { hexes: {}, landmarks: [] };
+    players = [];
+    document.getElementById('setup-overlay').style.display = 'flex';
+    showSetupStep('start');
+}
+
+// =====================================================================
 // CHAT & VERLAUF (Seitenleiste)
 // Chat funktioniert nur im Online-Modus (braucht den WebSocket-Server als
 // "Postboten"). Der Verlauf dagegen ist rein lokal - er schreibt einfach
@@ -4651,24 +4890,34 @@ function showVictoryUI(player, reason) {
     panel.classList.remove('hidden');
 }
 
-function checkLandmark(q, r) {
+// actor = wem ein Fund/Sieg gutgeschrieben wird - normalerweise einfach der Spieler, der gerade am
+// Zug ist (players[currentPlayerIdx], Default), weil dann eigene Figur = eigener Zug = eigener Fund
+// zusammenfaellt. Bei Effekten, die eine FREMDE Figur ueber ein Feld bewegen (Gegner-zurueckwerfen-
+// Karte, siehe handlePushFlow()/SELECT_PUSH_DESTINATION/RIVER_ESCAPE_PUSH), muss der tatsaechliche
+// Besitzer der bewegten Figur explizit mitgegeben werden - sonst wuerde ein Fund/Sieg faelschlich
+// der schubsenden Person statt der geschubsten gutgeschrieben (war vorher ein Bug: Schubsen auf eine
+// Ruine loeste GAR KEIN Loot aus, Schubsen ueber einen Fluss buchte den Fund dem Pusher statt dem
+// Opfer gut).
+function checkLandmark(q, r, actor) {
     const landmark = mapData.landmarks.find(l => l.q === q && l.r === r); if (!landmark) return;
-    if (landmark.icon && landmark.icon.toLowerCase().includes('temple')) { 
-        if (collectedArtifacts >= targetArtifacts) { 
-            triggerVictory(players[currentPlayerIdx]); 
-        } 
+    const owner = actor || players[currentPlayerIdx];
+    if (landmark.icon && landmark.icon.toLowerCase().includes('temple')) {
+        if (collectedArtifacts >= targetArtifacts) {
+            triggerVictory(owner);
+        }
     }
-    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; players[currentPlayerIdx].ruinsLooted = (players[currentPlayerIdx].ruinsLooted || 0) + 1; addLogEntry(`🏆 ${playerLabel(players[currentPlayerIdx])} plündert Ruine bei (${q},${r}) - Artefakte: ${collectedArtifacts}/${targetArtifacts}`); triggerLootBurst(q, r); playSoundLoot(); checkApocalypse(); updateUI(); updateApoUI(); }
+    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; owner.ruinsLooted = (owner.ruinsLooted || 0) + 1; addLogEntry(`🏆 ${playerLabel(owner)} plündert Ruine bei (${q},${r}) - Artefakte: ${collectedArtifacts}/${targetArtifacts}`); triggerLootBurst(q, r); playSoundLoot(); checkApocalypse(); updateUI(); updateApoUI(); }
 }
 
 function handlePushFlow(unit) {
+    const owner = players.find(pl => pl.units.includes(unit)) || players[currentPlayerIdx];
     let curHex = mapData.hexes[`${unit.q},${unit.r}`];
     while (curHex && curHex.terrain === 'river') {
         let nQ = unit.q + hexDirections[curHex.direction || 0].q, nR = unit.r + hexDirections[curHex.direction || 0].r, nH = mapData.hexes[`${nQ},${nR}`];
         const occupied = players.some(p => p.units.some(u => u.q === nQ && u.r === nR));
         if (nH && !['mountains', 'water', 'void'].includes(nH.terrain) && !occupied) {
-            unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); curHex = nH;
-        } 
+            unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR, owner); curHex = nH;
+        }
         else if (nH) {
             riverEscapeHexes = hexDirections.map(d => ({q: unit.q+d.q, r: unit.r+d.r})).filter(p => { const h = mapData.hexes[`${p.q},${p.r}`]; return h && !['mountains', 'water', 'void', 'river'].includes(h.terrain); });
             if (riverEscapeHexes.length > 0) { selectedUnit = unit; gameState = "RIVER_ESCAPE_PUSH"; return true; } else break;
@@ -4793,6 +5042,7 @@ function consumeHooksForMountainPlacement(hex) {
 }
 
 function performHexClick(rx, rz, hex) {
+    if (replayModeActive) return; // Gehoert eigentlich schon durch isControllable() im click-Listener abgefangen - zusaetzliche Absicherung
     if (gameState === "PLACING" && hex.terrain === 'swamp') {
         if (players.some(p => p.units.some(u => u.q === rx && u.r === rz))) return;
         addLogEntry(`🏕️ ${playerLabel(players[currentPlayerIdx])} setzt Startfigur auf (${rx},${rz})`);
@@ -4835,7 +5085,7 @@ function performHexClick(rx, rz, hex) {
         if (riverEscapeHexes.some(p => p.q === rx && p.r === rz)) {
             const escOwner = players.find(pl => pl.units.includes(selectedUnit));
             addLogEntry(`🏝️ ${playerLabel(escOwner)} rettet weggestoßene Figur ans Ufer: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
-            selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz); riverEscapeHexes = [];
+            selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz, escOwner); riverEscapeHexes = [];
             currentPushUnit = null; selectedUnit = null; 
             pushRemaining--;
             if (pushRemaining > 0) gameState = "SELECT_PUSH_TARGET_2"; 
@@ -4876,7 +5126,7 @@ function performHexClick(rx, rz, hex) {
         if (getHexDistance(currentPushUnit.q, currentPushUnit.r, rx, rz) === 1 && hex && !['mountains', 'void', 'water'].includes(hex.terrain)) {
             const pushedOwner = players.find(pl => pl.units.includes(currentPushUnit));
             addLogEntry(`💨 ${playerLabel(players[currentPlayerIdx])} wirft Figur von ${playerLabel(pushedOwner)} zurück: (${currentPushUnit.q},${currentPushUnit.r}) → (${rx},${rz})`);
-            currentPushUnit.q = rx; currentPushUnit.r = rz;
+            currentPushUnit.q = rx; currentPushUnit.r = rz; checkLandmark(rx, rz, pushedOwner);
             if (!handlePushFlow(currentPushUnit)) {
                 pushRemaining--;
                 if (pushRemaining > 0) { gameState = "SELECT_PUSH_TARGET_2"; currentPushUnit = null; }
