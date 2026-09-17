@@ -1080,7 +1080,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.5</div>
+                <div class="version-tag">v1.6</div>
             </div>
         </div>
 
@@ -5710,11 +5710,11 @@ function ensureMusicGraph() {
     musicMasterGain.connect(c.destination);
 
     menuTrackEl = new Audio(MUSIC_MENU_TRACK_SRC);
-    menuTrackEl.loop = true; menuTrackEl.preload = 'auto';
+    menuTrackEl.loop = true; menuTrackEl.preload = 'auto'; menuTrackEl.muted = musicMuted;
     menuTrackGain = c.createGain(); menuTrackGain.gain.value = 1;
     c.createMediaElementSource(menuTrackEl).connect(menuTrackGain).connect(musicMasterGain);
 
-    combatTrackEls = MUSIC_COMBAT_TRACK_SRCS.map(src => { const el = new Audio(src); el.loop = true; el.preload = 'auto'; return el; });
+    combatTrackEls = MUSIC_COMBAT_TRACK_SRCS.map(src => { const el = new Audio(src); el.loop = true; el.preload = 'auto'; el.muted = musicMuted; return el; });
     combatTrackGains = combatTrackEls.map(el => {
         const g = c.createGain(); g.gain.value = 0;
         c.createMediaElementSource(el).connect(g).connect(musicMasterGain);
@@ -5844,6 +5844,16 @@ function updateMusicMuteUI() {
     const muteBtn = document.getElementById('music-mute-btn'); if (muteBtn) muteBtn.textContent = icon;
     const slider = document.getElementById('music-volume-slider'); if (slider) slider.value = Math.round(musicVolume * 100);
     if (musicMasterGain) musicMasterGain.gain.setTargetAtTime(musicMuted ? 0 : musicVolume, audioCtx().currentTime, 0.05);
+    // Zusaetzlich, UNABHAENGIG vom Web-Audio-GainNode: .muted direkt auf den <audio>-Elementen selbst
+    // setzen. Hintergrund (Nutzer-Meldung "Stumm-Button tut nix auf dem iPhone"): iOS Safari hat einen
+    // bekannten, seit Jahren dokumentierten Bug, bei dem ein GainNode HINTER einem per
+    // createMediaElementSource() gerouteten <audio>-Element die tatsaechliche Lautstaerke NICHT
+    // zuverlaessig beeinflusst - der GainNode-Aufruf oben schlaegt auf iOS also womoeglich einfach ins
+    // Leere. `.muted` auf dem Element selbst wird dagegen von iOS respektiert (im Unterschied zu
+    // `.volume`, das Apple fuer JS absichtlich sperrt - Lautstaerke soll nur ueber die Hardware-Tasten
+    // laufen). Rein additiv/binaer: beeinflusst NUR den Stumm-Zustand, nicht den Regler-Wert selbst,
+    // kann sich also nicht mit der GainNode-Lautstaerke "doppelt" ueberschneiden.
+    [menuTrackEl, ...combatTrackEls].forEach(el => { if (el) el.muted = musicMuted; });
 }
 function toggleMusicMute() {
     musicMuted = !musicMuted;
