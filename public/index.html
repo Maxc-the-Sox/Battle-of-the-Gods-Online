@@ -99,6 +99,12 @@
             color: #d4af37;
             font-weight: bold;
         }
+        .version-tag {
+            margin-top: 6px;
+            font-size: 0.85em;
+            letter-spacing: 1px;
+            color: #7d7362;
+        }
 
         .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; text-align: left; font-size: 0.95em; background: rgba(0,0,0,0.3); padding: 20px 22px; border: 1px solid rgba(212,175,55,0.3); }
         .settings-grid label { font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 0.5px; text-transform: uppercase; color: #b9a86c; }
@@ -501,6 +507,26 @@
             cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5); transition: transform 0.15s, right 0.28s ease;
         }
         #sound-toggle-fab:hover { transform: scale(1.08); }
+        /* Lautstaerke-Popover: oeffnet sich per Klick/Tap auf #sound-toggle-fab, unabhaengig von
+           Hover - funktioniert dadurch identisch auf Desktop (Maus) UND Handy (Touch). Enthaelt den
+           Mute-Knopf (identisches Verhalten wie bisher der einzelne FAB-Klick) plus einen echten
+           Lautstaerke-Regler (0-100%), der ALLE synthetisierten Sounds gleichermassen skaliert
+           (siehe soundVolume/sndTone()/sndNoiseBurst() weiter unten im Skript). */
+        #sound-popover {
+            position: fixed; top: 68px; right: 72px; z-index: 3001;
+            display: flex; align-items: center; gap: 10px;
+            background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
+            border-radius: 22px; padding: 8px 16px 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            transition: right 0.28s ease;
+        }
+        #sound-popover.hidden { display: none; }
+        #sound-mute-btn {
+            width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center;
+            justify-content: center; font-size: 1em; color: var(--gold-light); background: rgba(212,175,55,0.12);
+            border: 1px solid rgba(212,175,55,0.4); cursor: pointer; padding: 0;
+        }
+        #sound-volume-slider { width: 100px; max-width: 32vw; accent-color: var(--gold-light); cursor: pointer; }
+        body.chat-open #sound-popover { right: 392px; }
         #feedback-overlay {
             position: fixed; inset: 0; z-index: 3002; display: flex; align-items: center; justify-content: center;
             background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
@@ -578,6 +604,32 @@
         #chat-input-row input:focus { outline: none; border-color: var(--gold-light); box-shadow: 0 0 8px rgba(212,175,55,0.4); }
         #chat-input-row button { background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08; border: 1px solid #fff2cf; border-radius: 2px; padding: 0 16px; cursor: pointer; font-weight: bold; }
         #chat-input-row.disabled input, #chat-input-row.disabled button { opacity: 0.4; pointer-events: none; }
+        /* ---------- Chat-Reaktionen ---------- */
+        .chat-react-btn {
+            display: inline-block; margin-left: 6px; font-size: 0.8em; line-height: 1; padding: 2px 5px;
+            background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.3); border-radius: 10px;
+            color: #c9b98a; cursor: pointer; vertical-align: middle;
+        }
+        .chat-react-btn:hover { background: rgba(212,175,55,0.22); color: var(--gold-light); }
+        .chat-reactions-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+        .chat-reaction-pill {
+            font-size: 0.8em; padding: 2px 8px; border-radius: 10px; cursor: pointer;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(212,175,55,0.25); color: #c9b98a;
+        }
+        .chat-reaction-pill.mine { background: rgba(212,175,55,0.22); border-color: var(--gold-light); color: var(--gold-light); }
+        /* Fixed-position Popover, wird per JS (openReactionPicker()) neben dem angeklickten Knopf
+           platziert - dadurch auf Desktop UND Handy gleich, kein Hover noetig. */
+        #reaction-picker {
+            position: fixed; z-index: 1600; display: flex; gap: 4px; padding: 6px;
+            background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
+            border-radius: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+        }
+        #reaction-picker.hidden { display: none; }
+        .reaction-picker-emoji {
+            width: 30px; height: 30px; border-radius: 50%; border: none; background: transparent;
+            font-size: 1.1em; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .reaction-picker-emoji:hover { background: rgba(212,175,55,0.25); }
 
         /* ---------- Replay-Viewer: Datei-Auswahl-Mini-Modal + Wiedergabe-Leiste unten ---------- */
         #replay-load-overlay {
@@ -609,7 +661,23 @@
         }
         #replay-player-bar.hidden { display: none; }
         .replay-bar-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-        .replay-bar-title { font-family: 'Cinzel', serif; font-size: 0.85em; letter-spacing: 0.5px; color: var(--gold-light); white-space: nowrap; }
+        /* Bugfix (Nutzer-Meldung: "die Buttons zurueck/weiter/abspielen... bewegen sich"): der Titel
+           (Runde/Zug-Nummer, Spielername, Artefakt-Stand - alles Werte, die sich staendig aendern und
+           beim Spielernamen sogar beliebig lang sein koennen, da Nutzer eigene Namen vergeben duerfen)
+           stand bisher VOR den Buttons in DERSELBEN umbrechenden Flex-Zeile. Jede Aenderung seiner Breite
+           (laengere/kuerzere Zahl, laengerer/kuerzerer Name) hat dadurch alle nachfolgenden Buttons UND
+           den Zeitleisten-Schieberegler nach rechts/links verschoben - im schlimmsten Fall sind sie sogar
+           in eine andere Zeile umgebrochen, was wie ein "Herumspringen" wirkt. Fix: der Titel bekommt
+           JETZT IMMER (nicht mehr nur auf Handy-Breiten, siehe alte @media-Regel unten) eine eigene volle
+           Zeile - seine Breite kann sich dadurch nie mehr auf die Position der Buttons/des Reglers
+           auswirken, die stattdessen in einer eigenen, von der Titel-Breite komplett unabhaengigen
+           zweiten Zeile stehen. */
+        /* white-space bewusst NICHT mehr "nowrap" (siehe fruehere Fassung) - jetzt, wo der Titel ohnehin
+           immer seine eigene Zeile hat, darf er bei sehr langen Namen auf Handy-Breiten einfach in eine
+           zweite Zeile umbrechen, statt Teile davon (z.B. den Artefakt-Stand am Ende) mit Ellipsis
+           abzuschneiden - der Text bleibt so immer vollstaendig lesbar, ohne dass dadurch irgendwelche
+           Buttons betroffen waeren (die stehen ja in der naechsten, komplett unabhaengigen Zeile). */
+        .replay-bar-title { font-family: 'Cinzel', serif; font-size: 0.85em; letter-spacing: 0.5px; color: var(--gold-light); flex-basis: 100%; }
         .replay-bar-title b { color: #fff2cf; }
         #replay-slider { flex: 1; min-width: 120px; accent-color: var(--gold); cursor: pointer; }
         .replay-bar-btn {
@@ -619,12 +687,17 @@
         }
         .replay-bar-btn:hover { background: linear-gradient(180deg, #4a4030, #2b2418); }
         .replay-bar-btn:disabled { opacity: 0.35; cursor: default; }
+        /* Zweiter Teil desselben Bugfixes: der Abspielen/Pause-Button aendert seinen eigenen Text
+           ("▶ Abspielen" <-> "⏸ Pause", siehe toggleReplayAutoplay()) - ohne feste Mindestbreite hat
+           GENAU DAS ebenfalls schon alle Buttons rechts davon (Weiter/Ende) samt Regler verschoben, ganz
+           unabhaengig vom Titel-Fix oben. min-width auf die Breite des laengeren Textes ("▶ Abspielen")
+           gesetzt, per echtem Playwright-Rendering-Test gemessen (siehe Aenderungsprotokoll) statt geraten. */
+        #replay-play-btn { min-width: 108px; text-align: center; box-sizing: border-box; }
         #replay-exit-btn { border-color: rgba(200,90,90,0.6); color: #e0a0a0; }
         #replay-log-panel { margin-top: 8px; max-height: 96px; overflow-y: auto; background: rgba(0,0,0,0.3); border: 1px solid rgba(212,175,55,0.25); border-radius: 3px; padding: 6px 12px; font-size: 0.9em; }
         #replay-log-panel::-webkit-scrollbar { width: 7px; }
         #replay-log-panel::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 4px; }
         @media (max-width: 640px) {
-            .replay-bar-title { flex-basis: 100%; }
             #replay-slider { order: 1; flex-basis: 100%; }
         }
 
@@ -723,6 +796,27 @@
         .lobby-swatch { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 9px; line-height: 1; text-shadow: 0 1px 1px rgba(0,0,0,0.85); }
         .lobby-member-name { flex: 1; color: #f3e2a9; text-transform: none; letter-spacing: 0; }
         .lobby-host-tag { font-size: 0.72em; color: var(--gold); border: 1px solid var(--gold); padding: 2px 6px; border-radius: 2px; letter-spacing: 1px; }
+        /* ---------- Zuschauer-Modus ---------- */
+        .spectator-toggle-label {
+            display: flex; align-items: center; gap: 8px; font-family: 'Cormorant Garamond', serif;
+            font-size: 0.95em; color: #c9b98a; margin: 10px 2px 14px; cursor: pointer;
+        }
+        .spectator-toggle-label input { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; accent-color: var(--gold-light); }
+        .lobby-spectators-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 2px; }
+        .lobby-spectator-chip {
+            font-family: 'Cinzel', serif; font-size: 0.78em; color: #9a8f6f; background: rgba(154,143,111,0.12);
+            border: 1px solid rgba(154,143,111,0.35); border-radius: 10px; padding: 3px 10px;
+        }
+        /* Kleiner Chip neben #room-badge im laufenden Spiel - sichtbar fuer ALLE (auch echte
+           Mitspieler), damit klar ist, dass gerade zugeschaut wird, nicht heimlich. Sowohl fuer
+           Zuschauer-Anzahl (bei Spielern) als auch als eigener "Du schaust zu"-Hinweis (beim
+           Zuschauer selbst) genutzt, siehe updateSpectatorBadge(). */
+        #spectator-badge {
+            position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 899;
+            font-family: 'Cinzel', serif; font-size: 0.75em; letter-spacing: 0.5px; color: #9a8f6f;
+            background: rgba(18,16,12,0.85); border: 1px solid rgba(154,143,111,0.4); padding: 4px 14px;
+            border-radius: 2px;
+        }
         .lobby-input { background: #0c0b08; border: 1px solid rgba(212,175,55,0.5); color: #f3e2a9; padding: 10px; font-family: 'Cinzel', serif; box-sizing: border-box; width: 100%; }
         /* .settings-grid input hat sonst width:60px/text-align:center fuer die kleinen Zahlenfelder - hier ueberschreiben */
         .settings-grid input.lobby-input { width: 100%; text-align: left; }
@@ -894,6 +988,10 @@
 
             <div class="dev-credits">
                 Dev: <span class="dev-name">Johannes K aka Maxc the Sox</span>
+                <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
+                     bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
+                     hier einfach im Markup aendern. -->
+                <div class="version-tag">v1.2</div>
             </div>
         </div>
 
@@ -930,9 +1028,14 @@
 </div>
 
 <div id="help-fab" class="hidden" onclick="openTutorial()" title="Anleitung">?</div>
-<div id="sound-toggle-fab" onclick="toggleSoundMute()" title="Sound an/aus">🔊</div>
+<div id="sound-toggle-fab" onclick="toggleSoundPopover(event)" title="Lautstärke">🔊</div>
+<div id="sound-popover" class="hidden">
+    <button type="button" id="sound-mute-btn" onclick="toggleSoundMute()" title="Stumm/Ton an">🔊</button>
+    <input type="range" id="sound-volume-slider" min="0" max="100" step="1" value="100" oninput="onVolumeSliderInput(this.value)" title="Lautstärke">
+</div>
 <div id="feedback-fab" onclick="openFeedback()" title="Feedback / Bug melden">🐞</div>
 <div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
+<div id="spectator-badge" class="hidden"></div>
 
 <!-- Bleibt sichtbar (anders als der kurze Toast oben), bis die Seite neu geladen wird - eine verlorene
      Verbindung soll man nicht verpassen koennen, nur weil man gerade wo anders hingeschaut hat. -->
@@ -965,6 +1068,9 @@
                 <label>Raum-Code von deinem Freund</label>
                 <input type="text" id="lobby-room-input" class="lobby-input" maxlength="4" placeholder="z.B. AB3K" style="text-transform:uppercase;">
             </div>
+            <label class="spectator-toggle-label">
+                <input type="checkbox" id="lobby-spectator-toggle"> 👀 Nur zuschauen (kein Mitspieler)
+            </label>
             <button id="lobby-join-btn" class="menu-btn btn-network" style="width:100%; box-sizing:border-box;" onclick="joinRoom()">🔑 RAUM BEITRETEN</button>
 
             <p class="lobby-hint">Hinweis: Der kostenlose Server schläft nach 15 Minuten Inaktivität ein. War er gerade eingeschlafen, kann das erste Verbinden bis zu einer Minute dauern — einfach kurz warten.</p>
@@ -981,12 +1087,19 @@
             </div>
             <p style="text-align:center; font-size:0.85em; color:#c9b98a; font-family:'Cormorant Garamond',serif;">Teile den Code oder Link mit deinen Freunden.</p>
 
-            <div class="divider-orn">Deine Farbe</div>
-            <div id="lobby-colors" class="color-picker"></div>
+            <div id="lobby-color-section">
+                <div class="divider-orn">Deine Farbe</div>
+                <div id="lobby-colors" class="color-picker"></div>
+            </div>
 
             <div class="divider-orn">Spieler im Raum</div>
             <div id="lobby-members"></div>
             <p id="lobby-count-hint" style="text-align:center; font-size:0.8em; color:#c9b98a; margin-top:6px;"></p>
+
+            <div id="lobby-spectators" class="hidden">
+                <div class="divider-orn">👀 Zuschauer</div>
+                <div id="lobby-spectators-list" class="lobby-spectators-list"></div>
+            </div>
 
             <div id="lobby-host-settings" class="hidden">
                 <div class="divider-orn">KI-Spieler</div>
@@ -1010,6 +1123,7 @@
                 <button id="lobby-start-btn" class="menu-btn btn-start" style="width:100%; margin-top:12px;" onclick="startOnlineGame()" disabled>⚔ SPIEL STARTEN</button>
             </div>
             <p id="lobby-wait-msg" class="hidden" style="text-align:center; font-family:'Cinzel',serif; color:#c9b98a; margin-top:16px;">Warte, bis der Host das Spiel startet…</p>
+            <p id="lobby-spectator-wait-msg" class="hidden" style="text-align:center; font-family:'Cinzel',serif; color:#c9b98a; margin-top:16px;">👀 Du schaust zu (kein Mitspieler). Das Spiel beginnt, sobald der Host startet.</p>
             <button class="help-btn" style="margin-top:14px;" onclick="backToMainMenu()">← Raum verlassen</button>
         </div>
         </div>
@@ -1084,6 +1198,17 @@
         <input type="text" id="chat-input" maxlength="300" placeholder="Nachricht schreiben..." onkeydown="if (event.key === 'Enter') sendChatMessage();">
         <button onclick="sendChatMessage()">➤</button>
     </div>
+</div>
+<!-- Emoji-Picker fuer Chat-Reaktionen: EIN gemeinsames, per JS positioniertes Popover (statt eines
+     pro Nachricht) - wird beim Klick auf den "😊+"-Knopf einer Nachricht neben diesem positioniert,
+     siehe openReactionPicker(). -->
+<div id="reaction-picker" class="hidden">
+    <button type="button" class="reaction-picker-emoji">👍</button>
+    <button type="button" class="reaction-picker-emoji">❤️</button>
+    <button type="button" class="reaction-picker-emoji">😂</button>
+    <button type="button" class="reaction-picker-emoji">😮</button>
+    <button type="button" class="reaction-picker-emoji">😢</button>
+    <button type="button" class="reaction-picker-emoji">🎉</button>
 </div>
 
 <div id="replay-load-overlay" class="hidden">
@@ -2140,6 +2265,7 @@ function processLoadedMap(data, count, presetPlayers) {
     document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
+    updateSpectatorBadge(); // beim Host (der applyRemoteState() fuer den eigenen Spielstart NICHT durchlaeuft) sonst nie initial gesetzt
     resetChatAndLogForNewGame();
     gameState = "PLACING"; currentPlayerIdx = 0; roundCount = 1; ringPreviewKey = null; fitMapToScreen(); centerMap(); updateUI(); render(); updateApoUI();
     startReplayRecording();
@@ -2321,7 +2447,8 @@ let net = {
     connected: false,
     centered: false,
     localNpcs: [],   // nur beim Host: KI-Spieler, die noch NICHT beim Server angemeldet sind (siehe addLocalNpc)
-    started: false
+    started: false,
+    isSpectator: false // Zuschauer-Modus (Nutzerwunsch): kein echter Mitspieler, siehe joinRoom()/handleNetMessage('joined')
 };
 
 function playerLabel(p) { return p ? (p.name || `Spieler ${p.id}`) : '?'; }
@@ -2374,7 +2501,10 @@ function startNetworkMode() {
 
 function backToMainMenu() {
     if (net.ws) { try { net.ws.close(); } catch (e) {} }
-    net.ws = null; net.active = false; net.room = null; net.connected = false; net.localNpcs = [];
+    net.ws = null; net.active = false; net.room = null; net.connected = false; net.localNpcs = []; net.isSpectator = false;
+    document.getElementById('spectator-badge').classList.add('hidden');
+    const specToggle = document.getElementById('lobby-spectator-toggle');
+    if (specToggle) specToggle.checked = false; // Haekchen nicht ungewollt fuer den naechsten Beitritt "merken"
     document.getElementById('lobby-overlay').classList.add('hidden');
     document.getElementById('setup-overlay').style.display = 'flex';
     showSetupStep('start'); // zur Sicherheit immer auf dem kompakten Startbildschirm landen, nicht mitten im Lokal-Setup
@@ -2388,7 +2518,9 @@ function showLobbyStep(step) {
 function renderColorPicker() {
     const wrap = document.getElementById('lobby-colors');
     wrap.innerHTML = '';
-    const taken = net.lobbyMembers.filter(m => m.clientId !== net.clientId).map(m => m.color);
+    // Zuschauer nehmen an der Farbvergabe nicht teil (siehe resolveColor() in server.js) - ihre
+    // Farbe blockt hier also auch keine der 6 Spielerfarben fuer echte Mitspieler.
+    const taken = net.lobbyMembers.filter(m => m.clientId !== net.clientId && !m.spectator).map(m => m.color);
     PLAYER_COLORS.forEach(c => {
         const sw = document.createElement('div');
         sw.className = 'color-swatch' + (c === net.color ? ' selected' : '') + (taken.includes(c) ? ' taken' : '');
@@ -2410,6 +2542,7 @@ function resetLobbyButtons() {
 
 function hostRoom() {
     const name = document.getElementById('lobby-name-input').value.trim().slice(0, 24) || 'Spieler';
+    net.isSpectator = false; // Hosten heisst immer selbst mitspielen - kein Zuschauer-Toggle hier
     connectWebSocket(name, '', 'lobby-host-btn');
 }
 
@@ -2417,6 +2550,7 @@ function joinRoom() {
     const name = document.getElementById('lobby-name-input').value.trim().slice(0, 24) || 'Spieler';
     const roomCode = document.getElementById('lobby-room-input').value.trim().toUpperCase();
     if (!roomCode) { alert('Bitte gib den Raum-Code deines Freundes ein.'); return; }
+    net.isSpectator = !!document.getElementById('lobby-spectator-toggle').checked;
     connectWebSocket(name, roomCode, 'lobby-join-btn');
 }
 
@@ -2458,16 +2592,23 @@ function connectWebSocket(name, roomCode, activeBtnId) {
 
 function sendJoin() {
     if (!net.ws || net.ws.readyState !== WebSocket.OPEN) return;
-    net.ws.send(JSON.stringify({ type: 'join', room: net.room || '', clientId: net.clientId, name: net.name, color: net.color }));
+    net.ws.send(JSON.stringify({ type: 'join', room: net.room || '', clientId: net.clientId, name: net.name, color: net.color, spectator: net.isSpectator }));
 }
 
 function handleNetMessage(msg) {
     if (msg.type === 'joined') {
         resetLobbyButtons();
         net.room = msg.room; net.hostId = msg.hostId;
+        // Der Server ist die Autoritaet (siehe forcedSpectator-Kommentar in server.js) - falls er
+        // den gewuenschten Status ueberschrieben hat (z.B. Raum war schon voll), das hier uebernehmen.
+        net.isSpectator = !!msg.isSpectator;
+        if (msg.forcedSpectator) {
+            showLobbyNotice('👀 Der Raum war voll (6/6) - du bist automatisch als Zuschauer beigetreten.');
+        }
         document.getElementById('lobby-room-code').innerText = msg.room;
         const shareUrl = `${location.origin}${location.pathname}?room=${msg.room}`;
         document.getElementById('lobby-share-link').value = shareUrl;
+        document.getElementById('lobby-color-section').classList.toggle('hidden', net.isSpectator);
         showLobbyStep('room');
         renderColorPicker();
     } else if (msg.type === 'lobby') {
@@ -2483,11 +2624,14 @@ function handleNetMessage(msg) {
         }
         renderLobbyMembers(msg.started);
         renderColorPicker();
+        updateSpectatorBadge();
     } else if (msg.type === 'state') {
         net.active = true;
         applyRemoteState(msg.state);
     } else if (msg.type === 'chat') {
-        addChatMessage(msg.name, msg.color, msg.text, false);
+        addChatMessage(msg.id, msg.name, msg.color, msg.text, false, msg.spectator);
+    } else if (msg.type === 'reaction') {
+        applyReaction(msg.messageId, msg.emoji, msg.clientId, msg.name);
     } else if (msg.type === 'player_left') {
         // Kommt vom Server, sobald irgendein anderer Mitspieler waehrend eines laufenden Spiels die
         // Verbindung verliert (Absturz, Netzwerk weg, Seite zu) ODER den Raum bewusst verlaesst - vorher
@@ -2515,14 +2659,22 @@ function removeLocalNpc(localId) {
 function renderLobbyMembers(started) {
     const list = document.getElementById('lobby-members');
     list.innerHTML = '';
-    net.lobbyMembers.forEach(m => {
+    // Zuschauer (Nutzerwunsch) belegen keinen der 6 Spielplaetze und tauchen nicht in der
+    // normalen "Spieler im Raum"-Liste auf, sondern in einer eigenen, kompakteren Zuschauer-Liste
+    // weiter unten - siehe #lobby-spectators.
+    const players = net.lobbyMembers.filter(m => !m.spectator);
+    const spectators = net.lobbyMembers.filter(m => m.spectator);
+    players.forEach(m => {
         const row = document.createElement('div');
         row.className = 'lobby-member';
         const isHost = m.clientId === net.hostId, isMe = m.clientId === net.clientId;
         row.innerHTML = `<span class="lobby-swatch" style="background:${m.color}">${GOD_ICON_BY_COLOR[m.color] || ''}</span><span class="lobby-member-name">${escapeHtml(m.name)}${isMe ? ' (Du)' : ''}</span>${isHost ? '<span class="lobby-host-tag">HOST</span>' : ''}`;
         list.appendChild(row);
     });
-    const isHost = net.clientId === net.hostId;
+    // Ein Zuschauer kann (im Randfall, wenn nur noch Zuschauer im Raum sind - siehe
+    // handleDisconnect() in server.js) zwar formal hostId werden, soll aber NIE die
+    // Host-Einstellungen/Start-Knopf angezeigt bekommen, da er ohnehin nicht "mitspielt".
+    const isHost = net.clientId === net.hostId && !net.isSpectator;
     if (isHost) {
         net.localNpcs.forEach(n => {
             const row = document.createElement('div');
@@ -2537,14 +2689,45 @@ function renderLobbyMembers(started) {
             list.appendChild(row);
         });
     }
+    const specWrap = document.getElementById('lobby-spectators');
+    specWrap.classList.toggle('hidden', spectators.length === 0);
+    if (spectators.length) {
+        document.getElementById('lobby-spectators-list').innerHTML = spectators.map(m =>
+            `<span class="lobby-spectator-chip">👀 ${escapeHtml(m.name)}${m.clientId === net.clientId ? ' (Du)' : ''}</span>`
+        ).join('');
+    }
     document.getElementById('lobby-host-settings').classList.toggle('hidden', !isHost);
-    document.getElementById('lobby-wait-msg').classList.toggle('hidden', isHost);
-    const totalCount = net.lobbyMembers.length + (isHost ? net.localNpcs.length : 0);
+    document.getElementById('lobby-wait-msg').classList.toggle('hidden', isHost || net.isSpectator);
+    document.getElementById('lobby-spectator-wait-msg').classList.toggle('hidden', !net.isSpectator);
+    const totalCount = players.length + (isHost ? net.localNpcs.length : 0);
     const startBtn = document.getElementById('lobby-start-btn');
     startBtn.disabled = totalCount < 2 || totalCount > 6 || started;
     const npcHint = (isHost && net.localNpcs.length) ? ` (davon ${net.localNpcs.length} KI)` : '';
-    document.getElementById('lobby-count-hint').innerText = started ? 'Das Spiel läuft bereits…' : `${totalCount} / 6 Spieler${npcHint} (mind. 2)`;
+    const specHint = spectators.length ? ` · 👀 ${spectators.length} Zuschauer` : '';
+    document.getElementById('lobby-count-hint').innerText = started ? 'Das Spiel läuft bereits…' : `${totalCount} / 6 Spieler${npcHint} (mind. 2)${specHint}`;
     if (isHost) updateOnlineDefaults();
+}
+
+// Sichtbarer Hinweis waehrend des LAUFENDEN Spiels (nicht nur in der Lobby) - sowohl fuer den
+// Zuschauer selbst ("Du schaust zu", damit niemand glaubt, das gesperrte Panel sei ein Bug) als
+// auch fuer die echten Mitspieler (Zuschauer-Anzahl), damit das Zuschauen transparent ist und
+// nicht heimlich passiert. Wird bei jeder Lobby-Aktualisierung UND beim Betreten des Spiels
+// aufgerufen (siehe Aufrufer), ist also immer auf dem aktuellen Stand.
+function updateSpectatorBadge() {
+    const badge = document.getElementById('spectator-badge');
+    if (!net.active) { badge.classList.add('hidden'); return; }
+    if (net.isSpectator) {
+        badge.textContent = '👀 Du schaust zu (Zuschauer)';
+        badge.classList.remove('hidden');
+        return;
+    }
+    const specCount = net.lobbyMembers.filter(m => m.spectator).length;
+    if (specCount > 0) {
+        badge.textContent = `👀 ${specCount} Zuschauer schaut${specCount === 1 ? '' : 'en'} zu`;
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
 }
 
 // Wie updateDefaultSettings() im lokalen Menü, nur automatisch nach aktueller Spielerzahl -
@@ -2553,7 +2736,8 @@ let onlineSettingsTouched = false;
 function markOnlineSettingsTouched() { onlineSettingsTouched = true; }
 function updateOnlineDefaults() {
     if (onlineSettingsTouched) return;
-    const count = Math.max(net.lobbyMembers.length + net.localNpcs.length, 2); // vor dem 2. Beitritt schon die 2-Spieler-Defaults zeigen
+    // Nur echte Mitspieler zaehlen fuer die Ziel-Artefakte/Ring-Vorschlaege, nicht Zuschauer.
+    const count = Math.max(net.lobbyMembers.filter(m => !m.spectator).length + net.localNpcs.length, 2); // vor dem 2. Beitritt schon die 2-Spieler-Defaults zeigen
     document.getElementById('cfg-target-online').value = (count == 2) ? 7 : (count <= 4 ? 8 : 9);
     const rings = (count == 2) ? [3, 5, 7] : (count <= 4 ? [4, 6, 8] : [5, 7, 9]);
     document.getElementById('cfg-ring1-online').value = rings[0];
@@ -2586,7 +2770,7 @@ function copyShareLink() {
 
 // ---------- Spielstart (nur Host) ----------
 async function startOnlineGame() {
-    if (net.clientId !== net.hostId) return;
+    if (net.clientId !== net.hostId || net.isSpectator) return;
     const btn = document.getElementById('lobby-start-btn');
     try {
         btn.disabled = true; btn.innerText = 'KARTE WIRD VORBEREITET…';
@@ -2599,7 +2783,11 @@ async function startOnlineGame() {
             parseInt(document.getElementById('cfg-ring2-online').value) || 5,
             parseInt(document.getElementById('cfg-ring3-online').value) || 7
         ];
-        const presetPlayers = net.lobbyMembers.map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false, isNPC: false, npcDifficulty: null, ruinsLooted: 0, collapsesSurvived: 0 }));
+        // Zuschauer werden bewusst NICHT in presetPlayers uebernommen - sie bleiben reine
+        // Beobachter, ohne eigene Spielfigur/Inventar (siehe Zuschauer-Modus-Kommentare oben bei net/
+        // renderLobbyMembers()). Ihr net.myIndex bleibt dadurch dauerhaft -1, was isMyTurn()/
+        // isControllable() automatisch korrekt sperrt, ganz ohne eigenen Sonderfall-Code dort.
+        const presetPlayers = net.lobbyMembers.filter(m => !m.spectator).map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false, isNPC: false, npcDifficulty: null, ruinsLooted: 0, collapsesSurvived: 0 }));
         net.localNpcs.forEach(n => {
             presetPlayers.push({ id: presetPlayers.length + 1, netId: null, name: n.name, color: n.color, units: [], inventory: [], skipped: false, isNPC: true, npcDifficulty: n.difficulty, ruinsLooted: 0, collapsesSurvived: 0 });
         });
@@ -2748,6 +2936,7 @@ function applyRemoteState(state) {
     document.getElementById('help-fab').classList.remove('hidden');
     document.getElementById('room-badge').classList.remove('hidden');
     document.getElementById('room-badge-code').innerText = net.room || '';
+    updateSpectatorBadge();
     revealChatSidebar();
     if (!net.centered) { fitMapToScreen(); centerMap(); net.centered = true; }
 
@@ -3707,7 +3896,7 @@ function prepareDraw(type) {
             {name:"Gegner zurückwerfen",type:"push_enemy",icon:"💨"},
             {name:"Wirbelsturm",type:"tornado",icon:"🌪️"},
             {name:"Seil & Haken",type:"tool_hook",icon:"🪢"}, 
-            {name:"Schlauchboot",type:"tool_boat",icon:"🛶"} 
+            {name:"Ruderboot",type:"tool_boat",icon:"🛶"} 
         ];
         currentCard = cards[Math.floor(Math.random()*cards.length)];
         currentCard.deck = "ACTION";
@@ -3967,7 +4156,7 @@ function processNextRiverInterstitial() {
         }
         riverInterstitial = true;
         gameState = "BOAT_LANDING";
-        showNotification(`🛶 ${playerLabel(owner).toUpperCase()} IST DRAN: Figur wurde von einem neu gesetzten Fluss erfasst - Ufer wählen (Schlauchboot wird verbraucht)!`);
+        showNotification(`🛶 ${playerLabel(owner).toUpperCase()} IST DRAN: Figur wurde von einem neu gesetzten Fluss erfasst - Ufer wählen (Ruderboot wird verbraucht)!`);
         updateUI(); render();
     } else {
         // Ohne Boot: automatische Mitnahme wie beim normalen Hineinziehen in einen Fluss.
@@ -4012,6 +4201,21 @@ function sweepUnitAlongRiver(unit, owner) {
     }
 }
 
+// Wie showNotification(), aber OHNE addLogEntry() - fuer Meldungen, die schon VOR Spielbeginn
+// auftreten koennen (siehe forcedSpectator-Hinweis in handleNetMessage()), wo es noch gar keinen
+// echten Spielverlauf gibt, in den ein Eintrag sinnvoll gehoeren wuerde.
+function showLobbyNotice(text) {
+    const el = document.getElementById('turn-toast');
+    el.innerText = text;
+    el.classList.remove('hidden');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.classList.add('hidden'), 400);
+    }, 2600);
+}
 function showNotification(text) {
     addLogEntry(text);
     const el = document.getElementById('turn-toast');
@@ -4030,19 +4234,19 @@ const tutorialPages = [
     { icon: '🏛️', title: 'Ziel des Spiels', html: `Sammelt gemeinsam <b>Artefakte</b> aus den Ruinen der Insel. Sobald genug gefunden wurden, gewinnt, wer als Erster den <b>Tempel</b> erreicht.<br><br>Doch Vorsicht: Mit jedem Fortschritt bricht die Welt an ihren Rändern weg. Bleibt am Ende nur noch <b>ein Spieler mit Figuren</b> übrig, gewinnt automatisch er.` },
     { icon: '⚙️', title: 'Vorbereitung', html: `Wählt die Spieleranzahl (2–6) sowie optional die <b>Ziel-Artefakte</b> und die drei <b>Ring-Schwellen</b> der Apokalypse.<br><br>Danach setzt jeder Spieler reihum seine <b>2 Figuren</b> auf ein Feld mit Startburg (Sumpf-Textur).` },
     { icon: '🎲', title: 'Der Spielzug', html: `In jedem Zug musst du <b>beides</b> erledigen — die Reihenfolge ist egal:<ul><li><b>2× Karte ziehen</b></li><li><b>Bewegen</b></li></ul>Erst wenn beides abgeschlossen ist, ist der nächste Spieler an der Reihe.` },
-    { icon: '🗺️', title: 'Karten ziehen: Landschaft', html: `Eine <b>Landschaftskarte</b> (Berg, Wald, Fluss oder Straße) bestimmt per Würfelwurf, wie viele Felder du setzen darfst. Klicke dazu freie Felder auf der Karte an.<br><br>Einen <b>Fluss</b> musst du zusätzlich per „Drehen" ausrichten und mit „Setzen" bestätigen — er verbindet sich automatisch mit anschließenden Flussfeldern.<br><br>⛰️ <b>Einmauer-Schutz:</b> Du kannst nie den letzten offenen Nachbarn einer Figur mit einem Berg zubauen — egal ob eigene oder gegnerische Figur, egal wo auf der Karte. Mindestens ein Weg zum Entkommen bleibt immer frei.<br><br>🧍 <b>Landschaft auf eine stehende Figur setzen:</b> Ein <b>Berg</b> geht nur, wenn die dort stehende Figur (egal ob eigene oder gegnerische) einen <b>Seil & Haken</b> besitzt — er wird dabei verbraucht, die Figur bleibt einfach stehen und gilt ab sofort als „schon auf dem Berg". Stehen mehrere Figuren auf dem Feld, braucht JEDE ihren eigenen Seil & Haken, sonst geht der Berg dort gar nicht. Ein <b>Fluss</b> erfasst eine dort stehende Figur nach deinem Zug ganz normal nach den Fluss-Regeln — mit <b>Schlauchboot</b> darf sich die betroffene Person ein Ufer aussuchen (Boot wird verbraucht), ohne Boot wird sie automatisch mitgerissen.` },
+    { icon: '🗺️', title: 'Karten ziehen: Landschaft', html: `Eine <b>Landschaftskarte</b> (Berg, Wald, Fluss oder Straße) bestimmt per Würfelwurf, wie viele Felder du setzen darfst. Klicke dazu freie Felder auf der Karte an.<br><br>Einen <b>Fluss</b> musst du zusätzlich per „Drehen" ausrichten und mit „Setzen" bestätigen — er verbindet sich automatisch mit anschließenden Flussfeldern.<br><br>⛰️ <b>Einmauer-Schutz:</b> Du kannst nie den letzten offenen Nachbarn einer Figur mit einem Berg zubauen — egal ob eigene oder gegnerische Figur, egal wo auf der Karte. Mindestens ein Weg zum Entkommen bleibt immer frei.<br><br>🧍 <b>Landschaft auf eine stehende Figur setzen:</b> Ein <b>Berg</b> geht nur, wenn die dort stehende Figur (egal ob eigene oder gegnerische) einen <b>Seil & Haken</b> besitzt — er wird dabei verbraucht, die Figur bleibt einfach stehen und gilt ab sofort als „schon auf dem Berg". Stehen mehrere Figuren auf dem Feld, braucht JEDE ihren eigenen Seil & Haken, sonst geht der Berg dort gar nicht. Ein <b>Fluss</b> erfasst eine dort stehende Figur nach deinem Zug ganz normal nach den Fluss-Regeln — mit <b>Ruderboot</b> darf sich die betroffene Person ein Ufer aussuchen (Boot wird verbraucht), ohne Boot wird sie automatisch mitgerissen.` },
     { icon: '🃏', title: 'Karten ziehen: Aktionen', html: `<b>Aktionskarten</b> wandern in dein Inventar (max. 3 — ist es voll, musst du beim nächsten Ziehen tauschen).<ul>
         <li>🏃 <b>Extra Zug</b>: sofort +1 Aktionspunkt</li>
         <li>🚫 <b>Aussetzen</b>: ein Gegner setzt die nächste Runde aus</li>
         <li>✨ <b>Teleport</b>: eigene Figur sofort auf eine bereits geplünderte Ruine versetzen</li>
         <li>💨 <b>Gegner zurückwerfen</b>: bis zu 2 gegnerische Figuren je ein Feld verschieben</li>
         <li>🌪️ <b>Wirbelsturm</b>: wirkt sofort — bläst alle eigenen Figuren an den Kartenrand und beendet den Zug</li>
-        <li>🪢 <b>Seil & Haken</b> / 🛶 <b>Schlauchboot</b>: passive Werkzeuge, die sich automatisch verbrauchen, sobald du auf Berge bzw. einen Fluss ziehst</li>
+        <li>🪢 <b>Seil & Haken</b> / 🛶 <b>Ruderboot</b>: passive Werkzeuge, die sich automatisch verbrauchen, sobald du auf Berge bzw. einen Fluss ziehst</li>
     </ul>` },
     { icon: '🧭', title: 'Bewegen im Gelände', demo: 'movement', html: `Du hast <b>2 Aktionspunkte</b> pro Zug, jedes Feld kostet normalerweise 1 Punkt.<ul>
         <li>🌲 <b>Wald</b> verbraucht sofort <b>alle</b> restlichen Punkte</li>
         <li>⛰️ <b>Berge</b> sind nur begehbar, wenn du schon auf einem Berg stehst oder eine Karte <b>Seil & Haken</b> einsetzt</li>
-        <li>🌊 Ein <b>Fluss</b> reißt dich ohne <b>Schlauchboot</b> automatisch die Fließrichtung entlang mit, bis du an Land gespült wirst oder ein Ufer wählen musst</li>
+        <li>🌊 Ein <b>Fluss</b> reißt dich ohne <b>Ruderboot</b> automatisch die Fließrichtung entlang mit, bis du an Land gespült wirst oder ein Ufer wählen musst</li>
         <li>🛤️ <b>Straßen</b>: der <b>erste</b> Schritt auf oder entlang einer Straße ist in jedem Zug <b>kostenlos</b> (kein Aktionspunkt) — danach kostet auch die Straße wieder normal</li>
     </ul>` },
     { icon: '🏺', title: 'Ruinen & Tempel', demo: 'ruins', html: `Ruinen (Krug-Symbol) sind ein <b>gemeinsamer Vorrat</b>: Die erste Figur — egal von wem — die eine ungeplünderte Ruine erreicht, sammelt 1 Artefakt für <b>alle Spieler zusammen</b>.<br><br>Der <b>Tempel</b> in der Mitte ist das eigentliche Ziel: Sobald genug Artefakte gesammelt sind, gewinnt, wer als Erster dort ankommt.` },
@@ -4142,7 +4346,7 @@ function drawMovementDemo(ctx, canvas, tAbs) {
         else if (lt < 1.8) pt = tdLerp(pos[1], pos[2], tdEase((lt - 1) / 0.8));
         else pt = tdLerp(pos[2], pos[3], tdEase((lt - 1.8) / 0.8));
         drawShieldToken(ctx, pt.x, pt.y, s * 0.78, '#2e86de', false);
-        tdCaption('🌊 Ohne <b>Schlauchboot</b> reißt dich ein <b>Fluss</b> automatisch die Fließrichtung entlang mit.');
+        tdCaption('🌊 Ohne <b>Ruderboot</b> reißt dich ein <b>Fluss</b> automatisch die Fließrichtung entlang mit.');
     }
 }
 
@@ -4946,6 +5150,11 @@ let chatActiveTab = 'chat';
 let chatMessages = [];
 let gameLog = [];
 let chatHasUnread = false;
+// Fester Emoji-Katalog fuer Chat-Reaktionen (Nutzerwunsch) - bewusst kein Freitext, damit sowohl
+// UI (6 Buttons passen bequem in das schmale Seitenleisten-Popover) als auch Server (Allowlist,
+// siehe REACTION_EMOJIS in server.js) einfach und robust bleiben.
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
+let reactionPickerTargetId = null;
 
 function toggleChatPanel() {
     chatPanelOpen = !chatPanelOpen;
@@ -4967,18 +5176,40 @@ function clearChatUnread() {
     if (dot) dot.classList.remove('show');
 }
 
+// Reaktionen-Leiste unter einer Nachricht: eine Pille pro bereits benutztem Emoji mit Anzahl,
+// hervorgehoben ('mine'), falls man selbst mitreagiert hat - Klick auf eine Pille reagiert genauso
+// wie ein Klick im Picker (Toggle), spart also den Umweg ueber den Picker fuer ein bereits
+// vorhandenes Emoji.
+function renderReactionsHtml(m) {
+    if (!m.reactions) return '';
+    const entries = Object.entries(m.reactions).filter(([, arr]) => arr.length > 0);
+    if (entries.length === 0) return '';
+    const pills = entries.map(([emoji, arr]) => {
+        const mine = arr.some(e => e.clientId === net.clientId);
+        const names = arr.map(e => e.name).join(', ');
+        return `<button type="button" class="chat-reaction-pill${mine ? ' mine' : ''}" data-msg-id="${escapeHtml(m.id)}" data-emoji="${escapeHtml(emoji)}" title="${escapeHtml(names)}">${emoji} ${arr.length}</button>`;
+    }).join('');
+    return `<div class="chat-reactions-row">${pills}</div>`;
+}
 function renderChatMessages() {
     const view = document.getElementById('chat-messages-view');
     if (!view) return;
     if (!net.active) { view.innerHTML = '<div class="chat-empty-hint">Chat ist nur im Online-Modus verfügbar.</div>'; return; }
     if (chatMessages.length === 0) { view.innerHTML = '<div class="chat-empty-hint">Noch keine Nachrichten - schreib was!</div>'; return; }
-    view.innerHTML = chatMessages.map(m =>
-        `<div class="chat-msg"><div class="chat-msg-name" style="color:${escapeHtml(m.color)};">${escapeHtml(m.name)}</div><div class="chat-msg-text">${escapeHtml(m.text)}</div></div>`
-    ).join('');
+    view.innerHTML = chatMessages.map(m => {
+        // Zuschauer-Nachrichten bekommen ein 👀-Praefix vor dem Namen (analog zum 🤖-Praefix bei
+        // KI-Namen) - so ist auf einen Blick klar, dass hier jemand mitschaut statt mitspielt.
+        const namePrefix = m.spectator ? '👀 ' : '';
+        return `<div class="chat-msg">
+            <div class="chat-msg-name" style="color:${escapeHtml(m.color)};">${namePrefix}${escapeHtml(m.name)}</div>
+            <div class="chat-msg-text">${escapeHtml(m.text)}<button type="button" class="chat-react-btn" data-msg-id="${escapeHtml(m.id)}" title="Reagieren">😊+</button></div>
+            ${renderReactionsHtml(m)}
+        </div>`;
+    }).join('');
     view.scrollTop = view.scrollHeight;
 }
-function addChatMessage(name, color, text, mine) {
-    chatMessages.push({ name, color, text });
+function addChatMessage(id, name, color, text, mine, spectator) {
+    chatMessages.push({ id, name, color, text, spectator: !!spectator, reactions: {} });
     if (chatMessages.length > 200) chatMessages.shift(); // nicht unbegrenzt wachsen lassen
     renderChatMessages();
     if (!mine && (!chatPanelOpen || chatActiveTab !== 'chat')) {
@@ -4993,11 +5224,79 @@ function sendChatMessage() {
     const text = input.value.trim().slice(0, 300);
     if (!text) return;
     input.value = '';
-    addChatMessage(net.name || 'Ich', net.color, text, true);
+    // id wird HIER (beim Sender) erzeugt, nicht vom Server - so teilen das eigene optimistische
+    // Echo (sofort lokal angezeigt, siehe addChatMessage() hier) UND die per Server an alle ANDEREN
+    // weitergereichte Kopie dieselbe id. Ohne das koennten spaetere Reaktionen (type:'reaction',
+    // siehe toggleReaction()) die Nachricht bei verschiedenen Clients nicht demselben Eintrag
+    // zuordnen.
+    const id = uuid4();
+    addChatMessage(id, net.name || 'Ich', net.color, text, true, net.isSpectator);
     if (net.ws && net.ws.readyState === WebSocket.OPEN) {
-        net.ws.send(JSON.stringify({ type: 'chat', room: net.room, text }));
+        net.ws.send(JSON.stringify({ type: 'chat', room: net.room, id, text }));
     }
 }
+
+// ---------- Chat-Reaktionen ----------
+// Reaktionen werden (wie der Chat selbst) NICHT serverseitig gespeichert, nur durchgereicht - jeder
+// Client haelt seinen eigenen lokalen Stand pro Nachricht in chatMessages[i].reactions (Emoji ->
+// Liste von {clientId, name}). applyReaction() wendet sowohl die EIGENE Aktion (lokal, optimistisch)
+// als auch von anderen empfangene Reaktionen (handleNetMessage()) ueber denselben Toggle-Mechanismus
+// an: schon reagiert -> entfernen, noch nicht -> hinzufuegen. Das haelt beide Seiten zwangslaeufig
+// im selben Zustand, ganz ohne serverseitige Buchfuehrung.
+function applyReaction(messageId, emoji, clientId, name) {
+    const m = chatMessages.find(x => x.id === messageId);
+    if (!m) return; // Nachricht evtl. schon aus dem 200er-Limit gerutscht - Reaktion dann einfach verworfen
+    if (!m.reactions) m.reactions = {};
+    const arr = m.reactions[emoji] || (m.reactions[emoji] = []);
+    const idx = arr.findIndex(e => e.clientId === clientId);
+    if (idx >= 0) arr.splice(idx, 1); else arr.push({ clientId, name });
+    renderChatMessages();
+}
+function toggleReaction(messageId, emoji) {
+    applyReaction(messageId, emoji, net.clientId, net.name || 'Ich');
+    if (net.ws && net.ws.readyState === WebSocket.OPEN) {
+        net.ws.send(JSON.stringify({ type: 'reaction', room: net.room, messageId, emoji }));
+    }
+    closeReactionPicker();
+}
+// Oeffnet den kleinen Emoji-Picker in der Naehe des angeklickten "😊+"-Knopfes - per Klick/Tap
+// (nicht Hover), damit es auf Desktop UND Handy identisch funktioniert (gleiches Prinzip wie beim
+// Lautstaerke-Popover, siehe toggleSoundPopover()).
+function openReactionPicker(btnEl, messageId) {
+    reactionPickerTargetId = messageId;
+    const picker = document.getElementById('reaction-picker');
+    picker.classList.remove('hidden');
+    const btnRect = btnEl.getBoundingClientRect();
+    const pickerRect = picker.getBoundingClientRect();
+    let left = btnRect.right - pickerRect.width;
+    left = Math.max(8, Math.min(left, window.innerWidth - pickerRect.width - 8));
+    picker.style.left = left + 'px';
+    picker.style.top = (btnRect.bottom + 6) + 'px';
+}
+function closeReactionPicker() {
+    reactionPickerTargetId = null;
+    document.getElementById('reaction-picker').classList.add('hidden');
+}
+// Ein Klick-Listener fuer die ganze Chat-Ansicht (Event-Delegation) statt einzelner Inline-Handler -
+// die Nachrichten-Liste wird bei jeder Aenderung komplett neu gerendert (siehe renderChatMessages()),
+// ueber Delegation muss der Listener dafuer nicht staendig neu gebunden werden. Deckt sowohl den
+// "😊+"-Knopf (Picker oeffnen) als auch bestehende Reaktions-Pillen (direkt togglen) ab.
+document.getElementById('chat-messages-view').addEventListener('click', e => {
+    const reactBtn = e.target.closest('.chat-react-btn');
+    if (reactBtn) { e.stopPropagation(); openReactionPicker(reactBtn, reactBtn.dataset.msgId); return; }
+    const pill = e.target.closest('.chat-reaction-pill');
+    if (pill) { e.stopPropagation(); toggleReaction(pill.dataset.msgId, pill.dataset.emoji); return; }
+});
+document.getElementById('reaction-picker').addEventListener('click', e => {
+    const btn = e.target.closest('.reaction-picker-emoji');
+    if (btn && reactionPickerTargetId) { e.stopPropagation(); toggleReaction(reactionPickerTargetId, btn.textContent); }
+});
+document.addEventListener('click', e => {
+    const picker = document.getElementById('reaction-picker');
+    if (!picker.classList.contains('hidden') && !picker.contains(e.target) && !e.target.closest('.chat-react-btn')) {
+        closeReactionPicker();
+    }
+});
 
 function addLogEntry(text) {
     gameLog.push({ text, ts: Date.now() });
@@ -5042,6 +5341,14 @@ function resetChatAndLogForNewGame() {
 // =====================================================================
 let soundMuted = false;
 try { soundMuted = localStorage.getItem('botg_sound_muted') === '1'; } catch (e) {}
+// Lautstaerke-Regler (Nutzerwunsch): 0-1, unabhaengig von soundMuted - genau wie bei einem
+// klassischen OS-Lautstaerkeregler bleibt der eingestellte Wert erhalten, auch waehrend
+// "Stumm" aktiv ist (Stumm blendet nur kurzzeitig aus, ueberschreibt den Regler nicht).
+let soundVolume = 1;
+try {
+    const storedVol = parseFloat(localStorage.getItem('botg_sound_volume'));
+    if (!isNaN(storedVol) && storedVol >= 0 && storedVol <= 1) soundVolume = storedVol;
+} catch (e) {}
 let sndCtx = null;
 function audioCtx() {
     if (!sndCtx) sndCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -5070,6 +5377,10 @@ function sndNoiseBuffer(c, duration) {
     return buf;
 }
 function sndNoiseBurst(c, { duration = 0.05, filterFreq = 1200, filterType = 'bandpass', filterQ = 1, gain = 0.3, startTime = 0, attack = 0.002 } = {}) {
+    // Einziger Skalierungspunkt fuer den Lautstaerke-Regler (siehe soundVolume oben): ALLE
+    // Sounds laufen durch sndTone()/sndNoiseBurst(), daher genuegt es, hier einmal zu
+    // multiplizieren statt an jeder einzelnen playSound*()-Stelle im Code.
+    gain = gain * soundVolume;
     const src = c.createBufferSource();
     src.buffer = sndNoiseBuffer(c, duration);
     const filt = c.createBiquadFilter();
@@ -5083,6 +5394,7 @@ function sndNoiseBurst(c, { duration = 0.05, filterFreq = 1200, filterType = 'ba
     src.start(t0); src.stop(t0 + duration + 0.02);
 }
 function sndTone(c, { freq = 440, freqEnd = null, type = 'sine', duration = 0.3, gain = 0.25, startTime = 0, attack = 0.005 } = {}) {
+    gain = gain * soundVolume; // siehe Kommentar in sndNoiseBurst()
     const osc = c.createOscillator();
     osc.type = type;
     const t0 = c.currentTime + startTime;
@@ -5185,10 +5497,46 @@ function toggleSoundMute() {
     updateSoundMuteUI();
     if (!soundMuted) playSoundClick(); // kurzes Feedback, dass Sound jetzt wieder an ist
 }
-function updateSoundMuteUI() {
-    const btn = document.getElementById('sound-toggle-fab');
-    if (btn) btn.textContent = soundMuted ? '🔇' : '🔊';
+// Ein Icon fuer beide Anzeigestellen (Haupt-FAB + Mute-Knopf im Popover) - haengt sowohl von
+// "Stumm" als auch (wenn nicht stumm) vom aktuellen Reglerstand ab, wie bei einem klassischen
+// OS-Lautstaerkesymbol (leer/leise/mittel/laut).
+function soundIcon() {
+    if (soundMuted || soundVolume <= 0) return '🔇';
+    if (soundVolume < 0.34) return '🔈';
+    if (soundVolume < 0.67) return '🔉';
+    return '🔊';
 }
+function updateSoundMuteUI() {
+    const icon = soundIcon();
+    const fab = document.getElementById('sound-toggle-fab');
+    if (fab) fab.textContent = icon;
+    const muteBtn = document.getElementById('sound-mute-btn');
+    if (muteBtn) muteBtn.textContent = icon;
+    const slider = document.getElementById('sound-volume-slider');
+    if (slider) slider.value = Math.round(soundVolume * 100);
+}
+// Popover oeffnen/schliessen - bewusst per Klick/Tap (nicht Hover), damit es auf Desktop UND
+// Handy gleich funktioniert. stopPropagation() verhindert, dass der eigene Oeffnen-Klick sofort
+// vom document-Listener unten wieder als "ausserhalb geklickt" gewertet wird.
+function toggleSoundPopover(e) {
+    e.stopPropagation();
+    document.getElementById('sound-popover').classList.toggle('hidden');
+}
+function onVolumeSliderInput(value) {
+    soundVolume = Math.max(0, Math.min(100, parseInt(value, 10))) / 100;
+    try { localStorage.setItem('botg_sound_volume', String(soundVolume)); } catch (e) {}
+    updateSoundMuteUI();
+    // Den Regler beim Hochziehen automatisch wieder "entstummen" - sonst wuerde man den Regler
+    // nach oben ziehen und trotzdem nichts hoeren, weil "Stumm" separat noch aktiv waere (klassisches
+    // OS-Verhalten: Lautstaerke aendern hebt eine vorherige Stumm-Schaltung auf).
+    if (soundVolume > 0 && soundMuted) { soundMuted = false; try { localStorage.setItem('botg_sound_muted', '0'); } catch (e) {} }
+}
+document.addEventListener('click', e => {
+    const pop = document.getElementById('sound-popover');
+    if (pop && !pop.classList.contains('hidden') && !pop.contains(e.target) && e.target.id !== 'sound-toggle-fab') {
+        pop.classList.add('hidden');
+    }
+});
 
 // ---------- "Du bist dran"-Hinweis (Online-Modus): Ton + blinkender Tab-Titel ----------
 const ORIGINAL_TAB_TITLE = document.title;
@@ -6031,13 +6379,13 @@ function moveHintForHex(hex) {
     if (!hex) return null;
     if (hex.terrain === 'forest') return '🌲 Wald beendet den Zug sofort';
     if (hex.terrain === 'river') {
-        // Mit Schlauchboot im Inventar reisst der Fluss NICHT automatisch mit, sondern man landet
+        // Mit Ruderboot im Inventar reisst der Fluss NICHT automatisch mit, sondern man landet
         // an einem waehlbaren Ufer (siehe processMovement(), Abschnitt "2. RIVER (BOOT)" -> gameState
         // "BOAT_LANDING") - das Boot wird dabei verbraucht. Ohne Boot gilt weiterhin die automatische
         // Mitnahme entlang des Flusslaufs.
         const p = players[currentPlayerIdx];
         const hasBoat = p && p.inventory.some(c => c.type === 'tool_boat');
-        if (hasBoat) return '🛶 Schlauchboot: du wählst das Ufer selbst';
+        if (hasBoat) return '🛶 Ruderboot: du wählst das Ufer selbst';
         return '🌊 Fluss reißt automatisch mit';
     }
     if (hex.terrain === 'road' && !roadBonusUsedThisTurn) return '🛣️ Straße: dieser Schritt ist gratis';
