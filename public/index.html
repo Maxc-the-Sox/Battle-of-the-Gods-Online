@@ -47,7 +47,7 @@
 
         /* Title-/Splash-Screen: liegt VOR dem eigentlichen Hauptmenue, wird erst durch den ERSTEN
            Klick/Tap/Tastendruck ausgeblendet - exakt dieselbe Geste, die ohnehin schon den
-           AudioContext/die Musik freischaltet (siehe unlockAudioOnce()/unlockMusicOnce() weiter
+           AudioContext/die Musik freischaltet (siehe unlockAudioOnce()/attemptMusicUnlock() weiter
            unten im Skript, beide an denselben document-Events haengen). Start-Gefuehl und
            Musikfreigabe fallen dadurch bewusst zusammen, statt dass die Musik "zufaellig" erst beim
            naechsten Menü-Klick lostutet. Nutzerwunsch nach Mockup-Abstimmung. */
@@ -1080,7 +1080,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.4</div>
+                <div class="version-tag">v1.5</div>
             </div>
         </div>
 
@@ -5722,17 +5722,33 @@ function ensureMusicGraph() {
     });
 }
 
-// Wie unlockAudioOnce() oben (eigener, unabhaengiger Listener, damit dieser Code komplett additiv
-// bleibt): erst nach einer echten ersten Nutzer-Geste darf ueberhaupt Musik gestartet werden, sonst
-// blockt der Browser das leise (Autoplay-Policy).
-function unlockMusicOnce() {
-    if (musicUnlocked) return;
-    musicUnlocked = true;
+// Wie unlockAudioOnce() oben, ABER bewusst NICHT {once:true}: anders als bei den per Web-Audio-
+// Oszillator synthetisierten SFX (deren Freigabe zuverlaessig mit der ersten Geste "haelt", siehe
+// audioCtx()) kann ein <audio>-Element, das per createMediaElementSource() in den Web-Audio-Graphen
+// geroutet wird, auf iOS Safari bei GENAU DIESEM ersten Versuch scheitern (z.B. weil die MP3-Datei
+// im Moment der Geste noch nicht genug angeladen ist) - play() liefert dann ein abgelehntes Promise,
+// das wir bewusst schlucken (.catch), OHNE dass je ein zweiter Versuch folgte. Fruher wurde
+// musicUnlocked dabei trotzdem permanent auf true gesetzt (einmaliger Listener), wodurch die Musik
+// fuer den Rest der Session fuer IMMER stumm blieb - auch ein Tastendruck auf den eigens dafuer
+// vorgesehenen Mute-Button/Regler half nichts mehr, weil unlockMusicOnce() ja schon "erledigt" war.
+// Das war der Bug hinter der Nutzermeldung "Musik aus trotz Button/Regler tut nix". Jetzt: der
+// Listener bleibt dauerhaft aktiv und prueft bei JEDER echten Geste (auch beim Antippen von
+// Mute-Button oder Lautstaerke-Regler selbst!) erneut, ob der jeweils passende Track wirklich laeuft
+// - und stoesst play() notfalls einfach nochmal an. Kostet praktisch nichts (reiner .paused-Check),
+// heilt sich dadurch aber von selbst.
+function attemptMusicUnlock() {
     ensureMusicGraph();
-    if (musicMode === 'menu') menuTrackEl.play().catch(() => {});
-    else syncCombatMusicToRingState(); // Sicherheitsnetz, falls ein Kampf theoretisch schon vor der ersten Geste begonnen haette
+    musicUnlocked = true;
+    if (musicMode === 'menu') {
+        if (menuTrackEl.paused) menuTrackEl.play().catch(() => {});
+    } else if (musicMode === 'combat') {
+        syncCombatMusicToRingState();
+        const stage = musicRingStage >= 0 ? musicRingStage : ringStageFromClosedRings(closedRings);
+        const el = combatTrackEls[stage];
+        if (el && el.paused) el.play().catch(() => {});
+    }
 }
-['pointerdown', 'keydown', 'touchstart'].forEach(evt => document.addEventListener(evt, unlockMusicOnce, { once: true, passive: true }));
+['pointerdown', 'keydown', 'touchstart', 'click'].forEach(evt => document.addEventListener(evt, attemptMusicUnlock, { passive: true }));
 
 function ringStageFromClosedRings(cr) {
     if (!cr) return 0;
@@ -5796,7 +5812,7 @@ function syncCombatMusicToRingState() {
 function enterCombatMusicMode() {
     if (musicMode === 'combat') return;
     musicMode = 'combat'; musicRingStage = -1;
-    if (!musicUnlocked) return; // noch keine Nutzer-Geste - unlockMusicOnce() holt das gleich nach
+    if (!musicUnlocked) return; // noch keine Nutzer-Geste - attemptMusicUnlock() holt das bei der naechsten nach
     if (menuTrackEl && !menuTrackEl.paused) {
         const c = audioCtx(), now = c.currentTime;
         menuTrackGain.gain.cancelScheduledValues(now); menuTrackGain.gain.setValueAtTime(menuTrackGain.gain.value, now);
@@ -5833,6 +5849,9 @@ function toggleMusicMute() {
     musicMuted = !musicMuted;
     try { localStorage.setItem('botg_music_muted', musicMuted ? '1' : '0'); } catch (e) {}
     updateMusicMuteUI();
+    attemptMusicUnlock(); // ein Antippen des Mute-Buttons ist selbst eine echte Geste - falls die
+    // Musik (z.B. auf iOS) bisher aus einem fehlgeschlagenen ersten Versuch heraus noch gar nicht
+    // lief, holt das hier die Wiedergabe direkt nach, statt dass der Button wirkungslos wirkt.
 }
 function toggleMusicPopover(e) {
     e.stopPropagation();
@@ -5845,6 +5864,7 @@ function onMusicVolumeSliderInput(value) {
     // wie beim Soundeffekt-Regler (siehe onVolumeSliderInput()).
     if (musicVolume > 0 && musicMuted) { musicMuted = false; try { localStorage.setItem('botg_music_muted', '0'); } catch (e) {} }
     updateMusicMuteUI();
+    attemptMusicUnlock(); // siehe toggleMusicMute() - auch das Ziehen des Reglers ist eine echte Geste
 }
 document.addEventListener('click', e => {
     const pop = document.getElementById('music-popover');
