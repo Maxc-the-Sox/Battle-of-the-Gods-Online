@@ -3396,6 +3396,7 @@ function prepareDraw(type) {
         currentCard = [{name:"Berg",type:"mountains",icon:"⛰️"},{name:"Wald",type:"forest",icon:"🌲"},{name:"Fluss",type:"river",icon:"🌊"},{name:"Straße",type:"road",icon:"🛤️"}][Math.floor(Math.random()*4)];
         currentCard.deck = "LANDSCAPE";
         gameState = "DICE_ROLL";
+        addLogEntry(`🃏 ${playerLabel(players[currentPlayerIdx])} zieht eine Landschaftskarte: ${currentCard.icon} ${currentCard.name}`);
     } else {
         const cards = [
             {name:"Extra Zug",type:"extra_move",icon:"🏃"},
@@ -3408,7 +3409,8 @@ function prepareDraw(type) {
         ];
         currentCard = cards[Math.floor(Math.random()*cards.length)];
         currentCard.deck = "ACTION";
-        
+        addLogEntry(`🃏 ${playerLabel(players[currentPlayerIdx])} zieht eine Aktionskarte: ${currentCard.icon} ${currentCard.name}`);
+
         if (currentCard.type === 'tornado') {
             executeTornado();
             return;
@@ -3497,6 +3499,7 @@ function rollDice() {
         diceValue = [3, 2, 2, 1, 1, 1][Math.floor(Math.random() * 6)]; placementsRemaining = diceValue;
         document.getElementById('dice-symbol').innerText = ['','⚀','⚁','⚂'][diceValue] || diceValue;
         diceDisplay.classList.remove('rolling'); gameState = "PLACING_TERRAIN"; updateUI();
+        addLogEntry(`🎲 ${playerLabel(players[currentPlayerIdx])} würfelt ${diceValue}${diceValue === 1 ? 'x Feld' : 'x Felder'} für ${currentCard ? currentCard.name : 'Landschaftskarte'}`);
     }, 500);
 }
 
@@ -3523,18 +3526,18 @@ function queueRiverPlacementIfOccupied(hex) {
     if (hex && getUnitsAt(hex.q, hex.r).length > 0) queuedRiverPlacementHexes.push({ q: hex.q, r: hex.r });
 }
 
-function finishCard() { 
+function finishCard() {
     if (currentCard && currentCard.deck === 'ACTION') {
         const p = players[currentPlayerIdx];
-        if (p.inventory.length < 3) { p.inventory.push(currentCard); drawPoints--; currentCard = null; gameState = (drawPoints <= 0) ? "DRAWING_DONE" : "DRAWING"; }
+        if (p.inventory.length < 3) { addLogEntry(`🎒 ${playerLabel(p)} behält Karte im Inventar: ${currentCard.icon} ${currentCard.name}`); p.inventory.push(currentCard); drawPoints--; currentCard = null; gameState = (drawPoints <= 0) ? "DRAWING_DONE" : "DRAWING"; }
         else { gameState = "SWAP_CARD"; }
     } else { drawPoints--; currentCard = null; gameState = (drawPoints <= 0) ? "DRAWING_DONE" : "DRAWING"; }
-    updateUI(); render(); 
+    updateUI(); render();
 }
 
 function handleInventoryClick(slotIdx) {
     const p = players[currentPlayerIdx], card = p.inventory[slotIdx];
-    if (gameState === "SWAP_CARD") { p.inventory[slotIdx] = currentCard; discardNewCard(); return; } 
+    if (gameState === "SWAP_CARD") { addLogEntry(`🔄 ${playerLabel(p)} tauscht Karte im Inventar: ${card ? (card.icon+' '+card.name) : '?'} raus, ${currentCard.icon} ${currentCard.name} rein`); p.inventory[slotIdx] = currentCard; discardNewCard(true); return; }
     
     if (pendingCardSlot === slotIdx && gameState !== "CHOOSING" && gameState !== "MOVING") {
         pendingCardSlot = null;
@@ -3550,7 +3553,7 @@ function handleInventoryClick(slotIdx) {
     if (gameState === "CHOOSING" || gameState === "MOVING") {
         if (!card) return;
         if (card.type === 'tool_hook' || card.type === 'tool_boat') { alert("Dies ist ein passives Werkzeug. Es wird automatisch benutzt, wenn du auf das entsprechende Feld ziehst!"); return; }
-        if (card.type === 'extra_move') { p.inventory.splice(slotIdx, 1); actionPoints++; pathMoved = false; }
+        if (card.type === 'extra_move') { addLogEntry(`🏃 ${playerLabel(p)} spielt Extra Zug`); p.inventory.splice(slotIdx, 1); actionPoints++; pathMoved = false; }
         else if (card.type === 'skip_turn') { gameState = "SELECT_SKIP"; pendingCardSlot = slotIdx; }
         else if (card.type === 'teleport') { gameState = "SELECT_TELEPORT_UNIT"; pendingCardSlot = slotIdx; }
         else if (card.type === 'push_enemy') { gameState = "SELECT_PUSH_TARGET_1"; pendingCardSlot = slotIdx; pushRemaining = 2; currentPushUnit = null; } 
@@ -3560,12 +3563,16 @@ function handleInventoryClick(slotIdx) {
 
 function cancelCurrentCard() {
     if (drawPoints <= 0) { pathDrawn = true; currentCard = null; checkTurnEnd(); return; }
+    if (currentCard) addLogEntry(`🗑️ ${playerLabel(players[currentPlayerIdx])} bricht Karte ab: ${currentCard.icon} ${currentCard.name}`);
     drawPoints--; currentCard = null; pendingRiverHex = null; placementsRemaining = 0;
     gameState = (drawPoints > 0) ? "DRAWING" : "DRAWING_DONE";
     updateUI(); render();
 }
 
-function discardNewCard() { drawPoints--; currentCard = null; gameState = (drawPoints <= 0) ? "DRAWING_DONE" : "DRAWING"; updateUI(); render(); }
+// silent=true wird beim internen Aufruf nach einem Karten-Tausch (siehe handleInventoryClick())
+// gesetzt, damit dort NICHT zusaetzlich noch "Karte verworfen" geloggt wird - der Tausch selbst
+// wurde dort schon mit einer eigenen, praeziseren Verlauf-Zeile dokumentiert.
+function discardNewCard(silent) { if (!silent) addLogEntry(`🗑️ ${playerLabel(players[currentPlayerIdx])} verwirft neu gezogene Karte: ${currentCard.icon} ${currentCard.name}`); drawPoints--; currentCard = null; gameState = (drawPoints <= 0) ? "DRAWING_DONE" : "DRAWING"; updateUI(); render(); }
 function finishPath() { actionPoints = 0; pathMoved = true; selectedUnit = null; checkTurnEnd(); }
 function deselectUnit() { selectedUnit = null; updateUI(); render(); }
 // Naechsten Spieler dran nehmen UND, falls dabei wieder bei Spieler 0 angekommen, roundCount hochzaehlen
@@ -4651,7 +4658,7 @@ function checkLandmark(q, r) {
             triggerVictory(players[currentPlayerIdx]); 
         } 
     }
-    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; players[currentPlayerIdx].ruinsLooted = (players[currentPlayerIdx].ruinsLooted || 0) + 1; triggerLootBurst(q, r); playSoundLoot(); checkApocalypse(); updateUI(); updateApoUI(); }
+    else if (!landmark.looted) { landmark.looted = true; collectedArtifacts++; players[currentPlayerIdx].ruinsLooted = (players[currentPlayerIdx].ruinsLooted || 0) + 1; addLogEntry(`🏆 ${playerLabel(players[currentPlayerIdx])} plündert Ruine bei (${q},${r}) - Artefakte: ${collectedArtifacts}/${targetArtifacts}`); triggerLootBurst(q, r); playSoundLoot(); checkApocalypse(); updateUI(); updateApoUI(); }
 }
 
 function handlePushFlow(unit) {
@@ -4696,18 +4703,22 @@ function processMovement(unit, tQ, tR) {
     if (!newHex || ['void', 'water'].includes(newHex.terrain)) return false; 
 
     const p = players[currentPlayerIdx];
-    
+
     // 1. MOUNTAINS (KLETTERHAKEN)
+    let hookUsedThisStep = false;
     if (newHex.terrain === 'mountains') {
         const hookIndex = p.inventory.findIndex(c => c.type === 'tool_hook');
         if (oldHex.terrain === 'mountains') {
             // Free move
         } else {
-            if (hookIndex === -1) return false; 
-            p.inventory.splice(hookIndex, 1); 
+            if (hookIndex === -1) return false;
+            p.inventory.splice(hookIndex, 1);
+            hookUsedThisStep = true;
         }
     }
-    
+
+    addLogEntry(`🚶 ${playerLabel(p)} bewegt Figur: (${unit.q},${unit.r}) → (${tQ},${tR})${hookUsedThisStep ? ' (Seil & Haken verbraucht)' : ''}`);
+
     // 2. RIVER (BOOT)
     if (newHex.terrain === 'river') {
         const boatIndex = p.inventory.findIndex(c => c.type === 'tool_boat');
@@ -4749,8 +4760,8 @@ function processMovement(unit, tQ, tR) {
             const occupied = players.some(p => p.units.some(u => u.q === nQ && u.r === nR));
             if (!nH || ['mountains', 'water', 'void'].includes(nH.terrain) || occupied) {
                 riverEscapeHexes = hexDirections.map(d => ({q: unit.q+d.q, r: unit.r+d.r})).filter(p => { const h = mapData.hexes[`${p.q},${p.r}`]; return h && !['mountains', 'water', 'void', 'river'].includes(h.terrain); });
-                if (riverEscapeHexes.length > 0) { gameState = "RIVER_ESCAPE"; updateUI(); return true; } else { actionPoints = 0; finishPath(); return true; }
-            } else if (nH.terrain === 'river') { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); curH = nH; } else { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); actionPoints = 0; finishPath(); return true; }
+                if (riverEscapeHexes.length > 0) { addLogEntry(`🌊 Strömung reißt Figur von ${playerLabel(p)} weiter mit (steht jetzt bei (${unit.q},${unit.r})) - Ufer muss gewählt werden`); gameState = "RIVER_ESCAPE"; updateUI(); return true; } else { actionPoints = 0; finishPath(); return true; }
+            } else if (nH.terrain === 'river') { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); curH = nH; } else { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); addLogEntry(`🌊 Strömung reißt Figur von ${playerLabel(p)} mit bis (${nQ},${nR})`); actionPoints = 0; finishPath(); return true; }
         }
     } else {
         actionPoints -= cost;
@@ -4784,7 +4795,8 @@ function consumeHooksForMountainPlacement(hex) {
 function performHexClick(rx, rz, hex) {
     if (gameState === "PLACING" && hex.terrain === 'swamp') {
         if (players.some(p => p.units.some(u => u.q === rx && u.r === rz))) return;
-        players[currentPlayerIdx].units.push({ q: rx, r: rz }); 
+        addLogEntry(`🏕️ ${playerLabel(players[currentPlayerIdx])} setzt Startfigur auf (${rx},${rz})`);
+        players[currentPlayerIdx].units.push({ q: rx, r: rz });
         if (players.reduce((sum, p) => sum + p.units.length, 0) === players.length * 2) { currentPlayerIdx = 0; startTurn(); } else { currentPlayerIdx = (currentPlayerIdx + 1) % players.length; }
     } else if (gameState === "MOVING") { 
         let dist = selectedUnit ? getHexDistance(selectedUnit.q, selectedUnit.r, rx, rz) : 0;
@@ -4792,6 +4804,7 @@ function performHexClick(rx, rz, hex) {
         else { const u = players[currentPlayerIdx].units.find(u => u.q === rx && u.r === rz); if (u) selectedUnit = u; }
     } else if (gameState === "RIVER_ESCAPE") {
         if (riverEscapeHexes.some(p => p.q === rx && p.r === rz)) {
+            addLogEntry(`🏝️ ${playerLabel(players[currentPlayerIdx])} rettet Figur ans Ufer: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
             selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz); riverEscapeHexes = [];
             // Sonderfall "Landschaft auf stehende Figur gesetzt" (siehe sweepUnitAlongRiver()): dann
             // NICHT die normalen Zugende-Regeln des aktuell umgeschalteten Spielers anwenden, sondern
@@ -4810,6 +4823,7 @@ function performHexClick(rx, rz, hex) {
             const boatIdx = p.inventory.findIndex(c => c.type === 'tool_boat');
             if (boatIdx !== -1) p.inventory.splice(boatIdx, 1);
 
+            addLogEntry(`🛶 ${playerLabel(p)} geht mit dem Boot an Land: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
             selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz);
             boatLandingTargets = [];
             // Siehe Kommentar im RIVER_ESCAPE-Zweig oben - derselbe Sonderfall gilt hier fuer den
@@ -4819,6 +4833,8 @@ function performHexClick(rx, rz, hex) {
         }
     } else if (gameState === "RIVER_ESCAPE_PUSH") {
         if (riverEscapeHexes.some(p => p.q === rx && p.r === rz)) {
+            const escOwner = players.find(pl => pl.units.includes(selectedUnit));
+            addLogEntry(`🏝️ ${playerLabel(escOwner)} rettet weggestoßene Figur ans Ufer: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
             selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz); riverEscapeHexes = [];
             currentPushUnit = null; selectedUnit = null; 
             pushRemaining--;
@@ -4832,6 +4848,7 @@ function performHexClick(rx, rz, hex) {
             if (!canPlaceMountainOnHex(hex)) { alert("Hier steht eine Figur, deren Besitzer keinen Seil & Haken hat - hier kann kein Berg gesetzt werden!"); return; }
         }
         hex.terrain = currentCard.type; bakeHex(hex);
+        addLogEntry(`🗺️ ${playerLabel(players[currentPlayerIdx])} platziert ${currentCard.icon} ${currentCard.name} auf Feld (${hex.q},${hex.r})`);
         if (currentCard.type === 'mountains') consumeHooksForMountainPlacement(hex);
         if (currentCard.type === 'river') { hex.direction = 0; pendingRiverHex = hex; gameState = "ROTATING_RIVER"; } else { placementsRemaining--; if (placementsRemaining <= 0) finishCard(); }
     } else if (gameState === "ROTATING_RIVER") {
@@ -4843,20 +4860,23 @@ function performHexClick(rx, rz, hex) {
         if (pendingRiverHex && rx === pendingRiverHex.q && rz === pendingRiverHex.r) rotateRiver();
     } else if (gameState === "SELECT_SKIP") {
         const owner = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz));
-        if (owner) { owner.skipped = true; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
+        if (owner) { addLogEntry(`🚫 ${playerLabel(players[currentPlayerIdx])} spielt Aussetzen-Karte gegen ${playerLabel(owner)}`); owner.skipped = true; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
     } else if (gameState === "SELECT_TELEPORT_UNIT") {
         const u = players[currentPlayerIdx].units.find(u => u.q === rx && u.r === rz); if (u) { selectedUnit = u; gameState = "SELECT_TELEPORT_TARGET"; }
     } else if (gameState === "SELECT_TELEPORT_TARGET") {
         const lm = mapData.landmarks.find(l => l.q === rx && l.r === rz);
-        if (lm && lm.looted) { 
+        if (lm && lm.looted) {
+            addLogEntry(`✨ ${playerLabel(players[currentPlayerIdx])} teleportiert Figur: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
             selectedUnit.q = rx; selectedUnit.r = rz; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); selectedUnit = null; gameState = "CHOOSING";
         }
-    } else if (gameState === "SELECT_PUSH_TARGET_1" || gameState === "SELECT_PUSH_TARGET_2") { 
+    } else if (gameState === "SELECT_PUSH_TARGET_1" || gameState === "SELECT_PUSH_TARGET_2") {
         const u = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz))?.units.find(u => u.q === rx && u.r === rz);
         if (u) { currentPushUnit = u; gameState = "SELECT_PUSH_DESTINATION"; }
     } else if (gameState === "SELECT_PUSH_DESTINATION") {
         if (getHexDistance(currentPushUnit.q, currentPushUnit.r, rx, rz) === 1 && hex && !['mountains', 'void', 'water'].includes(hex.terrain)) {
-            currentPushUnit.q = rx; currentPushUnit.r = rz; 
+            const pushedOwner = players.find(pl => pl.units.includes(currentPushUnit));
+            addLogEntry(`💨 ${playerLabel(players[currentPlayerIdx])} wirft Figur von ${playerLabel(pushedOwner)} zurück: (${currentPushUnit.q},${currentPushUnit.r}) → (${rx},${rz})`);
+            currentPushUnit.q = rx; currentPushUnit.r = rz;
             if (!handlePushFlow(currentPushUnit)) {
                 pushRemaining--;
                 if (pushRemaining > 0) { gameState = "SELECT_PUSH_TARGET_2"; currentPushUnit = null; }
