@@ -1080,7 +1080,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.6</div>
+                <div class="version-tag">v1.7</div>
             </div>
         </div>
 
@@ -5691,42 +5691,87 @@ const MUSIC_COMBAT_TRACK_SRCS = [
 const MUSIC_RING_CROSSFADE_SEC = 2.5; // Nutzerwunsch: weicher Uebergang bei Ring-Kollaps (2-3s)
 const MUSIC_SCENE_FADE_SEC = 0.6; // schnellerer Wechsel Menue<->Kampf (Szenenwechsel, kein dramaturgischer Ring-Moment)
 
-let musicMasterGain = null; // eine gemeinsame Gain-Stufe fuer ALLE Musik-Tracks - hier greift musicVolume/musicMuted
-let menuTrackEl = null, menuTrackGain = null;
-let combatTrackEls = [], combatTrackGains = [];
+let menuTrackEl = null;
+let combatTrackEls = [];
 let musicUnlocked = false; // erst nach der ersten echten Nutzer-Geste darf ueberhaupt play() versucht werden (Autoplay-Policy)
 let musicMode = 'menu'; // 'menu' waehrend Hauptmenue/Lokal-Setup/Online-Lobby/Tutorial/Replay-Auswahl, 'combat' waehrend laufender Partie ODER Replay-Wiedergabe
 let musicRingStage = -1; // -1 = in diesem "combat"-Aufenthalt noch kein Kampf-Track gestartet
+// Feature-Erkennung: darf .volume auf einem <audio>-Element ueberhaupt etwas bewirken? iOS Safari
+// sperrt das ABSICHTLICH fuer JavaScript (nur die Hardware-Lautstaerketasten duerfen die Lautstaerke
+// aendern) - gesetzte Werte werden dort einfach ignoriert, .volume liest danach unveraendert weiter
+// den alten Wert. null = noch nicht geprueft, wird beim ersten Bedarf einmalig ermittelt.
+let musicVolumeControlSupported = null;
+function detectMusicVolumeSupport(el) {
+    if (musicVolumeControlSupported !== null) return musicVolumeControlSupported;
+    const before = el.volume;
+    const probe = before > 0.5 ? 0.2 : 0.8;
+    el.volume = probe;
+    musicVolumeControlSupported = Math.abs(el.volume - probe) < 0.01;
+    el.volume = before;
+    return musicVolumeControlSupported;
+}
 
-// Baut den Web-Audio-Graphen fuer die Musik genau EINMAL auf (wiederverwendet denselben geteilten
-// AudioContext wie die Soundeffekte, siehe audioCtx() oben) - dadurch lassen sich Uebergaenge per
-// GainNode weich per linearRampToValueAtTime ueberblenden, was mit dem blossen .volume eines
-// <audio>-Elements nicht in dieser Praezision moeglich waere.
-function ensureMusicGraph() {
-    if (musicMasterGain) return;
-    const c = audioCtx();
-    musicMasterGain = c.createGain();
-    musicMasterGain.gain.value = musicMuted ? 0 : musicVolume;
-    musicMasterGain.connect(c.destination);
-
+// WICHTIGE ARCHITEKTUR-ENTSCHEIDUNG (Nutzerwunsch nach Punkt 52): Musik laeuft bewusst NICHT mehr
+// ueber den Web-Audio-Graphen (kein createMediaElementSource()/GainNode mehr wie zuvor) - die reinen
+// <audio>-Elemente spielen direkt. Grund: ein AudioContext-gerouteter <audio>-Track ignoriert auf
+// iOS den physischen Stumm-Schalter (bestaetigt vom Nutzer per Live-Test), waehrend ein NICHT
+// gerouteter <audio>-Track den Schalter ganz normal respektiert, genau wie ein Klingelton. Kostet
+// nichts an Funktionalitaet, die vorher ohnehin zuverlaessig funktioniert haette: der GainNode war
+// wegen eines bekannten iOS-Bugs (siehe Punkt 52) auf dem Handy sowieso schon wirkungslos. Jede
+// Lautstaerke-Ueberblendung laeuft jetzt stattdessen manuell per requestAnimationFrame ueber die
+// jeweilige .volume-Eigenschaft (siehe animateTrackBlend() weiter unten) - funktioniert exakt dort,
+// wo .volume ueberhaupt einstellbar ist (Desktop/Android), und faellt dort, wo nicht (iOS,
+// detectMusicVolumeSupport() erkennt das), automatisch auf einen sofortigen Wechsel ohne
+// Ueberlappung zurueck, statt zwei Tracks gleichzeitig unkontrolliert hoerbar zu lassen.
+function ensureMusicElements() {
+    if (menuTrackEl) return;
     menuTrackEl = new Audio(MUSIC_MENU_TRACK_SRC);
-    menuTrackEl.loop = true; menuTrackEl.preload = 'auto'; menuTrackEl.muted = musicMuted;
-    menuTrackGain = c.createGain(); menuTrackGain.gain.value = 1;
-    c.createMediaElementSource(menuTrackEl).connect(menuTrackGain).connect(musicMasterGain);
+    menuTrackEl.loop = true; menuTrackEl.preload = 'auto';
+    combatTrackEls = MUSIC_COMBAT_TRACK_SRCS.map(src => { const el = new Audio(src); el.loop = true; el.preload = 'auto'; el.__blend = 0; return el; });
+    menuTrackEl.__blend = 1;
+    detectMusicVolumeSupport(menuTrackEl);
+    [menuTrackEl, ...combatTrackEls].forEach(applyElementVolume);
+}
 
-    combatTrackEls = MUSIC_COMBAT_TRACK_SRCS.map(src => { const el = new Audio(src); el.loop = true; el.preload = 'auto'; el.muted = musicMuted; return el; });
-    combatTrackGains = combatTrackEls.map(el => {
-        const g = c.createGain(); g.gain.value = 0;
-        c.createMediaElementSource(el).connect(g).connect(musicMasterGain);
-        return g;
-    });
+// Setzt die tatsaechlich hoerbare Lautstaerke eines einzelnen Tracks aus zwei unabhaengigen
+// Faktoren zusammen: el.__blend (0-1, "ist DIESER Track gerade der aktive - fuer Crossfades
+// zwischen Kampf-Tracks bzw. Menue<->Kampf") und dem globalen musicVolume-Regler/musicMuted. Wirkt
+// nur dort, wo .volume ueberhaupt greift (siehe detectMusicVolumeSupport()) - .muted dagegen wird
+// IMMER gesetzt, das laesst iOS im Gegensatz zu .volume zu (siehe Punkt 52).
+function applyElementVolume(el) {
+    if (!el) return;
+    const blend = el.__blend != null ? el.__blend : 1;
+    el.volume = Math.max(0, Math.min(1, blend * musicVolume));
+    el.muted = musicMuted;
+}
+
+// Blendet el.__blend weich von "from" nach "to" ueber durationSec (per rAF, wirkt nur wenn
+// .volume ueberhaupt greift) - andernfalls (iOS) springt der Wert sofort auf "to", damit nie zwei
+// Tracks unkontrolliert gleichzeitig in voller Lautstaerke laufen.
+function animateTrackBlend(el, from, to, durationSec, onDone) {
+    if (el.__fadeRAF) { cancelAnimationFrame(el.__fadeRAF); el.__fadeRAF = null; }
+    if (durationSec <= 0 || !musicVolumeControlSupported) {
+        el.__blend = to; applyElementVolume(el);
+        if (onDone) onDone();
+        return;
+    }
+    const startTime = performance.now(), durMs = durationSec * 1000;
+    const step = now => {
+        const t = Math.min(1, (now - startTime) / durMs);
+        el.__blend = from + (to - from) * t;
+        applyElementVolume(el);
+        if (t < 1) { el.__fadeRAF = requestAnimationFrame(step); }
+        else { el.__fadeRAF = null; if (onDone) onDone(); }
+    };
+    el.__fadeRAF = requestAnimationFrame(step);
 }
 
 // Wie unlockAudioOnce() oben, ABER bewusst NICHT {once:true}: anders als bei den per Web-Audio-
 // Oszillator synthetisierten SFX (deren Freigabe zuverlaessig mit der ersten Geste "haelt", siehe
-// audioCtx()) kann ein <audio>-Element, das per createMediaElementSource() in den Web-Audio-Graphen
-// geroutet wird, auf iOS Safari bei GENAU DIESEM ersten Versuch scheitern (z.B. weil die MP3-Datei
-// im Moment der Geste noch nicht genug angeladen ist) - play() liefert dann ein abgelehntes Promise,
+// audioCtx()) kann ein normales <audio>-Element (seit Punkt 52 bewusst NICHT mehr ueber den
+// Web-Audio-Graphen geroutet, siehe ensureMusicElements()) auf iOS Safari bei GENAU DIESEM ersten
+// Versuch trotzdem scheitern (z.B. weil die MP3-Datei im Moment der Geste noch nicht genug
+// angeladen ist) - play() liefert dann ein abgelehntes Promise,
 // das wir bewusst schlucken (.catch), OHNE dass je ein zweiter Versuch folgte. Fruher wurde
 // musicUnlocked dabei trotzdem permanent auf true gesetzt (einmaliger Listener), wodurch die Musik
 // fuer den Rest der Session fuer IMMER stumm blieb - auch ein Tastendruck auf den eigens dafuer
@@ -5737,7 +5782,7 @@ function ensureMusicGraph() {
 // - und stoesst play() notfalls einfach nochmal an. Kostet praktisch nichts (reiner .paused-Check),
 // heilt sich dadurch aber von selbst.
 function attemptMusicUnlock() {
-    ensureMusicGraph();
+    ensureMusicElements();
     musicUnlocked = true;
     if (musicMode === 'menu') {
         if (menuTrackEl.paused) menuTrackEl.play().catch(() => {});
@@ -5762,31 +5807,27 @@ function ringStageFromClosedRings(cr) {
 // vollen Ueberblendzeit) wird nur fuer den allerersten Track eines Kampf-Aufenthalts gebraucht -
 // der kommt aus Stille, ist also kein Uebergang zwischen zwei Stuecken im eigentlichen Sinn.
 function crossfadeToCombatTrack(stage, instant) {
-    if (!musicMasterGain) return;
-    const c = audioCtx(), now = c.currentTime;
-    const fadeSec = instant ? 0.05 : MUSIC_RING_CROSSFADE_SEC;
-    combatTrackGains.forEach((g, i) => {
-        if (i === stage || combatTrackEls[i].paused) return;
-        g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value, now);
-        g.gain.linearRampToValueAtTime(0, now + fadeSec);
-        const elToStop = combatTrackEls[i];
-        setTimeout(() => { elToStop.pause(); }, fadeSec * 1000 + 80);
+    if (!menuTrackEl) return;
+    const smooth = musicVolumeControlSupported && !instant;
+    const fadeSec = smooth ? MUSIC_RING_CROSSFADE_SEC : 0;
+    combatTrackEls.forEach((el, i) => {
+        if (i === stage || el.paused) return;
+        if (smooth) animateTrackBlend(el, el.__blend != null ? el.__blend : 1, 0, fadeSec, () => { el.pause(); });
+        else el.pause(); // .volume greift hier ohnehin nicht (iOS) - sofort stoppen statt ueberlappen lassen
     });
-    const targetEl = combatTrackEls[stage], targetGain = combatTrackGains[stage];
-    if (targetEl.paused) { targetEl.currentTime = 0; targetEl.play().catch(() => {}); }
-    targetGain.gain.cancelScheduledValues(now); targetGain.gain.setValueAtTime(targetGain.gain.value, now);
-    targetGain.gain.linearRampToValueAtTime(1, now + fadeSec);
+    const targetEl = combatTrackEls[stage];
+    const wasPaused = targetEl.paused;
+    if (wasPaused) { targetEl.currentTime = 0; targetEl.play().catch(() => {}); }
+    animateTrackBlend(targetEl, wasPaused ? 0 : (targetEl.__blend != null ? targetEl.__blend : 1), 1, fadeSec);
 }
 
 function fadeOutAllCombatTracks() {
-    if (!musicMasterGain) return;
-    const c = audioCtx(), now = c.currentTime;
-    combatTrackGains.forEach((g, i) => {
-        if (combatTrackEls[i].paused) return;
-        g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value, now);
-        g.gain.linearRampToValueAtTime(0, now + MUSIC_SCENE_FADE_SEC);
-        const elToStop = combatTrackEls[i];
-        setTimeout(() => { elToStop.pause(); }, MUSIC_SCENE_FADE_SEC * 1000 + 80);
+    if (!menuTrackEl) return;
+    const smooth = musicVolumeControlSupported;
+    combatTrackEls.forEach(el => {
+        if (el.paused) return;
+        if (smooth) animateTrackBlend(el, el.__blend != null ? el.__blend : 1, 0, MUSIC_SCENE_FADE_SEC, () => { el.pause(); });
+        else el.pause();
     });
 }
 
@@ -5814,11 +5855,9 @@ function enterCombatMusicMode() {
     musicMode = 'combat'; musicRingStage = -1;
     if (!musicUnlocked) return; // noch keine Nutzer-Geste - attemptMusicUnlock() holt das bei der naechsten nach
     if (menuTrackEl && !menuTrackEl.paused) {
-        const c = audioCtx(), now = c.currentTime;
-        menuTrackGain.gain.cancelScheduledValues(now); menuTrackGain.gain.setValueAtTime(menuTrackGain.gain.value, now);
-        menuTrackGain.gain.linearRampToValueAtTime(0, now + MUSIC_SCENE_FADE_SEC);
-        const elToStop = menuTrackEl;
-        setTimeout(() => { elToStop.pause(); }, MUSIC_SCENE_FADE_SEC * 1000 + 80);
+        const smooth = musicVolumeControlSupported;
+        if (smooth) animateTrackBlend(menuTrackEl, menuTrackEl.__blend != null ? menuTrackEl.__blend : 1, 0, MUSIC_SCENE_FADE_SEC, () => { menuTrackEl.pause(); });
+        else menuTrackEl.pause();
     }
     syncCombatMusicToRingState();
 }
@@ -5832,7 +5871,7 @@ function leaveCombatMusicMode() {
     if (!musicUnlocked) return;
     fadeOutAllCombatTracks();
     if (menuTrackEl) {
-        menuTrackGain.gain.setValueAtTime(1, audioCtx().currentTime);
+        menuTrackEl.__blend = 1; applyElementVolume(menuTrackEl);
         menuTrackEl.play().catch(() => {});
     }
 }
@@ -5843,17 +5882,11 @@ function updateMusicMuteUI() {
     const fab = document.getElementById('music-toggle-fab'); if (fab) fab.textContent = icon;
     const muteBtn = document.getElementById('music-mute-btn'); if (muteBtn) muteBtn.textContent = icon;
     const slider = document.getElementById('music-volume-slider'); if (slider) slider.value = Math.round(musicVolume * 100);
-    if (musicMasterGain) musicMasterGain.gain.setTargetAtTime(musicMuted ? 0 : musicVolume, audioCtx().currentTime, 0.05);
-    // Zusaetzlich, UNABHAENGIG vom Web-Audio-GainNode: .muted direkt auf den <audio>-Elementen selbst
-    // setzen. Hintergrund (Nutzer-Meldung "Stumm-Button tut nix auf dem iPhone"): iOS Safari hat einen
-    // bekannten, seit Jahren dokumentierten Bug, bei dem ein GainNode HINTER einem per
-    // createMediaElementSource() gerouteten <audio>-Element die tatsaechliche Lautstaerke NICHT
-    // zuverlaessig beeinflusst - der GainNode-Aufruf oben schlaegt auf iOS also womoeglich einfach ins
-    // Leere. `.muted` auf dem Element selbst wird dagegen von iOS respektiert (im Unterschied zu
-    // `.volume`, das Apple fuer JS absichtlich sperrt - Lautstaerke soll nur ueber die Hardware-Tasten
-    // laufen). Rein additiv/binaer: beeinflusst NUR den Stumm-Zustand, nicht den Regler-Wert selbst,
-    // kann sich also nicht mit der GainNode-Lautstaerke "doppelt" ueberschneiden.
-    [menuTrackEl, ...combatTrackEls].forEach(el => { if (el) el.muted = musicMuted; });
+    // musicVolume/musicMuted wirken jetzt direkt auf jedes <audio>-Element (siehe applyElementVolume())
+    // statt ueber einen gemeinsamen Web-Audio-GainNode - .muted greift dabei IMMER (von Apple fuer JS
+    // erlaubt), .volume nur dort, wo detectMusicVolumeSupport() das ueberhaupt zulaesst (auf iOS
+    // gesperrt, siehe Punkt 52 im Handover).
+    [menuTrackEl, ...combatTrackEls].forEach(applyElementVolume);
 }
 function toggleMusicMute() {
     musicMuted = !musicMuted;
