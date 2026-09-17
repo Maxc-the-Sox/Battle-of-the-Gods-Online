@@ -2889,6 +2889,40 @@ function npcRingKeyForHex(hex) {
     if (hex.baseTerrain === 'hills') return 'inner';
     return null; // water/tundra - stuerzt nie ein
 }
+
+// Bugfix (Nutzer-Bug-Report: "blauer Spieler aktiviert Apocalypse 2 und stand dann in der Apocalype?"):
+// triggerKollaps() entfernt Figuren bisher nur EINMALIG, exakt im Moment des Ring-Kollaps-Triggers,
+// basierend auf den Positionen zu GENAU diesem Zeitpunkt (siehe dortigen Kommentar). Die sichtbare
+// Umwandlung der betroffenen Felder zu void laeuft danach aber gestaffelt ueber bis zu ~3 Sekunden
+// (siehe pendingMeteors/METEOR_DURATION/renderFX()). Bewegt sich eine Figur WAEHREND dieses Zeitfensters
+// (typischerweise: derselbe Zug, der den Kollaps gerade erst ausgeloest hat) auf ein Feld, das zum
+// bereits geschlossenen Ring gehoert aber visuell noch nicht void ist, wurde das bisher NIE erfasst -
+// per Replay-Analyse bestaetigt: genau das ist im gemeldeten Bug passiert (Figur zog direkt nach dem
+// Kollaps-Trigger noch auf ein Feld des soeben geschlossenen Mittelrings und blieb dort fuer immer
+// unbehelligt stehen, selbst nachdem das Feld Sekunden spaeter sichtbar zu void wurde).
+// Dieser Sweep laeuft synchron nach JEDER Spielhandlung (Aufruf ganz am Anfang von updateUI(), noch vor
+// sendStateUpdate()/captureReplaySnapshot() - siehe dort) und entfernt jede Figur, die auf einem Feld
+// eines bereits geschlossenen Rings steht, unabhaengig davon, ob das Feld selbst schon sichtbar void ist
+// und unabhaengig davon, WIE die Figur dort hingekommen ist. Nutzt dieselbe Ring-Zuordnung wie die
+// KI-Gefahreneinschaetzung (npcRingKeyForHex() oben), damit es nur EINE Stelle mit dieser Zuordnung gibt.
+function sweepUnitsOnCollapsedRings() {
+    let anyRemoved = false;
+    players.forEach(p => {
+        const before = p.units.length;
+        p.units = p.units.filter(u => {
+            const hex = mapData.hexes[`${u.q},${u.r}`];
+            const key = npcRingKeyForHex(hex);
+            return !(key && closedRings[key]);
+        });
+        if (p.units.length < before) anyRemoved = true;
+    });
+    // Gleicher "Einziger Ueberlebender"-Check wie am Ende von triggerKollaps() - falls DIESE (verspaetete)
+    // Entfernung gerade den vorletzten verbliebenen Spieler erwischt hat, muss der Sieg genauso greifen.
+    if (anyRemoved && !isGameOver) {
+        const activePlayers = players.filter(p => p.units.length > 0);
+        if (activePlayers.length === 1 && players.length > 1) triggerVictory(activePlayers[0], "Einziger Überlebender!", 0);
+    }
+}
 // Grobe Gefahrenstufe: 0 = sicher, 1 = in 2 Artefakten dran, 2 = beim naechsten Artefakt akut
 // dran, 3 = eigentlich schon faellig (Sicherheitsfall, sollte normalerweise nicht vorkommen).
 function npcHexCollapseRisk(hex) {
@@ -5534,6 +5568,10 @@ canvas.addEventListener('click', e => {
 });
 
 function updateUI() {
+    // Bugfix: siehe sweepUnitsOnCollapsedRings()-Kommentar oben - muss VOR allem anderen laufen, damit
+    // eine Figur, die gerade erst auf ein Feld eines bereits geschlossenen Rings gezogen ist, sofort
+    // entfernt wird und weder in der UI, im Online-Sync noch im Replay-Verlauf faelschlich "sicher" erscheint.
+    sweepUnitsOnCollapsedRings();
     const p = players[currentPlayerIdx], guide = document.getElementById('guide-text');
     document.getElementById('player-turn-display').innerText = playerLabel(p);
     updateTurnOrderUI();
