@@ -638,6 +638,23 @@
             cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5); transition: transform 0.15s, right 0.28s ease;
         }
         #leave-game-fab:hover { transform: scale(1.08); }
+        /* "Kamera-Automatik ein/aus" (Punkt 66, Nutzerwunsch: "einen Kamera Button... wo man das ganze
+           Gezoome ausschalten könnte... und die Kamera dann frei bewegen") - naechster freier 52px-Slot
+           rechts daneben (20/72/124/176/228 = Hilfe/Sound/Musik/Verlassen/Kamera-Automatik). Gleicher
+           Sichtbarkeits-Lebenszyklus wie #leave-game-fab (nur waehrend einer laufenden Partie sichtbar).
+           Das Icon selbst wechselt per JS zwischen 🎥 (an) und 🔓 (aus), siehe updateCameraFollowFabUI(). */
+        #camera-lock-fab {
+            position: fixed; top: 20px; right: 228px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 1.15em;
+            color: var(--gold-light); background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
+            cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5); transition: transform 0.15s, right 0.28s ease, background 0.2s, border-color 0.2s;
+        }
+        #camera-lock-fab:hover { transform: scale(1.08); }
+        /* Ausgeschalteter Zustand (Nutzer hat die Automatik bewusst deaktiviert, um frei zu schauen) -
+           deutlich sichtbar anders eingefaerbt, damit man auf einen Blick sieht, dass man gerade NICHT
+           automatisch mitgezoomt wird (sonst koennte man sich fragen, warum die Kamera bei der naechsten
+           gegnerischen Aktion "nicht mehr reagiert" - sieht aber aus wie gewollt). */
+        #camera-lock-fab.cam-follow-off { background: linear-gradient(180deg, #4a3a1f, #2a2010); border-color: rgba(241,196,15,0.7); box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 12px rgba(241,196,15,0.35); }
         /* Bestaetigungs-Dialog fuer #leave-game-fab (Punkt 64) - bewusst dasselbe Fenster/Layout fuer
            lokal UND online (Nutzerwunsch), nur der "Speichern"-Button wird online per :disabled
            ausgegraut (siehe .btn:disabled weiter oben) statt eines eigenen Online-Dialogs. Gleiches
@@ -834,6 +851,7 @@
         body.chat-open #help-fab { right: 340px; }
         body.chat-open #sound-toggle-fab { right: 392px; }
         body.chat-open #leave-game-fab { right: 496px; }
+        body.chat-open #camera-lock-fab { right: 548px; }
 
         /* ---------- Online-Modus / Lobby ---------- */
         .menu-scroll { max-height: 90vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
@@ -1169,7 +1187,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.19</div>
+                <div class="version-tag">v1.20</div>
             </div>
         </div>
 
@@ -1221,6 +1239,9 @@
 </div>
 <div id="feedback-fab" onclick="openFeedback()" title="Feedback / Bug melden">🐞</div>
 <div id="leave-game-fab" class="hidden" onclick="confirmLeaveGame()" title="Spiel verlassen">🚪</div>
+<!-- "Kamera-Automatik ein/aus" (Punkt 66) - siehe CSS-Kommentar bei #camera-lock-fab und
+     toggleCameraFollow() weiter unten im Skript. -->
+<div id="camera-lock-fab" class="hidden" onclick="toggleCameraFollow()" title="Kamera-Automatik AN (klicken zum Ausschalten)">🎥</div>
 <div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
 <div id="spectator-badge" class="hidden"></div>
 
@@ -2516,6 +2537,7 @@ function processLoadedMap(data, count, presetPlayers) {
     document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     document.getElementById('leave-game-fab').classList.remove('hidden');
+    document.getElementById('camera-lock-fab').classList.remove('hidden');
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
     updateSpectatorBadge(); // beim Host (der applyRemoteState() fuer den eigenen Spielstart NICHT durchlaeuft) sonst nie initial gesetzt
     resetChatAndLogForNewGame();
@@ -2784,6 +2806,12 @@ function backToMainMenu() {
     document.getElementById('mobile-dock').classList.add('hidden');
     document.getElementById('help-fab').classList.add('hidden');
     document.getElementById('leave-game-fab').classList.add('hidden');
+    document.getElementById('camera-lock-fab').classList.add('hidden');
+    // Kamera-Automatik (Punkt 66) fuer die naechste Partie immer frisch auf "an" zuruecksetzen - ein
+    // bewusstes Ausschalten in der verlassenen Partie soll nicht unbemerkt in eine ganz neue Partie
+    // "durchsickern".
+    cameraFollowEnabled = true; cameraFollowUnitShadow = null; cameraFollowHexShadow = null; cameraFollowLastPlayerIdx = null;
+    updateCameraFollowFabUI();
     if (typeof closeMobilePanel === 'function') closeMobilePanel(); // ein evtl. offenes Handy-Bottom-Sheet mitschliessen
     // Dieselben globalen Variablen wie im Replay-Viewer (siehe exitReplayViewer()) einfach zuruecksetzen -
     // ein neuer echter Spielstart (oder das Laden eines gespeicherten Spiels) baut sie ohnehin komplett
@@ -2922,6 +2950,7 @@ function loadLocalSave() {
     document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     document.getElementById('leave-game-fab').classList.remove('hidden');
+    document.getElementById('camera-lock-fab').classList.remove('hidden');
     document.getElementById('room-badge').classList.add('hidden');
     document.getElementById('spectator-badge').classList.add('hidden');
 
@@ -3368,6 +3397,7 @@ function applyRemoteState(state) {
     document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
     document.getElementById('leave-game-fab').classList.remove('hidden');
+    document.getElementById('camera-lock-fab').classList.remove('hidden');
     document.getElementById('room-badge').classList.remove('hidden');
     document.getElementById('room-badge-code').innerText = net.room || '';
     updateSpectatorBadge();
@@ -4012,8 +4042,15 @@ function focusOnPlayerUnits(p, zoom = 0.8) {
 let cameraFollowUnitShadow = null; // "spielerIdx-figurIdx" -> "q,r", letzter bekannter Stand
 let cameraFollowHexShadow = null;  // "q,r" -> "terrain|direction", letzter bekannter Stand
 let cameraFollowLastPlayerIdx = null;
+// Manueller Ein/Aus-Schalter (Punkt 66, Nutzerwunsch: "einen Kamera Button... wo man das ganze
+// Gezoome ausschalten könnte... und die Kamera dann frei bewegen") - siehe toggleCameraFollow()
+// weiter unten. Bewusst NUR die passive Mitverfolgung hier betroffen, nicht den seit Langem
+// bestehenden Vollfokus-Sprung in startTurn() bei Beginn des EIGENEN Zugs (der hilft beim Spielen,
+// ist kein "Zuschauer-Gezoome" und bleibt daher unabhaengig von diesem Schalter aktiv).
+let cameraFollowEnabled = true;
 
 function cameraFollowActionIfNeeded() {
+    if (!cameraFollowEnabled) return; // siehe toggleCameraFollow() - Nutzer hat die Automatik bewusst pausiert
     const isPassive = net.active
         ? (net.myIndex !== currentPlayerIdx) // online: nicht mein eigener Zug (deckt auch Zuschauer ab, net.myIndex ist dort -1)
         : (!!players[currentPlayerIdx] && !!players[currentPlayerIdx].isNPC); // lokal: die KI ist dran
@@ -4093,6 +4130,35 @@ function cycleFocusOnActivePlayerUnit() {
     camera.x = canvas.width / 2 - (hexSize * 1.5 * u.q) * camera.zoom;
     camera.y = canvas.height / 2 - (hexSize * Math.sqrt(3) * (u.r + u.q / 2)) * camera.zoom;
     render();
+}
+
+// #camera-lock-fab (Punkt 66, Nutzerwunsch): schaltet NUR die passive Kamera-Mitverfolgung aus
+// cameraFollowActionIfNeeded() ein/aus (siehe dortigen Kommentar bei cameraFollowEnabled) - man
+// bleibt dabei jederzeit frei, die Kamera manuell zu bewegen/zoomen (Maus-Drag+Rad bzw. Touch-Drag+
+// Pinch, siehe die Canvas-Eventlistener weiter unten - die laufen unabhaengig von diesem Schalter).
+function toggleCameraFollow() {
+    cameraFollowEnabled = !cameraFollowEnabled;
+    updateCameraFollowFabUI();
+    if (!cameraFollowEnabled) {
+        // Ausschalten: sofort die GANZE Karte einsehbar machen (Nutzerwunsch: "die Kamera dann frei
+        // bewegen... am besten die ganze Karte im Blick zu haben"), statt einfach nur an der zuletzt
+        // zufaelligen Position/Zoomstufe stehen zu bleiben.
+        fitMapToScreen(); centerMap(); render();
+    } else {
+        // Wieder einschalten, evtl. mitten in einem fremden Zug: Schatten zuruecksetzen und sofort
+        // einmal auffrischen, damit man ohne Wartezeit direkt wieder dahin springt, wo gerade etwas
+        // passiert (statt erst auf die naechste Spielhandlung warten zu muessen) - nutzt dieselbe
+        // "neuer Zug"-Vollfokus-Logik wie ein echter Zugwechsel, siehe dortigen isNewTurn-Zweig.
+        cameraFollowUnitShadow = null; cameraFollowHexShadow = null; cameraFollowLastPlayerIdx = null;
+        cameraFollowActionIfNeeded();
+    }
+}
+function updateCameraFollowFabUI() {
+    const fab = document.getElementById('camera-lock-fab');
+    if (!fab) return;
+    fab.textContent = cameraFollowEnabled ? '🎥' : '🔓';
+    fab.title = cameraFollowEnabled ? 'Kamera-Automatik AN (klicken zum Ausschalten)' : 'Kamera-Automatik AUS - frei bewegen (klicken zum Einschalten)';
+    fab.classList.toggle('cam-follow-off', !cameraFollowEnabled);
 }
 
 function centerMap() {
@@ -6703,6 +6769,7 @@ function showVictoryUI(player, reason) {
     // buildVictoryStatsHtml() oben) - waere hier oben rechts nur eine redundante Doppelanzeige.
     document.getElementById('stats-panel').classList.add('hidden');
     document.getElementById('leave-game-fab').classList.add('hidden'); // "NEUES SPIEL"-Button im Sieg-Panel deckt das jetzt ab
+    document.getElementById('camera-lock-fab').classList.add('hidden');
 
     panel.classList.remove('hidden');
 }
