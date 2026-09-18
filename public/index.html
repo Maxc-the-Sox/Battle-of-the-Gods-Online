@@ -1080,7 +1080,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.12</div>
+                <div class="version-tag">v1.14</div>
             </div>
         </div>
 
@@ -4051,6 +4051,7 @@ function playTornadoFX(callback) {
     overlay.classList.remove('hidden');
     void overlay.offsetWidth;
     overlay.classList.add('show');
+    playSoundTornado(); // Nutzerwunsch: genau dann, wenn der Wirbel-Twister sichtbar zu drehen beginnt
     document.body.classList.add('screen-shake');
     setTimeout(() => document.body.classList.remove('screen-shake'), 1000);
     setTimeout(() => {
@@ -5514,7 +5515,9 @@ const SFX_FILE_CANDIDATES = {
     card:       ['audio/sfx/card.mp3', 'audio/sfx/card.ogg'],
     mouseclick: ['audio/sfx/mouseclick.mp3', 'audio/sfx/mouseclick.ogg'],
     tileclick:  ['audio/sfx/tileclick.mp3', 'audio/sfx/tileclick.ogg'],
-    turn:       ['audio/sfx/turn.mp3', 'audio/sfx/turn.ogg']
+    turn:       ['audio/sfx/turn.mp3', 'audio/sfx/turn.ogg'],
+    grunt:      ['audio/sfx/grunt.mp3', 'audio/sfx/grunt.ogg'],
+    tornado:    ['audio/sfx/tornado.mp3', 'audio/sfx/tornado.ogg']
 };
 let sfxBuffers = {}; // key -> dekodiertes AudioBuffer, sobald (falls) erfolgreich geladen
 
@@ -5684,8 +5687,18 @@ function playSoundCard() {
 // Dialoge, Setup-Screens usw.) - siehe den delegierten document-Klick-Listener weiter unten, der das
 // automatisch fuer alle <button>-Elemente uebernimmt (mit Ausnahme der Buttons, die bereits einen
 // eigenen spezifischeren Sound ausloesen, siehe data-sfx-skip dort).
+// Nutzerwunsch: waehrend ein GEGNER am Zug ist (KI im lokalen Modus ODER ein anderer Spieler im
+// Online-Modus), soll dieser generische Klick-Sound stumm bleiben - dafuer genau dieselbe, bereits
+// im ganzen Spiel etablierte isControllable()-Pruefung wiederverwendet ("ist gerade wirklich mein
+// eigener Zug"), die z.B. auch performHexClick() vor jeder Aktion schon absichert. Ausserhalb einer
+// laufenden Partie (Hauptmenue, Setup, Lobby) liefert isControllable() weiterhin true, der Sound
+// bleibt dort also unveraendert hoerbar. Im lokalen Hotseat OHNE KI (mehrere Menschen am selben
+// Geraet) bleibt er ebenfalls unveraendert hoerbar, da isControllable() dort - mangels eigenem
+// Netzwerk-Index - immer true liefert (es gibt kein technisches "das ist NICHT dein Zug" auf einem
+// gemeinsam genutzten Geraet).
 function playSoundMouseClick() {
     if (soundMuted) return;
+    if (!isControllable()) return;
     if (playSfxBuffer('mouseclick')) return;
     try {
         const c = audioCtx();
@@ -5725,6 +5738,46 @@ function playSoundTurn() {
         sndTone(c, { freq: 1760, type: 'sine', duration: 0.4, gain: 0.08, startTime: 0 });
         sndTone(c, { freq: 659.25, type: 'sine', duration: 0.6, gain: 0.2, startTime: 0.13 });
         sndTone(c, { freq: 1318.5, type: 'sine', duration: 0.45, gain: 0.07, startTime: 0.13 });
+    } catch (e) { console.warn('Sound-Fehler:', e); }
+}
+// Neu (Nutzerwunsch): kurzes "Oof" fuers Zurueckstossen einer gegnerischen Figur (Karte "Gegner
+// zurueckwerfen") - spielt in performHexClick() (Zweig SELECT_PUSH_DESTINATION) bei JEDEM einzelnen
+// Stoss, also bis zu zweimal pro gespielter Karte (einmal pro Ziel), nicht nur einmal beim
+// Verbrauchen der Karte (das macht weiterhin zusaetzlich playSoundCard()).
+function playSoundGrunt() {
+    if (soundMuted) return;
+    if (playSfxBuffer('grunt')) return;
+    try {
+        const c = audioCtx();
+        sndTone(c, { freq: 160, freqEnd: 90, type: 'sawtooth', duration: 0.16, gain: 0.22, startTime: 0, attack: 0.008 });
+        sndNoiseBurst(c, { duration: 0.09, filterFreq: 350, filterType: 'lowpass', filterQ: 0.8, gain: 0.18, startTime: 0.01 });
+    } catch (e) { console.warn('Sound-Fehler:', e); }
+}
+// Neu (Nutzerwunsch): Wind-/Sause-Sound fuer den Wirbelsturm, synchron zur Dreh-Animation von
+// #tornado-overlay (siehe playTornadoFX(), Animationsdauer dort 1.1s) - eigene Synthese statt
+// sndNoiseBurst()/sndTone(), weil dafuer ein durchlaufender Bandpass-Frequenz-Sweep noetig ist (tief
+// einsetzend, hochlaufend, wieder abfallend), den die beiden Standard-Bausteine nicht abbilden.
+function playSoundTornado() {
+    if (soundMuted) return;
+    if (playSfxBuffer('tornado')) return;
+    try {
+        const c = audioCtx();
+        const dur = 1.1;
+        const src = c.createBufferSource();
+        src.buffer = sndNoiseBuffer(c, dur);
+        const filt = c.createBiquadFilter();
+        filt.type = 'bandpass'; filt.Q.value = 1.2;
+        const t0 = c.currentTime;
+        filt.frequency.setValueAtTime(220, t0);
+        filt.frequency.linearRampToValueAtTime(900, t0 + dur * 0.45);
+        filt.frequency.linearRampToValueAtTime(260, t0 + dur);
+        const g = c.createGain();
+        g.gain.setValueAtTime(0, t0);
+        g.gain.linearRampToValueAtTime(0.35 * soundVolume, t0 + 0.15);
+        g.gain.linearRampToValueAtTime(0.28 * soundVolume, t0 + dur * 0.7);
+        g.gain.linearRampToValueAtTime(0.001, t0 + dur);
+        src.connect(filt); filt.connect(g); g.connect(c.destination);
+        src.start(t0); src.stop(t0 + dur + 0.05);
     } catch (e) { console.warn('Sound-Fehler:', e); }
 }
 
@@ -6397,6 +6450,7 @@ function performHexClick(rx, rz, hex) {
         if (getHexDistance(currentPushUnit.q, currentPushUnit.r, rx, rz) === 1 && hex && !['mountains', 'void', 'water'].includes(hex.terrain)) {
             const pushedOwner = players.find(pl => pl.units.includes(currentPushUnit));
             addLogEntry(`💨 ${playerLabel(players[currentPlayerIdx])} wirft Figur von ${playerLabel(pushedOwner)} zurück: (${currentPushUnit.q},${currentPushUnit.r}) → (${rx},${rz})`);
+            playSoundGrunt();
             currentPushUnit.q = rx; currentPushUnit.r = rz; checkLandmark(rx, rz, pushedOwner);
             if (!handlePushFlow(currentPushUnit)) {
                 pushRemaining--;
