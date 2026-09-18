@@ -1210,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.23</div>
+                <div class="version-tag">v1.24</div>
             </div>
         </div>
 
@@ -1218,7 +1218,6 @@
              vorher hier oben im Startbildschirm mitlief, jetzt erst nach bewusstem Klick auf
              "Lokal spielen" sichtbar. -->
         <div id="setup-step-local" class="hidden">
-            <button type="button" class="help-btn" style="margin-bottom:14px;" onclick="showSetupStep('start')">← Zurück</button>
             <div class="title-flourish">⚜ ✦ ⚜</div>
             <h1 style="font-size:1.35em;">Lokal spielen</h1>
             <p class="menu-subtitle">Spieler, Farben und KI-Gegner einstellen</p>
@@ -1240,6 +1239,10 @@
                 </div>
             </div>
             <button id="local-start-btn" class="menu-btn btn-start" style="width:100%; box-sizing:border-box;" onclick="loadStandardMap()">⚔ Los geht's!</button>
+            <!-- Nutzerwunsch: Position an die anderen Fenster angeglichen (Online-Lobby "← Zurück"/
+                 "← Raum verlassen", siehe dort) - der Zurück-Button steht jetzt konsistent GANZ UNTEN,
+                 nach dem Hauptaktions-Button, statt wie vorher als erstes Element ganz oben. -->
+            <button type="button" class="help-btn" style="margin-top:6px;" onclick="showSetupStep('start')">← Zurück</button>
         </div>
 
         </div>
