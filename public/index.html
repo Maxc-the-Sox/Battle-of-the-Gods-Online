@@ -1210,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.25</div>
+                <div class="version-tag">v1.26</div>
             </div>
         </div>
 
@@ -1737,6 +1737,18 @@ let unitVisualPos = {};
 let unitAnimLastTs = null;
 const UNIT_ANIM_TAU = 0.14; // Zeitkonstante der Annaeherung in Sekunden - kleiner = schneller/knackiger
 const UNIT_ANIM_SNAP_HEXES = 3; // ab so vielen Hex-Breiten Sprungdistanz lieber hart snappen statt quer durchs Bild zu gleiten (Teleport, erste Platzierung, Kamera-Sprung nach Reconnect)
+// Wetter-Effekte (Grafik-Politur, Nutzerwunsch, vorab als Mockup abgestimmt): rein kosmetische
+// Wolken/Regen-Schicht, die in renderFX() IMMER ZUERST gezeichnet wird - also optisch UNTER den
+// Ziel-/Auswahl-Ringen und den Spielfiguren liegt (siehe dortiger Aufruf). Eine Wolke darf eine Figur
+// NIEMALS optisch verdecken (Nutzerfrage: "was ist mit den Figuren hinter einer Wolke?") - dank dieser
+// festen Zeichenreihenfolge ist das strukturell ausgeschlossen, nicht nur durch niedrige Deckkraft.
+// Position/Timing sind bewusst rein CLIENT-LOKAL (kein Teil von serializeState()/net-Sync) - eine
+// Wolke ist reine Deko ohne jede Spielauswirkung, jeder Client wuerfelt seine eigene. NUR OB ueberhaupt
+// eher ein Gewitter statt einer harmlosen Wolke erscheint, haengt vom SYNCHRONISIERTEN Apokalypse-Status
+// ab (siehe currentDangerRingKey()), damit alle Mitspieler zumindest grob dieselbe Wetterlage sehen.
+let clouds = [];
+let nextCloudSpawnMs = 0;
+let weatherLastTs = null;
 let players = [], currentPlayerIdx = 0, gameState = "SETUP";
 // Grob gezaehlte "Runde" (jedes Mal, wenn currentPlayerIdx wieder bei 0 ankommt, siehe advanceTurn())
 // - nur fuer die Statistik auf dem Sieges-Screen gedacht, hat keine Auswirkung auf die eigentliche
@@ -2914,6 +2926,8 @@ function backToMainMenu() {
     // "durchsickern".
     cameraFollowEnabled = true; cameraFollowUnitShadow = null; cameraFollowHexShadow = null; cameraFollowLastPlayerIdx = null;
     updateCameraFollowFabUI();
+    // Wetter-Reste (Wolken/Regen) der verlassenen Partie nicht in die naechste "durchsickern" lassen.
+    clouds = []; nextCloudSpawnMs = 0; weatherLastTs = null;
     if (typeof closeMobilePanel === 'function') closeMobilePanel(); // ein evtl. offenes Handy-Bottom-Sheet mitschliessen
     // Dieselben globalen Variablen wie im Replay-Viewer (siehe exitReplayViewer()) einfach zuruecksetzen -
     // ein neuer echter Spielstart (oder das Laden eines gespeicherten Spiels) baut sie ohnehin komplett
@@ -7862,10 +7876,126 @@ function moveHintSummaryHtml() {
     if (notes.length === 0) return '';
     return `<div class="move-hint-extra">${notes.join('<br>')}</div>`;
 }
+
+// ===================== WETTER (Wolken/Regen, Grafik-Politur) =====================
+// Deterministischer Pseudo-Zufall aus einer Zahl statt Math.random() - fuer den Regen innerhalb EINER
+// Wolke gebraucht, damit die Tropfen bei jedem Frame an derselben "Spur" bleiben (wie fallende Tropfen
+// wirken) statt bei jedem Frame komplett neu zu flackern (wie Rauschen wirken wuerde).
+function pseudoRandom01(n) { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); }
+
+// Liefert den Ring-Schluessel ('outer'/'middle'/'inner'), der aktuell am ehesten kurz vor dem Kollaps
+// steht (dieselbe "apo-status-danger"-Schwelle wie im #apo-panel, siehe updateApoPanel()-Kommentar
+// dort) - oder null, falls kein Ring gerade gefaehrdet ist. Steuert NUR, ob eher ein Gewitter statt
+// einer harmlosen Wolke gespawnt wird (siehe spawnCloud()) - rein kosmetisch, keine Spiellogik.
+function currentDangerRingKey() {
+    if (!closedRings.outer && collectedArtifacts >= ringThresholds[0] - 1) return 'outer';
+    if (!closedRings.middle && collectedArtifacts >= ringThresholds[1] - 1) return 'middle';
+    if (!closedRings.inner && collectedArtifacts >= ringThresholds[2] - 1) return 'inner';
+    return null;
+}
+// Puff-Schablonen fuer den Wolken-Blob (Bruchteile von baseR, siehe drawCloudBlob()) - mehrere
+// ueberlappende Radial-Gradient-Kreise statt einer einzelnen Ellipse, damit die Wolke organisch statt
+// wie ein perfekter Kreis wirkt (derselbe Trick wie beim Figuren-Schlagschatten in renderFX()).
+const LIGHT_CLOUD_PUFFS = [[-0.6,-0.15,1.0],[0.15,-0.35,0.85],[0.65,0,0.9],[-0.15,0.2,0.95],[1.05,-0.2,0.6],[-0.8,0.15,0.55]];
+const STORM_CLOUD_PUFFS = [[-0.35,-0.18,1.05],[0.18,-0.35,0.9],[0.6,-0.06,0.95],[0,0.18,1.0],[-0.6,0.06,0.7],[0.85,0.12,0.6],[0.3,0.3,0.65]];
+
+function spawnCloud() {
+    if (!mapData || !mapData.hexes) return;
+    const landHexes = Object.values(mapData.hexes).filter(h => h.terrain !== 'void');
+    if (!landHexes.length) return;
+    const dangerKey = currentDangerRingKey();
+    // Ist gerade ein Ring gefaehrdet, zieht meistens (nicht immer) ein Gewitter statt einer harmlosen
+    // Wolke auf - kein Ring gefaehrdet: immer eine harmlose Wolke.
+    const isStorm = !!dangerKey && Math.random() < 0.7;
+    let originHex;
+    if (isStorm) {
+        const ringHexes = landHexes.filter(h => npcRingKeyForHex(h) === dangerKey);
+        originHex = (ringHexes.length ? ringHexes : landHexes)[Math.floor(Math.random() * (ringHexes.length ? ringHexes.length : landHexes.length))];
+    } else {
+        originHex = landHexes[Math.floor(Math.random() * landHexes.length)];
+    }
+    const originX = hexSize * 1.5 * originHex.q, originY = hexSize * Math.sqrt(3) * (originHex.r + originHex.q / 2);
+    // Ueberwiegend horizontale Drift (wirkt natuerlicher als rein vertikal) - Richtung + genaue
+    // Startposition zufaellig, die Wolke startet einige Hex-Breiten "windaufwaerts" von ihrem
+    // eigentlichen Zielpunkt (Ring-Gefahrenzone bzw. zufaelliges Feld) und zieht durch ihn hindurch.
+    const dirAngle = (Math.random() * 0.6 - 0.3) + (Math.random() < 0.5 ? 0 : Math.PI);
+    const speed = hexSize * (isStorm ? 0.32 : 0.5); // Welt-Einheiten/Sekunde - Gewitter zieht etwas schwerer/langsamer
+    clouds.push({
+        x: originX - Math.cos(dirAngle) * hexSize * 6,
+        y: originY - Math.sin(dirAngle) * hexSize * 6,
+        vx: Math.cos(dirAngle) * speed, vy: Math.sin(dirAngle) * speed,
+        type: isStorm ? 'storm' : 'light',
+        bornMs: performance.now(),
+        lifeMs: (isStorm ? 28 : 22) * 1000,
+        seed: Math.random() * 1000,
+    });
+}
+
+function drawCloudBlob(cx, cy, baseR, color, alpha, puffs) {
+    if (alpha <= 0.004) return;
+    fctx.save();
+    puffs.forEach(([fdx, fdy, rMul]) => {
+        const dx = fdx * baseR, dy = fdy * baseR, r = rMul * baseR;
+        const grad = fctx.createRadialGradient(cx + dx, cy + dy, 0, cx + dx, cy + dy, r);
+        grad.addColorStop(0, `rgba(${color},${alpha})`);
+        grad.addColorStop(0.6, `rgba(${color},${alpha * 0.7})`);
+        grad.addColorStop(1, `rgba(${color},0)`);
+        fctx.beginPath(); fctx.arc(cx + dx, cy + dy, r, 0, Math.PI * 2);
+        fctx.fillStyle = grad; fctx.fill();
+    });
+    fctx.restore();
+}
+function drawRainUnderCloud(cx, cy, spreadX, spreadY, count, alphaMul, seed) {
+    if (alphaMul <= 0.004) return;
+    fctx.save();
+    fctx.strokeStyle = `rgba(180,210,235,${0.5 * alphaMul})`;
+    fctx.lineWidth = 1.2;
+    for (let i = 0; i < count; i++) {
+        const rnd1 = pseudoRandom01(seed + i * 7.13), rnd2 = pseudoRandom01(seed + i * 7.13 + 3.7);
+        const fallPhase = (performance.now() / 450 + rnd2 * 3) % 1; // 0..1, faellt kontinuierlich statt zu flackern
+        const rx = cx + (rnd1 - 0.5) * spreadX, ry = cy - spreadY * 0.5 + fallPhase * spreadY * 1.6;
+        const len = spreadY * (0.16 + rnd2 * 0.14);
+        fctx.beginPath(); fctx.moveTo(rx, ry); fctx.lineTo(rx - len * 0.28, ry + len); fctx.stroke();
+    }
+    fctx.restore();
+}
+// Wird als ALLERERSTES in renderFX() aufgerufen (siehe dortiger Kommentar) - zeichnet also optisch
+// UNTER allem anderen (Ziel-/Auswahl-Ringe, Spielfiguren). Spawnt/bewegt/entfernt Wolken zeitgesteuert,
+// unabhaengig von der eigentlichen Bildwiederholrate (echte Sekunden statt Frames gezaehlt, analog zum
+// Figuren-Bewegungs-Easing weiter unten).
+function updateAndDrawClouds() {
+    const nowMs = performance.now();
+    if (weatherLastTs === null) weatherLastTs = nowMs;
+    const dt = Math.max(0, Math.min(0.25, (nowMs - weatherLastTs) / 1000));
+    weatherLastTs = nowMs;
+
+    if (gameState !== 'SETUP' && nowMs >= nextCloudSpawnMs) {
+        spawnCloud();
+        nextCloudSpawnMs = nowMs + (18000 + Math.random() * 20000); // alle 18-38s eine neue Wolke
+    }
+    clouds = clouds.filter(c => nowMs - c.bornMs < c.lifeMs);
+    clouds.forEach(c => { c.x += c.vx * dt; c.y += c.vy * dt; });
+
+    clouds.forEach(c => {
+        const age = (nowMs - c.bornMs) / c.lifeMs; // 0..1
+        const alphaMul = Math.min(1, age * 6, (1 - age) * 6); // weiches Ein-/Ausblenden an beiden Enden der Lebenszeit
+        const cx = c.x * camera.zoom + camera.x, cy = c.y * camera.zoom + camera.y;
+        const baseR = (c.type === 'storm' ? 5.2 : 4.0) * hexSize * camera.zoom;
+        const puffs = c.type === 'storm' ? STORM_CLOUD_PUFFS : LIGHT_CLOUD_PUFFS;
+        const color = c.type === 'storm' ? '10,14,22' : '20,26,34';
+        const maxAlpha = c.type === 'storm' ? 0.5 : 0.2;
+        drawCloudBlob(cx, cy, baseR, color, maxAlpha * alphaMul, puffs);
+        if (c.type === 'storm') drawRainUnderCloud(cx, cy + baseR * 0.35, baseR * 2.6, baseR * 1.4, 40, alphaMul, c.seed);
+    });
+}
+
 function renderFX() {
     fctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
     const s = hexSize * camera.zoom, now = performance.now()/1000;
     const phase = Math.sin(now*3)*0.5+0.5;
+    // Wetter IMMER zuerst zeichnen (siehe updateAndDrawClouds()-Kommentar) - liegt dadurch optisch unter
+    // den folgenden Ziel-/Auswahl-Ringen und Spielfiguren, kann sie also strukturell nie verdecken.
+    updateAndDrawClouds();
     const hl = computeHighlightTargets();
 
     // Ring-Vorschau (siehe toggleRingPreview()/#apo-panel) - zeigt auf Knopfdruck rot, welche Felder
