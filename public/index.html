@@ -664,6 +664,14 @@
             background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
         }
         .leave-game-box { width: 400px; max-width: 90vw; text-align: center; padding: 30px 30px 26px; box-sizing: border-box; }
+        /* Kick-Vote-Popup (siehe #kickvote-overlay im Markup) - dasselbe Ueberlagerungs-Prinzip wie
+           #leave-game-overlay, eigener (etwas hoeherer) z-index, damit es sich noetigenfalls sogar vor
+           dessen eigenen Verlassen-Dialog legen koennte (Klick auf "Selbst verlassen" im Popup oeffnet
+           genau diesen Dialog obendrauf). */
+        #kickvote-overlay {
+            position: fixed; inset: 0; z-index: 3011; display: flex; align-items: center; justify-content: center;
+            background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
+        }
         #leave-game-status { text-align: center; font-family: 'Cinzel', serif; font-size: 0.82em; letter-spacing: 0.5px; margin-top: 12px; min-height: 1.4em; }
         #leave-game-status.ok { color: #8fd19e; }
         #feedback-overlay {
@@ -977,6 +985,21 @@
             font-family: 'Cinzel', serif; font-weight: bold; font-size: 0.95em;
         }
         #disconnect-banner button:hover { filter: brightness(1.1); }
+        /* #kicked-banner (siehe Markup-Kommentar dort) - bewusst dasselbe Layout wie #disconnect-banner,
+           aber in Gold/Braun statt Rot: kein Fehler/Problem, sondern ein bewusstes Abstimmungsergebnis. */
+        #kicked-banner {
+            position: fixed; top: 0; left: 0; width: 100%; z-index: 4000; box-sizing: border-box;
+            display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap;
+            padding: 12px 20px; background: linear-gradient(180deg, #4a3a1f, #2a2010);
+            border-bottom: 2px solid rgba(241,196,15,0.7); box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            font-family: 'Cinzel', serif; font-size: 0.85em; letter-spacing: 0.5px; color: #f3e2a9;
+        }
+        #kicked-banner button {
+            background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08;
+            border: 1px solid #fff2cf; border-radius: 2px; padding: 7px 16px; cursor: pointer;
+            font-family: 'Cinzel', serif; font-weight: bold; font-size: 0.95em;
+        }
+        #kicked-banner button:hover { filter: brightness(1.1); }
         #action-controls.locked, #inventory-panel.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
         #turn-lock-msg { text-align: center; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1px; color: #e57368; margin-bottom: 10px; text-transform: uppercase; }
 
@@ -1187,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.22</div>
+                <div class="version-tag">v1.23</div>
             </div>
         </div>
 
@@ -1256,6 +1279,14 @@
 <div id="disconnect-banner" class="hidden">
     <span>⚠️ Verbindung zum Server verloren. Kein Problem: nach dem Neuladen einfach über denselben Raum-Code wieder beitreten, du landest automatisch wieder in der Partie.</span>
     <button onclick="location.reload()">🔄 Neu laden zum Weiterspielen</button>
+</div>
+
+<!-- Kick-Vote-Ergebnis (siehe executeKick()): informiert einen rausgeworfenen Spieler, warum bei ihm
+     nichts mehr passiert - ohne das koennte es wie ein Bug/Haenger wirken. "Raus ist raus" (Nutzerwunsch),
+     daher keine Aktion ausser Zuschauen-Bleiben oder Verlassen. -->
+<div id="kicked-banner" class="hidden">
+    <span>🚫 Du wurdest von den anderen Spielern aus der Partie geworfen (5 Min. Inaktivität, per Abstimmung). Du kannst weiter zuschauen oder die Partie verlassen.</span>
+    <button onclick="confirmLeaveGame()">🚪 Verlassen</button>
 </div>
 
 <div id="lobby-overlay" class="hidden">
@@ -1420,6 +1451,25 @@
             <button id="leave-game-confirm-btn" class="btn btn-danger" onclick="doLeaveGame()">🚪 Verlassen</button>
         </div>
         <div id="leave-game-status"></div>
+    </div>
+</div>
+
+<!-- Kick-Vote-Popup (siehe openKickVoteForCurrentPlayer()/JS-Sektion "KICK-VOTE" weiter unten):
+     erscheint bei allen anderen menschlichen Mitspielern, sobald der aktive Spieler 5 Min. nichts
+     getan hat. Bewusst dasselbe Fenster-Baukasten-Prinzip wie #leave-game-overlay. -->
+<div id="kickvote-overlay" class="hidden">
+    <div class="feedback-box leave-game-box">
+        <div class="corner-tl"></div><div class="corner-tr"></div>
+        <div class="corner-bl"></div><div class="corner-br"></div>
+        <div class="tutorial-icon">⏳</div>
+        <div class="tutorial-title"><span id="kickvote-target-name"></span> ist inaktiv</div>
+        <p class="menu-subtitle" style="margin-bottom:10px;">Seit über 5 Minuten keine Aktion. Was tun?</p>
+        <p id="kickvote-progress" style="font-family:'Cinzel',serif; font-size:0.8em; color:#c9b98a; margin-bottom:18px;"></p>
+        <div class="feedback-nav" style="flex-direction:column; gap:10px;">
+            <button id="kickvote-kick-btn" class="btn btn-danger" onclick="castKickVote('kick')">🚫 Rauswerfen (alle müssen zustimmen)</button>
+            <button class="btn btn-gold" onclick="castKickVote('wait')">⏳ Noch 5 Minuten geben</button>
+            <button class="btn btn-secondary" onclick="confirmLeaveGame()">🚪 Selbst verlassen</button>
+        </div>
     </div>
 </div>
 
@@ -2511,7 +2561,7 @@ async function loadStandardMap() {
             const type = isNPC ? (diffSel ? diffSel.value : 'medium') : 'human';
             const customName = (localPlayerNames[i] || '').trim();
             return {
-                id: i + 1, color: localPlayerColors[i] || PLAYER_COLORS[i], units: [], inventory: [], skipped: false, netId: null,
+                id: i + 1, color: localPlayerColors[i] || PLAYER_COLORS[i], units: [], inventory: [], skipped: false, kicked: false, netId: null,
                 name: customName ? customName : (isNPC ? `🤖 KI (${NPC_DIFF_LABELS[type]})` : null),
                 isNPC, npcDifficulty: isNPC ? type : null,
                 ruinsLooted: 0, collapsesSurvived: 0
@@ -2538,7 +2588,7 @@ function processLoadedMap(data, count, presetPlayers) {
 
     Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
 
-    players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, name: null, netId: null, isNPC: false, npcDifficulty: null, ruinsLooted: 0, collapsesSurvived: 0 }));
+    players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, kicked: false, name: null, netId: null, isNPC: false, npcDifficulty: null, ruinsLooted: 0, collapsesSurvived: 0 }));
     document.getElementById('setup-overlay').style.display = 'none';
     document.getElementById('ui-panel').classList.remove('hidden');
     document.getElementById('apo-panel').classList.remove('hidden');
@@ -2764,6 +2814,11 @@ function isMyTurn() { return !net.active || net.myIndex === currentPlayerIdx; }
 function isControllable() {
     if (replayModeActive) return false; // Wiedergabe ist reines Zuschauen, siehe REPLAY-VIEWER oben
     if (isGameOver) return false;
+    // Absicherung (eigentlich unerreichbar, siehe kicked-Ueberspring-Logik in startTurn()): ein per
+    // Abstimmung rausgeworfener Spieler (Punkt "Kick-Vote") soll unter keinen Umstaenden mehr etwas
+    // steuern koennen, selbst nicht im theoretischen Randfall einer kurzen Ueberschneidung, bevor
+    // startTurn() den Zug schon weitergeschaltet hat.
+    if (net.active && net.myIndex !== -1 && players[net.myIndex] && players[net.myIndex].kicked) return false;
     const p = players[currentPlayerIdx];
     if (p && p.isNPC) return false;
     return isMyTurn();
@@ -2835,6 +2890,11 @@ function backToMainMenu() {
     document.getElementById('help-fab').classList.add('hidden');
     document.getElementById('leave-game-fab').classList.add('hidden');
     document.getElementById('camera-lock-fab').classList.add('hidden');
+    // Kick-Vote-Ueberreste (Punkt "Kick-Vote") der verlassenen Partie duerfen nicht in die naechste
+    // durchsickern - sonst koennte z.B. ein laengst geschlossenes Popup wieder aufblitzen.
+    document.getElementById('kicked-banner').classList.add('hidden');
+    kickVote = null; closeKickVoteOverlay();
+    turnActivityTs = Date.now(); turnActivityPlayerId = null;
     // Kamera-Automatik (Punkt 66) fuer die naechste Partie immer frisch auf "an" zuruecksetzen - ein
     // bewusstes Ausschalten in der verlassenen Partie soll nicht unbemerkt in eine ganz neue Partie
     // "durchsickern".
@@ -2857,6 +2917,9 @@ function backToMainMenu() {
 // handleDisconnect() in server.js - niemand wird "rausgeworfen", die anderen spielen einfach weiter).
 function confirmLeaveGame() {
     if (gameState === 'SETUP') return; // sollte nie sichtbar sein (siehe Sichtbarkeits-Kommentar bei #leave-game-fab), zur Sicherheit trotzdem kein No-Op
+    // Falls von "🚪 Selbst verlassen" IM Kick-Vote-Popup aufgerufen: das darunterliegende Popup erst
+    // schliessen, sonst wuerde es (hoeherer z-index, siehe dortiger CSS-Kommentar) diesen Dialog verdecken.
+    closeKickVoteOverlay();
     const textEl = document.getElementById('leave-game-text');
     const saveBtn = document.getElementById('leave-game-save-btn');
     const statusEl = document.getElementById('leave-game-status');
@@ -2870,7 +2933,14 @@ function confirmLeaveGame() {
     }
     document.getElementById('leave-game-overlay').classList.remove('hidden');
 }
-function closeLeaveGameOverlay() { document.getElementById('leave-game-overlay').classList.add('hidden'); }
+function closeLeaveGameOverlay() {
+    document.getElementById('leave-game-overlay').classList.add('hidden');
+    // Falls dieser Dialog aus dem Kick-Vote-Popup heraus geoeffnet wurde (siehe dortiger Kommentar bei
+    // confirmLeaveGame()) und man sich doch gegen "Verlassen" entscheidet: die Abstimmung laeuft ja
+    // noch im Hintergrund weiter (kickVote wurde nie geloescht) - das Popup dafuer wieder zeigen, statt
+    // es bis zum naechsten Vote-Ereignis unsichtbar verschwinden zu lassen. Kein Kick-Vote aktiv -> No-Op.
+    renderKickVoteOverlay();
+}
 
 // "💾 Speichern" im Dialog - speichert nur (bleibt in der Partie), online ohnehin ueber :disabled
 // unerreichbar. Rein als zusaetzliche, vom Spieler bewusst ausgeloeste Bestaetigung gedacht - der
@@ -3124,6 +3194,146 @@ function handleNetMessage(msg) {
         // Verbindung verliert (Absturz, Netzwerk weg, Seite zu) ODER den Raum bewusst verlaesst - vorher
         // gab es dafuer ausser einem stillen Verschwinden aus der Lobby-Liste keinerlei Hinweis.
         showNotification(`⚠️ ${msg.name} hat die Verbindung verloren.`);
+    } else if (msg.type === 'kickvote') {
+        receiveKickVote(msg.action, msg.clientId, msg.targetClientId);
+    }
+}
+
+// =====================================================================
+// KICK-VOTE: "Spieler ist 5 Min. inaktiv" -> abstimmen (Nutzerwunsch, kein zentraler Ablauf-Server-
+// Zustand noetig, siehe Diskussion). Kurzfassung der Idee:
+//   - Sobald bei EINEM Client der aktive (menschliche, nicht rausgeworfene) Spieler seit 5 Minuten
+//     nichts Sichtbares getan hat, oeffnet dieser Client sein eigenes Popup - es gibt keinen
+//     "Abstimmungsleiter", jeder verbundene Mensch erkennt das unabhaengig bei sich selbst
+//     (checkInactiveTurnVote(), alle 15s per Timer geprueft).
+//   - "🚫 Rauswerfen" braucht Einstimmigkeit ALLER anderen, GERADE VERBUNDENEN menschlichen
+//     Mitspieler. "⏳ Warten" (nochmal 5 Minuten) reicht dagegen ein einzelner Klick.
+//   - Die Stimmen selbst laufen NICHT ueber den normalen Spielzustand (serializeState()/
+//     applyRemoteState()), sondern als eigene, einzelne Broadcast-Nachrichten (type:'kickvote', wie
+//     'chat'/'reaction') - jeder Client sammelt sie selbst in einem lokalen Set. Waeren die Stimmen
+//     stattdessen Teil des kompletten, bei jeder Aenderung ueberschriebenen Spielzustands, koennten
+//     zwei fast gleichzeitige Stimmen sich gegenseitig verschlucken (siehe stateSeq-"letzter gewinnt"-
+//     Kommentar bei applyRemoteState()) - als unabhaengige Nachrichten passiert das nicht.
+//   - Erst das ENDGUELTIGE Ergebnis (kicked:true auf dem Spieler-Objekt) wird - genau wie skipped -
+//     ganz normal Teil des synchronisierten Spielzustands, siehe serializeState().
+//   - "raus ist raus" (Nutzerwunsch): kein automatisches Zurueckkommen fuer einen gekickten Spieler,
+//     siehe kicked-Ueberspring-Zeile in startTurn().
+let kickVote = null; // { targetClientId, targetPlayerId, votes: Set<clientId>, requiredIds: [clientId,...] } oder null, solange keine Abstimmung laeuft
+let turnActivityTs = Date.now();
+let turnActivityPlayerId = null;
+
+// Laeuft bei JEDER echten Spielhandlung (lokal wie per Sync empfangen, siehe Aufruf in updateUI()) -
+// aktualisiert den "seit wann ist der aktive Spieler untaetig"-Zeitstempel und raeumt eine laufende
+// Abstimmung automatisch weg, sobald entweder ein neuer Zug beginnt ODER der betroffene (noch immer
+// selbe) Spieler nachweislich wieder etwas getan hat.
+function noteTurnActivity() {
+    const p = players[currentPlayerIdx];
+    const pid = p ? p.id : null;
+    const isNewTurn = pid !== turnActivityPlayerId;
+    turnActivityPlayerId = pid;
+    turnActivityTs = Date.now();
+    if (kickVote && (isNewTurn || kickVote.targetClientId === (p && p.netId))) {
+        kickVote = null; closeKickVoteOverlay();
+    }
+}
+
+// Alle 15s geprueft (siehe setInterval weiter unten) - bewusst kein exakter 5-Minuten-Alarm, eine
+// kleine Verzoegerung von ein paar Sekunden macht bei einer Inaktivitaetspruefung nichts.
+function checkInactiveTurnVote() {
+    if (!net.active || net.isSpectator || net.myIndex === -1 || isGameOver || replayModeActive || gameState === 'SETUP') return;
+    const p = players[currentPlayerIdx];
+    if (!p || p.isNPC || p.kicked) return; // KI wird nie "inaktiv", ein schon gekickter Spieler erst recht nicht nochmal
+    if (currentPlayerIdx === net.myIndex) return; // niemand bekommt ein Popup ueber sich selbst
+    if (kickVote && kickVote.targetClientId === p.netId) return; // laeuft schon
+    if (Date.now() - turnActivityTs < 5 * 60 * 1000) return;
+    openKickVoteForCurrentPlayer();
+}
+setInterval(checkInactiveTurnVote, 15000);
+
+function openKickVoteForCurrentPlayer() {
+    const p = players[currentPlayerIdx];
+    // "Alle menschlichen Spieler" heisst in der Praxis: alle gerade verbundenen (net.lobbyMembers wird
+    // auch waehrend einer laufenden Partie bei jedem Beitritt/Verlassen aktualisiert, siehe
+    // broadcastLobby() in server.js) - ein zusaetzlich abwesender Mensch kann ohnehin nicht mitstimmen
+    // und wuerde sonst eine Abstimmung auf Dauer blockieren.
+    const connectedIds = new Set(net.lobbyMembers.filter(m => !m.spectator).map(m => m.clientId));
+    const requiredIds = players.filter(pl => !pl.isNPC && !pl.kicked && pl.netId && pl.netId !== p.netId && connectedIds.has(pl.netId)).map(pl => pl.netId);
+    if (!requiredIds.length) return; // Randfall: niemand da, der ueberhaupt mitstimmen koennte
+    kickVote = { targetClientId: p.netId, targetPlayerId: p.id, votes: new Set(), requiredIds };
+    renderKickVoteOverlay();
+}
+
+// Nachricht eines ANDEREN Clients ist eingetroffen. Falls hier selbst noch keine passende Abstimmung
+// offen ist (z.B. weil der eigene 5-Minuten-Timer noch nicht so weit war), wird hier nachtraeglich
+// eine passende eroeffnet, statt die Stimme sonst einfach zu verwerfen - sonst wuerde die zuerst
+// eintreffende Stimme eines schnelleren Mitspielers verloren gehen.
+function receiveKickVote(action, voterClientId, targetClientId) {
+    if (!kickVote || kickVote.targetClientId !== targetClientId) {
+        const p = players[currentPlayerIdx];
+        if (!net.active || net.isSpectator || net.myIndex === -1 || !p || p.netId !== targetClientId || currentPlayerIdx === net.myIndex) return;
+        openKickVoteForCurrentPlayer();
+        if (!kickVote) return; // z.B. requiredIds leer (Randfall, siehe Kommentar dort)
+    }
+    applyKickVoteAction(action, voterClientId);
+}
+
+function applyKickVoteAction(action, voterClientId) {
+    if (!kickVote) return;
+    if (action === 'wait') {
+        // Reicht EIN Klick (Nutzerwunsch, anders als beim Rauswerfen) - technisch einfach so behandelt,
+        // als haette der betroffene Spieler gerade selbst etwas getan: die Abstimmung wird verworfen,
+        // der Inaktivitaets-Zeitstempel neu gesetzt, in 5 Minuten kann jemand erneut eine eroeffnen.
+        turnActivityTs = Date.now();
+        kickVote = null; closeKickVoteOverlay();
+        showNotification('⏳ Noch 5 Minuten Zeit gewährt.');
+        return;
+    }
+    if (action === 'kick') {
+        kickVote.votes.add(voterClientId);
+        if (kickVote.requiredIds.every(id => kickVote.votes.has(id))) {
+            executeKick(kickVote.targetClientId, kickVote.targetPlayerId);
+            return;
+        }
+        renderKickVoteOverlay();
+    }
+}
+
+function executeKick(targetClientId, targetPlayerId) {
+    const p = players.find(pl => pl.netId === targetClientId);
+    kickVote = null; closeKickVoteOverlay();
+    if (!p || p.kicked) return; // z.B. von einem anderen (fast gleichzeitig abstimmenden) Client schon erledigt
+    p.kicked = true;
+    addLogEntry(`🚫 ${playerLabel(p)} wurde von den anderen Spielern aus der Partie geworfen (5 Min. inaktiv).`);
+    showNotification(`🚫 ${playerLabel(p)} wurde rausgeworfen.`);
+    // Ist der Rausgeworfene gerade selbst am Zug (der Normalfall - genau deshalb lief die Abstimmung),
+    // muss der Zug JETZT sofort weiterspringen, nicht erst beim naechsten reguraeren Zugende - sonst
+    // bliebe das Spiel trotz Kick weiter haengen. startTurn() ueberspringt kicked-Spieler selbst
+    // rekursiv (siehe dortige Zeile), falls gleich noch jemand anderes betroffen waere.
+    if (players.indexOf(p) === currentPlayerIdx) { advanceTurn(); startTurn(); }
+    else { updateUI(); render(); } // sorgt dafuer, dass der neue kicked-Status ueberhaupt gesendet wird
+}
+
+function renderKickVoteOverlay() {
+    if (!kickVote) { closeKickVoteOverlay(); return; }
+    const p = players.find(pl => pl.netId === kickVote.targetClientId);
+    document.getElementById('kickvote-target-name').innerText = playerLabel(p);
+    document.getElementById('kickvote-progress').innerText = `${kickVote.votes.size} von ${kickVote.requiredIds.length} Spielern für Rauswurf`;
+    document.getElementById('kickvote-kick-btn').disabled = kickVote.votes.has(net.clientId);
+    document.getElementById('kickvote-overlay').classList.remove('hidden');
+}
+function closeKickVoteOverlay() { document.getElementById('kickvote-overlay').classList.add('hidden'); }
+
+// Klick auf "🚫 Rauswerfen" / "⏳ Warten" im eigenen Popup. Die eigene Stimme wird SOFORT lokal
+// angewendet (nicht erst nach einer Server-Antwort), und zusaetzlich an alle anderen Mitspieler
+// verschickt - der Server reicht das nur an die JEWEILS ANDEREN durch (wie bei 'chat'/'reaction'),
+// deshalb muss das targetClientId VOR dem lokalen Anwenden zwischengespeichert werden (kickVote kann
+// danach schon wieder null sein, z.B. wenn genau dieser Klick zur Einstimmigkeit gefuehrt hat).
+function castKickVote(action) {
+    if (!kickVote) return;
+    const targetClientId = kickVote.targetClientId;
+    applyKickVoteAction(action, net.clientId);
+    if (net.ws && net.ws.readyState === WebSocket.OPEN) {
+        net.ws.send(JSON.stringify({ type: 'kickvote', room: net.room, action, targetClientId }));
     }
 }
 
@@ -3274,9 +3484,9 @@ async function startOnlineGame() {
         // Beobachter, ohne eigene Spielfigur/Inventar (siehe Zuschauer-Modus-Kommentare oben bei net/
         // renderLobbyMembers()). Ihr net.myIndex bleibt dadurch dauerhaft -1, was isMyTurn()/
         // isControllable() automatisch korrekt sperrt, ganz ohne eigenen Sonderfall-Code dort.
-        const presetPlayers = net.lobbyMembers.filter(m => !m.spectator).map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false, isNPC: false, npcDifficulty: null, ruinsLooted: 0, collapsesSurvived: 0 }));
+        const presetPlayers = net.lobbyMembers.filter(m => !m.spectator).map((m, i) => ({ id: i + 1, netId: m.clientId, name: m.name, color: m.color, units: [], inventory: [], skipped: false, kicked: false, isNPC: false, npcDifficulty: null, ruinsLooted: 0, collapsesSurvived: 0 }));
         net.localNpcs.forEach(n => {
-            presetPlayers.push({ id: presetPlayers.length + 1, netId: null, name: n.name, color: n.color, units: [], inventory: [], skipped: false, isNPC: true, npcDifficulty: n.difficulty, ruinsLooted: 0, collapsesSurvived: 0 });
+            presetPlayers.push({ id: presetPlayers.length + 1, netId: null, name: n.name, color: n.color, units: [], inventory: [], skipped: false, kicked: false, isNPC: true, npcDifficulty: n.difficulty, ruinsLooted: 0, collapsesSurvived: 0 });
         });
         // Zugreihenfolge einmalig zufaellig mischen (Nutzerwunsch) - WICHTIG: nur der Host fuehrt
         // startOnlineGame() ueberhaupt aus (siehe Guard ganz oben), das Ergebnis (inkl. der gemischten
@@ -3319,7 +3529,7 @@ function serializeState() {
         hexes,
         landmarks: mapData.landmarks.map(l => ({ ...l })),
         players: players.map(p => ({
-            id: p.id, netId: p.netId, name: p.name, color: p.color, skipped: p.skipped,
+            id: p.id, netId: p.netId, name: p.name, color: p.color, skipped: p.skipped, kicked: !!p.kicked,
             isNPC: !!p.isNPC, npcDifficulty: p.npcDifficulty || null,
             units: p.units.map(u => ({ q: u.q, r: u.r })),
             inventory: p.inventory.map(c => ({ ...c })),
@@ -3392,6 +3602,9 @@ function applyRemoteState(state) {
 
     players = state.players.map(p => ({ ...p, units: p.units.map(u => ({ ...u })), inventory: p.inventory.map(c => ({ ...c })) }));
     net.myIndex = players.findIndex(p => p.netId === net.clientId);
+    // Kick-Vote-Ergebnis (siehe executeKick()): informiert den betroffenen Spieler selbst, sobald sein
+    // eigener kicked-Status per Sync ankommt - ohne das koennte es wie ein Bug/Haenger wirken.
+    document.getElementById('kicked-banner').classList.toggle('hidden', !(net.myIndex !== -1 && players[net.myIndex] && players[net.myIndex].kicked));
 
     currentPlayerIdx = state.currentPlayerIdx; gameState = state.gameState; roundCount = state.roundCount || 1;
     drawPoints = state.drawPoints; actionPoints = state.actionPoints; collectedArtifacts = state.collectedArtifacts;
@@ -6699,6 +6912,10 @@ function startTurn() {
     // Die players.some(...)-Absicherung verhindert eine Endlos-Rekursion fuer den (praktisch nie
     // vorkommenden) Fall, dass durch denselben Kollaps ALLE Spieler gleichzeitig ausscheiden.
     if (players[currentPlayerIdx].units.length === 0 && players.some(p => p.units.length > 0)) { advanceTurn(); startTurn(); return; }
+    // Per Kick-Vote rausgeworfene Spieler (Nutzerwunsch: "5 Min. inaktiv -> abstimmen") werden wie
+    // ausgeschiedene Spieler einfach dauerhaft uebersprungen - "raus ist raus", kein automatisches
+    // Zurueckkommen, siehe executeKick()/receiveKickVote() weiter unten.
+    if (players[currentPlayerIdx].kicked) { advanceTurn(); startTurn(); return; }
     if (players[currentPlayerIdx].skipped) { showNotification(`⏭️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} MUSS AUSSETZEN!`); players[currentPlayerIdx].skipped = false; advanceTurn(); startTurn(); return; }
     pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING"; roadBonusUsedThisTurn = false;
     showNotification(`⚔️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} IST DRAN!`);
@@ -7104,6 +7321,7 @@ function updateUI() {
     // eine Figur, die gerade erst auf ein Feld eines bereits geschlossenen Rings gezogen ist, sofort
     // entfernt wird und weder in der UI, im Online-Sync noch im Replay-Verlauf faelschlich "sicher" erscheint.
     sweepUnitsOnCollapsedRings();
+    noteTurnActivity(); // Kick-Vote-Inaktivitaetstimer (siehe dortiger Kommentar) - hier, weil updateUI() zuverlaessig bei jeder echten Zugaktion laeuft
     updateStatsPanel(); // #stats-panel oben rechts, siehe Kommentar dort - deckt laufende Partie (lokal+online) ab
     const p = players[currentPlayerIdx], guide = document.getElementById('guide-text');
     document.getElementById('player-turn-display').innerText = playerLabel(p);
