@@ -1210,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.24</div>
+                <div class="version-tag">v1.25</div>
             </div>
         </div>
 
@@ -1726,6 +1726,17 @@ let inputLockedUntilMs = 0;
 // Dauer eines einzelnen Einschlags = ca. 3s Gesamtdauer fuer einen grossen Ring).
 const METEOR_CASCADE_WINDOW_MAX = 2.3;
 let hexSize = 40, camera = { x: 0, y: 0, zoom: 0.8 }, iconCache = {};
+// Weiche Bewegungs-Animation fuer Spielfiguren (Grafik-Politur, Nutzerwunsch): statt bei jedem
+// Feldwechsel hart zu springen, gleitet das gezeichnete Symbol weich zum neuen Feld. Der ECHTE
+// Spielzustand (unit.q/unit.r) aendert sich weiterhin sofort wie bisher - hier wird NUR die
+// gezeichnete Position in renderFX() sanft hinterhergezogen, siehe dortigen Kommentar. Absichtlich
+// ueber "Spieler-id + Index in dessen units-Array" statt ueber die Objekt-Referenz selbst verfolgt,
+// weil bei jeder Online-Synchronisation (applyRemoteState()) frische Figuren-Objekte entstehen -
+// mit der Referenz wuerde die Animation bei jedem Sync verloren gehen und immer wieder hart springen.
+let unitVisualPos = {};
+let unitAnimLastTs = null;
+const UNIT_ANIM_TAU = 0.14; // Zeitkonstante der Annaeherung in Sekunden - kleiner = schneller/knackiger
+const UNIT_ANIM_SNAP_HEXES = 3; // ab so vielen Hex-Breiten Sprungdistanz lieber hart snappen statt quer durchs Bild zu gleiten (Teleport, erste Platzierung, Kamera-Sprung nach Reconnect)
 let players = [], currentPlayerIdx = 0, gameState = "SETUP";
 // Grob gezaehlte "Runde" (jedes Mal, wenn currentPlayerIdx wieder bei 0 ankommt, siehe advanceTurn())
 // - nur fuer die Statistik auf dem Sieges-Screen gedacht, hat keine Auswirkung auf die eigentliche
@@ -7942,15 +7953,56 @@ function renderFX() {
         });
     }
 
-    let unitMap = {}; players.forEach(p => p.units.forEach(u => { const key = `${u.q},${u.r}`; if(!unitMap[key]) unitMap[key] = []; unitMap[key].push({ ...u, color: p.color, original: u }); }));
+    let unitMap = {}; players.forEach(p => p.units.forEach((u, ui) => { const key = `${u.q},${u.r}`; if(!unitMap[key]) unitMap[key] = []; unitMap[key].push({ ...u, color: p.color, original: u, animKey: `${p.id}_${ui}` }); }));
+
+    // dt fuer die weiche Bewegungs-Animation (siehe unitVisualPos-Kommentar bei den globalen Variablen) -
+    // ueber performance.now() statt einer festen Framerate, damit die Annaeherung auch bei schwankender
+    // Bildwiederholrate gleich schnell WIRKT (in Echtzeit-Sekunden gemessen, nicht in Frames gezaehlt).
+    const animNowTs = performance.now() / 1000;
+    const animDt = unitAnimLastTs === null ? 0 : Math.max(0, Math.min(0.25, animNowTs - unitAnimLastTs));
+    unitAnimLastTs = animNowTs;
+    const animEase = 1 - Math.exp(-animDt / UNIT_ANIM_TAU);
+
     Object.keys(unitMap).forEach(key => {
-        const group = unitMap[key], [q, r] = key.split(',').map(Number), centerX = (hexSize*1.5*q)*camera.zoom+camera.x, centerY = (hexSize*Math.sqrt(3)*(r+q/2))*camera.zoom+camera.y;
+        const group = unitMap[key], [q, r] = key.split(',').map(Number);
+        // Welt-Koordinaten (noch OHNE Kamera-Zoom/Pan) des wahren Zielfelds - die Animation glaettet
+        // genau DIESE Position, die Kamera-Transformation wird erst danach frisch angewandt (siehe unten),
+        // damit ein Kamera-Schwenk die Figuren nicht faelschlich "hinterherhinken" laesst.
+        const worldX = hexSize * 1.5 * q, worldY = hexSize * Math.sqrt(3) * (r + q / 2);
         let spread = s * 0.35;
         group.forEach((item, i) => {
+            let vp = unitVisualPos[item.animKey];
+            if (!vp) { vp = { x: worldX, y: worldY }; unitVisualPos[item.animKey] = vp; } // erstes Mal: direkt an Ort und Stelle, kein Reingleiten von irgendwo
+            else {
+                const dist = Math.hypot(worldX - vp.x, worldY - vp.y);
+                // Zu grosser Sprung (Teleport-Karte, erste Platzierung eines Nachbarn, frischer Online-
+                // Sync/Reconnect) -> lieber hart an die neue Stelle setzen statt quer ueber die Karte zu gleiten.
+                if (dist > hexSize * UNIT_ANIM_SNAP_HEXES) { vp.x = worldX; vp.y = worldY; }
+                else { vp.x += (worldX - vp.x) * animEase; vp.y += (worldY - vp.y) * animEase; }
+            }
+            const centerX = vp.x * camera.zoom + camera.x, centerY = vp.y * camera.zoom + camera.y;
             let offsetX = 0, offsetY = 0; if (group.length === 2) { offsetX = (i===0 ? -1 : 1) * spread * 0.7; offsetY = (i===0 ? -1 : 1) * spread * 0.7; }
             else if (group.length > 2) { let angle = i * (Math.PI * 2 / group.length) - Math.PI/2; offsetX = Math.cos(angle) * spread; offsetY = Math.sin(angle) * spread; }
             const glow = (item.original === selectedUnit || item.original === currentPushUnit);
-            drawShieldToken(fctx, centerX + offsetX, centerY + offsetY, s * (group.length > 1 ? 0.62 : 0.78), item.color, glow, GOD_ICON_BY_COLOR[item.color]);
+            const tokenS = s * (group.length > 1 ? 0.62 : 0.78);
+            // Schlagschatten (Grafik-Politur, Nutzerwunsch): weiche, flach gestauchte Ellipse UNTER der
+            // Figur, vor dem eigentlichen Schild-Symbol gezeichnet - rein kosmetisch, keine Aenderung an
+            // Klick-/Highlight-Logik. Per Radial-Gradient statt ctx.filter (im Rest der Datei nirgends
+            // verwendet, und Gradient-Fuellungen sind ohnehin schon das etablierte Stilmittel hier).
+            // Alpha/Groesse bewusst kraeftiger als ein "realistischer" Schatten waere (erster Wurf mit
+            // 0.42 Alpha ging auf dunklerem/gemustertem Terrain (z.B. Sumpf mit Ruinen-Vignette) beinahe
+            // unter - siehe Nutzer-Feedback "sieht man fast kein Unterschied"). Mit definiertem dunklem
+            // Kern + weichem Rand bleibt die Figur trotzdem klar vom Untergrund abgesetzt, auch auf
+            // buntem/detailreichem Terrain, ohne dass es wie ein harter schwarzer Fleck wirkt.
+            fctx.save();
+            fctx.translate(centerX + offsetX, centerY + offsetY + tokenS * 0.52);
+            fctx.scale(1, 0.42);
+            fctx.beginPath(); fctx.arc(0, 0, tokenS * 0.62, 0, Math.PI * 2);
+            const shadowGrad = fctx.createRadialGradient(0, 0, 0, 0, 0, tokenS * 0.62);
+            shadowGrad.addColorStop(0, 'rgba(0,0,0,0.65)'); shadowGrad.addColorStop(0.55, 'rgba(0,0,0,0.55)'); shadowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            fctx.fillStyle = shadowGrad; fctx.fill();
+            fctx.restore();
+            drawShieldToken(fctx, centerX + offsetX, centerY + offsetY, tokenS, item.color, glow, GOD_ICON_BY_COLOR[item.color]);
         });
     });
 
