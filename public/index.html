@@ -1080,7 +1080,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.10</div>
+                <div class="version-tag">v1.12</div>
             </div>
         </div>
 
@@ -1365,8 +1365,8 @@
         </div>
         <div id="drawing-area" class="hidden">
             <div id="draw-selection">
-                <button class="btn" onclick="prepareDraw('LANDSCAPE')">Landschaftskarte ziehen</button>
-                <button class="btn" onclick="prepareDraw('ACTION')">Aktionskarte ziehen</button>
+                <button class="btn" data-sfx-skip onclick="prepareDraw('LANDSCAPE')">Landschaftskarte ziehen</button>
+                <button class="btn" data-sfx-skip onclick="prepareDraw('ACTION')">Aktionskarte ziehen</button>
                 <p style="text-align:center; font-size:0.85em; margin-top:8px; font-family:'Cormorant Garamond',serif;">Noch <span id="cards-left-display">2</span> Karten</p>
             </div>
             <div id="active-card" class="hidden">
@@ -1377,7 +1377,7 @@
                 <div id="card-desc"></div>
                 <div id="dice-section" class="hidden">
                     <div id="dice-display"><span id="dice-symbol">?</span></div>
-                    <button id="btn-roll-dice" class="btn btn-gold" onclick="rollDice()">Würfeln</button>
+                    <button id="btn-roll-dice" class="btn btn-gold" data-sfx-skip onclick="rollDice()">Würfeln</button>
                 </div>
                 <p id="placement-info" style="font-size: 0.88em; color: var(--gold-light); text-align:center; font-weight:bold; font-family:'Cinzel',serif;"></p>
                 <div id="rotation-controls" class="hidden"><button class="btn" onclick="rotateRiver()">Drehen ↻</button><button class="btn btn-ok" onclick="confirmRiver()">Setzen ✓</button></div>
@@ -4002,13 +4002,14 @@ function handleChoice(choice) {
 }
 
 function prepareDraw(type) {
-    playSoundClick();
     if (type === 'LANDSCAPE') {
+        playSoundTileClick();
         currentCard = [{name:"Berg",type:"mountains",icon:"⛰️"},{name:"Wald",type:"forest",icon:"🌲"},{name:"Fluss",type:"river",icon:"🌊"},{name:"Straße",type:"road",icon:"🛤️"}][Math.floor(Math.random()*4)];
         currentCard.deck = "LANDSCAPE";
         gameState = "DICE_ROLL";
         addLogEntry(`🃏 ${playerLabel(players[currentPlayerIdx])} zieht eine Landschaftskarte: ${currentCard.icon} ${currentCard.name}`);
     } else {
+        playSoundCard();
         const cards = [
             {name:"Extra Zug",type:"extra_move",icon:"🏃"},
             {name:"Aussetzen",type:"skip_turn",icon:"🚫"},
@@ -4164,7 +4165,7 @@ function handleInventoryClick(slotIdx) {
     if (gameState === "CHOOSING" || gameState === "MOVING") {
         if (!card) return;
         if (card.type === 'tool_hook' || card.type === 'tool_boat') { alert("Dies ist ein passives Werkzeug. Es wird automatisch benutzt, wenn du auf das entsprechende Feld ziehst!"); return; }
-        if (card.type === 'extra_move') { addLogEntry(`🏃 ${playerLabel(p)} spielt Extra Zug`); p.inventory.splice(slotIdx, 1); actionPoints++; pathMoved = false; }
+        if (card.type === 'extra_move') { playSoundCard(); addLogEntry(`🏃 ${playerLabel(p)} spielt Extra Zug`); p.inventory.splice(slotIdx, 1); actionPoints++; pathMoved = false; }
         else if (card.type === 'skip_turn') { gameState = "SELECT_SKIP"; pendingCardSlot = slotIdx; }
         else if (card.type === 'teleport') { gameState = "SELECT_TELEPORT_UNIT"; pendingCardSlot = slotIdx; }
         else if (card.type === 'push_enemy') { gameState = "SELECT_PUSH_TARGET_1"; pendingCardSlot = slotIdx; pushRemaining = 2; currentPushUnit = null; } 
@@ -5461,6 +5462,9 @@ function resetChatAndLogForNewGame() {
 // erzeugt (keine Audiodateien noetig, bleibt eine einzige HTML-Datei).
 // "ctx"/"fctx" sind schon die 2D-Canvas-Kontexte des Spiels - deshalb hier
 // bewusst "sndCtx"/"audioCtx()" als eigene Namen, um keine Kollision zu riskieren.
+// Optional koennen einzelne (oder alle) dieser 5 Toene durch echte Audiodateien ersetzt werden,
+// siehe SFX_FILE_CANDIDATES/preloadSfxFiles() weiter unten - ohne Datei bleibt automatisch die
+// Synthese hier aktiv.
 // =====================================================================
 let soundMuted = false;
 try { soundMuted = localStorage.getItem('botg_sound_muted') === '1'; } catch (e) {}
@@ -5491,6 +5495,68 @@ function audioCtx() {
 // und erlaubt ist, lange bevor ueberhaupt der erste Wuerfelwurf passiert.
 function unlockAudioOnce() { audioCtx(); }
 ['pointerdown', 'keydown', 'touchstart'].forEach(evt => document.addEventListener(evt, unlockAudioOnce, { once: true, passive: true }));
+
+// ---------------------------------------------------------------------
+// OPTIONALE SOUND-DATEIEN (Datei-Override) - wer eigene Sounds statt der synthetisierten Toene
+// oben haben moechte, legt einfach eine passend benannte Datei in den Ordner "audio/sfx/" neben
+// index.html (gleicher Ordner wie die Musik-MP3s, siehe Handover-Doku). Pro Sound wird zuerst die
+// .mp3-Datei versucht (spielt ueberall, auch auf iOS Safari), danach .ogg als Alternative (auf
+// iOS/Safari spielt Ogg Vorbis NICHT - dort greift dann automatisch der naechste Kandidat). Ist fuer
+// einen Sound gar keine Datei vorhanden (404) oder schlaegt das Laden/Dekodieren aus einem anderen
+// Grund fehl, bleibt automatisch und OHNE Codeaenderung der bisherige synthetisierte Klang aktiv -
+// das Fehlen einer Datei macht also nie einen Sound stumm, sie muessen auch nicht alle 5 ausgefuellt
+// werden.
+// ---------------------------------------------------------------------
+const SFX_FILE_CANDIDATES = {
+    dice:       ['audio/sfx/dice.mp3', 'audio/sfx/dice.ogg'],
+    loot:       ['audio/sfx/loot.mp3', 'audio/sfx/loot.ogg'],
+    meteor:     ['audio/sfx/meteor.mp3', 'audio/sfx/meteor.ogg'],
+    card:       ['audio/sfx/card.mp3', 'audio/sfx/card.ogg'],
+    mouseclick: ['audio/sfx/mouseclick.mp3', 'audio/sfx/mouseclick.ogg'],
+    tileclick:  ['audio/sfx/tileclick.mp3', 'audio/sfx/tileclick.ogg'],
+    turn:       ['audio/sfx/turn.mp3', 'audio/sfx/turn.ogg']
+};
+let sfxBuffers = {}; // key -> dekodiertes AudioBuffer, sobald (falls) erfolgreich geladen
+
+// Laedt+dekodiert die erste tatsaechlich vorhandene Datei einer Kandidatenliste. decodeAudioData()
+// braucht dafuer KEINEN bereits per Nutzer-Geste entsperrten AudioContext (nur echtes Abspielen
+// tut das) - das Vorladen darf also schon beim Skriptstart passieren, lange vor dem ersten Klick.
+async function loadFirstAvailableSfx(candidates) {
+    for (const url of candidates) {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            const arr = await res.arrayBuffer();
+            return await audioCtx().decodeAudioData(arr);
+        } catch (e) { /* naechster Kandidat, am Ende Fallback auf die Synthese unten */ }
+    }
+    return null;
+}
+function preloadSfxFiles() {
+    Object.keys(SFX_FILE_CANDIDATES).forEach(key => {
+        loadFirstAvailableSfx(SFX_FILE_CANDIDATES[key]).then(buf => { if (buf) sfxBuffers[key] = buf; });
+    });
+}
+preloadSfxFiles();
+
+// Spielt einen vorgeladenen Datei-Sound ab, falls fuer "key" einer geladen werden konnte. true =
+// erledigt (Aufrufer soll NICHT zusaetzlich synthetisieren), false = kein Datei-Sound vorhanden,
+// Aufrufer faellt auf die bisherige Synthese zurueck. gainMul wie bei playSoundMeteor() fuer den
+// leiseren, ueber die Kollaps-Kaskade verteilten Nachhall.
+function playSfxBuffer(key, gainMul = 1) {
+    const buf = sfxBuffers[key];
+    if (!buf) return false;
+    try {
+        const c = audioCtx();
+        const src = c.createBufferSource();
+        src.buffer = buf;
+        const g = c.createGain();
+        g.gain.value = soundVolume * gainMul;
+        src.connect(g); g.connect(c.destination);
+        src.start();
+        return true;
+    } catch (e) { console.warn('Sound-Datei-Fehler:', e); return false; }
+}
 
 function sndNoiseBuffer(c, duration) {
     const n = Math.floor(c.sampleRate * duration);
@@ -5533,6 +5599,7 @@ function sndTone(c, { freq = 440, freqEnd = null, type = 'sine', duration = 0.3,
 
 function playSoundDice() {
     if (soundMuted) return;
+    if (playSfxBuffer('dice')) return;
     try {
         const c = audioCtx(); let t = 0;
         for (let i = 0; i < 7; i++) {
@@ -5543,6 +5610,7 @@ function playSoundDice() {
 }
 function playSoundLoot() {
     if (soundMuted) return;
+    if (playSfxBuffer('loot')) return;
     try {
         const c = audioCtx();
         [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
@@ -5556,6 +5624,7 @@ function playSoundLoot() {
 // ueber die Kollaps-Kaskade verteilten Nachhall mit kleineren Werten wiederverwendet (siehe triggerKollaps()).
 function playSoundMeteor(gainMul = 1) {
     if (soundMuted) return;
+    if (playSfxBuffer('meteor', gainMul)) return;
     try {
         const c = audioCtx();
         sndTone(c, { freq: 160, freqEnd: 38, type: 'sine', duration: 0.35, gain: 0.5 * gainMul, startTime: 0 });
@@ -5595,16 +5664,61 @@ function triggerHexShake(strong) {
 function isInputLockedByShake() {
     return performance.now() < inputLockedUntilMs;
 }
-function playSoundClick() {
+// Ehemals "playSoundClick()" (bis v1.11) - umbenannt und Nutzerwunsch-gemaess auf Karten-Aktionen
+// eingegrenzt: spielt beim Ziehen einer Aktionskarte (siehe prepareDraw()) sowie beim tatsaechlichen
+// AUSSPIELEN einer Aktionskarte (Extra Zug/Aussetzen/Teleport/Gegner zurueckwerfen - jeweils genau in
+// dem Moment, in dem die Karte wirklich aus dem Inventar verschwindet, siehe handleInventoryClick()/
+// performHexClick()). NICHT bei Landschaftskarten (siehe playSoundTileClick()) und NICHT bei den rein
+// passiven Werkzeugen (Seil & Haken/Ruderboot werden automatisch beim Betreten des Feldes verbraucht,
+// nie ueber einen bewussten "Karte ausspielen"-Klick).
+function playSoundCard() {
     if (soundMuted) return;
+    if (playSfxBuffer('card')) return;
     try {
         const c = audioCtx();
         sndNoiseBurst(c, { duration: 0.03, filterFreq: 2200, filterType: 'bandpass', filterQ: 4, gain: 0.2, startTime: 0 });
         sndTone(c, { freq: 900, type: 'square', duration: 0.02, gain: 0.05, startTime: 0 });
     } catch (e) { console.warn('Sound-Fehler:', e); }
 }
+// Neu (Nutzerwunsch): ein einziger, dezenter Sound fuer JEDEN Button im Spiel (Menues, Popover,
+// Dialoge, Setup-Screens usw.) - siehe den delegierten document-Klick-Listener weiter unten, der das
+// automatisch fuer alle <button>-Elemente uebernimmt (mit Ausnahme der Buttons, die bereits einen
+// eigenen spezifischeren Sound ausloesen, siehe data-sfx-skip dort).
+function playSoundMouseClick() {
+    if (soundMuted) return;
+    if (playSfxBuffer('mouseclick')) return;
+    try {
+        const c = audioCtx();
+        sndNoiseBurst(c, { duration: 0.018, filterFreq: 1800, filterType: 'bandpass', filterQ: 3, gain: 0.11, startTime: 0 });
+    } catch (e) { console.warn('Sound-Fehler:', e); }
+}
+// Neu (Nutzerwunsch): eigener Sound fuers Ziehen EINER Landschaftskarte (prepareDraw('LANDSCAPE'))
+// und fuers tatsaechliche Platzieren eines Landschafts-Plaettchens auf dem Spielfeld (performHexClick(),
+// Zweig "PLACING_TERRAIN") - bewusst derselbe Sound fuer beide Momente (Nutzerwunsch), da beides zur
+// selben "Plaettchen"-Handlung gehoert.
+function playSoundTileClick() {
+    if (soundMuted) return;
+    if (playSfxBuffer('tileclick')) return;
+    try {
+        const c = audioCtx();
+        sndNoiseBurst(c, { duration: 0.03, filterFreq: 1400, filterType: 'bandpass', filterQ: 3, gain: 0.16, startTime: 0 });
+        sndTone(c, { freq: 300, type: 'square', duration: 0.02, gain: 0.04, startTime: 0 });
+    } catch (e) { console.warn('Sound-Fehler:', e); }
+}
+// Delegierter Klick-Listener fuer playSoundMouseClick() (siehe oben): EIN Listener statt an jedem der
+// 60+ Buttons im Spiel einzeln aufgerufen werden zu muessen - ein neuer Button bekommt den Sound damit
+// automatisch mit, ohne dass man beim Hinzufuegen extra daran denken muss. Buttons, die bereits einen
+// eigenen, spezifischeren Sound direkt in ihrem eigenen Klick-Handler ausloesen (Wuerfeln, Landschafts-/
+// Aktionskarte ziehen), tragen "data-sfx-skip", damit hier nicht zusaetzlich noch der generische Klick
+// obendrauf gespielt wird (sonst wuerden zwei Sounds gleichzeitig uebereinander liegen).
+document.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (btn && !btn.hasAttribute('data-sfx-skip')) playSoundMouseClick();
+});
+
 function playSoundTurn() {
     if (soundMuted) return;
+    if (playSfxBuffer('turn')) return;
     try {
         const c = audioCtx();
         sndTone(c, { freq: 880, type: 'sine', duration: 0.55, gain: 0.22, startTime: 0 });
@@ -5618,7 +5732,10 @@ function toggleSoundMute() {
     soundMuted = !soundMuted;
     try { localStorage.setItem('botg_sound_muted', soundMuted ? '1' : '0'); } catch (e) {}
     updateSoundMuteUI();
-    if (!soundMuted) playSoundClick(); // kurzes Feedback, dass Sound jetzt wieder an ist
+    // Kein manueller Sound-Aufruf mehr noetig (bis v1.11 hier playSoundClick() beim Entstummen als
+    // Feedback) - #sound-mute-btn ist ein <button>, der delegierte Klick-Listener (siehe
+    // playSoundMouseClick() weiter oben) spielt jetzt automatisch bei JEDEM Klick hier (Stumm UND
+    // Entstummen) den generischen Button-Sound, was das Feedback gleich mit uebernimmt.
 }
 // Ein Icon fuer beide Anzeigestellen (Haupt-FAB + Mute-Knopf im Popover) - haengt sowohl von
 // "Stumm" als auch (wenn nicht stumm) vom aktuellen Reglerstand ab, wie bei einem klassischen
@@ -6225,10 +6342,10 @@ function performHexClick(rx, rz, hex) {
             const escOwner = players.find(pl => pl.units.includes(selectedUnit));
             addLogEntry(`🏝️ ${playerLabel(escOwner)} rettet weggestoßene Figur ans Ufer: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
             selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz, escOwner); riverEscapeHexes = [];
-            currentPushUnit = null; selectedUnit = null; 
+            currentPushUnit = null; selectedUnit = null;
             pushRemaining--;
-            if (pushRemaining > 0) gameState = "SELECT_PUSH_TARGET_2"; 
-            else { players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
+            if (pushRemaining > 0) gameState = "SELECT_PUSH_TARGET_2";
+            else { playSoundCard(); players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
         }
     } else if (gameState === "PLACING_TERRAIN" && currentCard) {
         if (['mountains', 'forest', 'river', 'road'].includes(hex.terrain)) return;
@@ -6236,6 +6353,7 @@ function performHexClick(rx, rz, hex) {
             if (wouldTrapAnyUnit(hex)) { alert("Hier kannst du keinen Berg setzen - das wäre der letzte offene Weg einer Figur, sie würde komplett eingemauert!"); return; }
             if (!canPlaceMountainOnHex(hex)) { alert("Hier steht eine Figur, deren Besitzer keinen Seil & Haken hat - hier kann kein Berg gesetzt werden!"); return; }
         }
+        playSoundTileClick();
         hex.terrain = currentCard.type; bakeHex(hex);
         // Kein manuelles "hat sich geaendert"-Flag mehr noetig hier - buildReplaySnapshot() erkennt diese
         // Aenderung von selbst per Strukturvergleich (siehe lastSnapshottedHexesShadow-Kommentar dort).
@@ -6260,6 +6378,7 @@ function performHexClick(rx, rz, hex) {
             // (andere Figur waehlbar), statt den ganzen Kartentyp abzubrechen.
             showNotification(`⏭️ ${playerLabel(owner).toUpperCase()} SETZT SCHON AUS – KARTE WIRKUNGSLOS`);
         } else if (owner) {
+            playSoundCard();
             addLogEntry(`🚫 ${playerLabel(players[currentPlayerIdx])} spielt Aussetzen-Karte gegen ${playerLabel(owner)}`); owner.skipped = true; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING";
         }
     } else if (gameState === "SELECT_TELEPORT_UNIT") {
@@ -6267,6 +6386,7 @@ function performHexClick(rx, rz, hex) {
     } else if (gameState === "SELECT_TELEPORT_TARGET") {
         const lm = mapData.landmarks.find(l => l.q === rx && l.r === rz);
         if (lm && lm.looted) {
+            playSoundCard();
             addLogEntry(`✨ ${playerLabel(players[currentPlayerIdx])} teleportiert Figur: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
             selectedUnit.q = rx; selectedUnit.r = rz; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); selectedUnit = null; gameState = "CHOOSING";
         }
@@ -6281,7 +6401,7 @@ function performHexClick(rx, rz, hex) {
             if (!handlePushFlow(currentPushUnit)) {
                 pushRemaining--;
                 if (pushRemaining > 0) { gameState = "SELECT_PUSH_TARGET_2"; currentPushUnit = null; }
-                else { players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; currentPushUnit = null; }
+                else { playSoundCard(); players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; currentPushUnit = null; }
             }
         }
     }
