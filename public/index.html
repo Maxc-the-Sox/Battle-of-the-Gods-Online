@@ -1187,7 +1187,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.20</div>
+                <div class="version-tag">v1.22</div>
             </div>
         </div>
 
@@ -1247,8 +1247,14 @@
 
 <!-- Bleibt sichtbar (anders als der kurze Toast oben), bis die Seite neu geladen wird - eine verlorene
      Verbindung soll man nicht verpassen koennen, nur weil man gerade wo anders hingeschaut hat. -->
+<!-- Punkt 68 (Nutzerwunsch, bestaetigt): rausfliegen aus einer laufenden Online-Partie ist kein
+     Beinbruch - "Neu laden" fuehrt zurueck ins Menue, und ein erneuter Beitritt ueber DENSELBEN
+     Raum-Code holt (dank der in localStorage gespeicherten persistenten clientId, siehe
+     getPersistentClientId()) zuverlaessig den eigenen Sitzplatz + den aktuellen Spielstand vom Server
+     zurueck (room.latestState in server.js, siehe dortigen 'join'-Handler) - bisher stand das nur als
+     Code-Kommentar da, nicht sichtbar fuer den Nutzer selbst. -->
 <div id="disconnect-banner" class="hidden">
-    <span>⚠️ Verbindung zum Server verloren.</span>
+    <span>⚠️ Verbindung zum Server verloren. Kein Problem: nach dem Neuladen einfach über denselben Raum-Code wieder beitreten, du landest automatisch wieder in der Partie.</span>
     <button onclick="location.reload()">🔄 Neu laden zum Weiterspielen</button>
 </div>
 
@@ -1282,6 +1288,11 @@
             <button id="lobby-join-btn" class="menu-btn btn-network" style="width:100%; box-sizing:border-box;" onclick="joinRoom()">🔑 RAUM BEITRETEN</button>
 
             <p class="lobby-hint">Hinweis: Der kostenlose Server schläft nach 15 Minuten Inaktivität ein. War er gerade eingeschlafen, kann das erste Verbinden bis zu einer Minute dauern — einfach kurz warten.</p>
+            <!-- Punkt 68 (Nutzerwunsch): Rueckversicherung fuer den Fall einer Verbindungstrennung - siehe
+                 dazugehoerigen Kommentar bei #disconnect-banner weiter oben im Markup fuer die technischen
+                 Details (persistente clientId, kein Auto-Reconnect, server.js haelt den Sitzplatz + letzten
+                 Spielstand). -->
+            <p class="lobby-hint">Aus einer laufenden Partie geflogen (z.B. Verbindung weg)? Einfach hier denselben Raum-Code nochmal eingeben und beitreten — du landest automatisch wieder in deiner Partie, mit dem aktuellen Spielstand.</p>
 
             <button class="help-btn" style="margin-top:6px;" onclick="backToMainMenu()">← Zurück</button>
         </div>
@@ -2796,6 +2807,23 @@ function backToMainMenu() {
     const specToggle = document.getElementById('lobby-spectator-toggle');
     if (specToggle) specToggle.checked = false; // Haekchen nicht ungewollt fuer den naechsten Beitritt "merken"
     document.getElementById('lobby-overlay').classList.add('hidden');
+    // Bugfix: "⚔ Los geht's!"/"⚔ SPIEL STARTEN" werden beim Klick sofort auf "KARTE WIRD
+    // VORBEREITET..." umgeschaltet + gesperrt (siehe loadStandardMap()/startOnlineGame()) und bisher
+    // NUR im Fehlerfall (catch-Block dort) wieder zurueckgesetzt - bei einem ERFOLGREICHEN Start war
+    // das nie ein Problem, weil man das Spiel bis Punkt 64 nur per location.reload() verlassen konnte
+    // (das baut die ganze Seite inkl. Buttons frisch auf). Seit #leave-game-fab/backToMainMenu() auch
+    // OHNE Reload zurueck ins Setup fuehrt, blieb der Button von der VORHERIGEN, erfolgreich gestarteten
+    // Partie dauerhaft auf "KARTE WIRD VORBEREITET..." + gesperrt haengen - unsichtbar, solange man im
+    // Hauptmenue war, aber sobald man den lokalen Setup-Screen (bzw. die Online-Lobby) erneut oeffnete,
+    // stand genau dieser eingefrorene Button wieder da und liess sich nicht mehr anklicken (genau der
+    // vom Nutzer gemeldete Bug: "Karte wird vorbereitet" haengt fest, kein Start moeglich). Hier zurueck
+    // auf den jeweiligen HTML-Ausgangszustand setzen - fuer #lobby-start-btn uebernimmt renderLobbyMembers()
+    // beim naechsten Betreten einer Lobby ohnehin wieder die korrekte disabled-Logik (Spieleranzahl etc.),
+    // hier daher bewusst nur der textliche Ausgangszustand + der sichere Default (disabled, wie im HTML).
+    const localStartBtn = document.getElementById('local-start-btn');
+    if (localStartBtn) { localStartBtn.disabled = false; localStartBtn.innerText = "⚔ Los geht's!"; }
+    const lobbyStartBtn = document.getElementById('lobby-start-btn');
+    if (lobbyStartBtn) { lobbyStartBtn.disabled = true; lobbyStartBtn.innerText = '⚔ SPIEL STARTEN'; }
     // Alle Spiel-Panels/FABs, die waehrend einer laufenden Partie sichtbar sind, wieder ausblenden -
     // vor Spielbeginn sind sie ohnehin schon "hidden", diese Zeilen sind dann einfach wirkungslos.
     document.getElementById('ui-panel').classList.add('hidden');
