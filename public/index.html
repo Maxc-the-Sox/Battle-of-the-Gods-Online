@@ -1104,7 +1104,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.15</div>
+                <div class="version-tag">v1.16</div>
             </div>
         </div>
 
@@ -6498,7 +6498,20 @@ function performHexClick(rx, rz, hex) {
         // gerade zum Platzieren geschlossene Panel wieder geoeffnet werden - siehe auch die
         // schwebende #mobile-river-controls-Leiste fuer "Setzen"). Tap auf das gerade gesetzte
         // Flussfeld selbst dreht es einen Schritt weiter, wie der bestehende rotateRiver().
-        if (pendingRiverHex && rx === pendingRiverHex.q && rz === pendingRiverHex.r) rotateRiver();
+        // Nutzerwunsch (Mockup vorab abgestimmt, siehe river_direction_idea.html): zusaetzliche,
+        // schnellere Steuerung - ein Klick auf eines der 6 NACHBARFELDER setzt die Richtung direkt
+        // dorthin UND bestaetigt die Platzierung in einem einzigen Klick, statt sich erst per
+        // "Drehen" durchklicken und danach extra "Setzen" druecken zu muessen. "Drehen"/"Setzen"
+        // (Button + Tap auf das Flussfeld selbst, siehe oben) bleiben unveraendert zusaetzlich
+        // bedienbar. Der Klick-Handler weiter unten (canvas.addEventListener('click', ...)) ruft
+        // performHexClick() ohnehin nur fuer existierende, nicht-void Felder auf - ein Klick auf ein
+        // Nachbarfeld ausserhalb der Karte (kein Hex vorhanden) kommt hier also gar nicht erst an,
+        // muss also nicht extra abgefangen werden.
+        if (pendingRiverHex && rx === pendingRiverHex.q && rz === pendingRiverHex.r) { rotateRiver(); }
+        else if (pendingRiverHex) {
+            const dirIdx = hexDirections.findIndex(d => pendingRiverHex.q + d.q === rx && pendingRiverHex.r + d.r === rz);
+            if (dirIdx !== -1) { pendingRiverHex.direction = dirIdx; confirmRiver(); }
+        }
     } else if (gameState === "SELECT_SKIP") {
         const owner = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz));
         if (owner && owner.skipped) {
@@ -6583,7 +6596,7 @@ function updateUI() {
         DRAWING: `Wähle einen der beiden Stapel zum Ziehen.`,
         DICE_ROLL: `Klicke auf "Würfeln".`,
         PLACING_TERRAIN: `Klicke ${placementsRemaining}x ein <b>gold umrandetes</b> Feld an, um die Landschaft zu platzieren.`,
-        ROTATING_RIVER: `Drehe den Fluss in die passende Richtung und bestätige mit "Setzen".`,
+        ROTATING_RIVER: `Klicke ein <b>gold umrandetes</b> Nachbarfeld an, um die Richtung direkt zu setzen und zu bestätigen - oder drehe schrittweise und bestätige mit "Setzen".`,
         ACTION_VIEW: `Aktion wird ausgeführt…`,
         SWAP_CARD: `Wähle eine Karte aus deinem Inventar zum Tauschen.`,
         MOVING: selectedUnit ? `Klicke ein <b>gold umrandetes</b> Nachbarfeld an, um dorthin zu ziehen.${moveHintSummaryHtml()}` : `Klicke eine <span class="hint-select">blau umrandete</span> eigene Figur an, um sie auszuwählen.`,
@@ -6989,6 +7002,18 @@ function computeHighlightTargets() {
             return { select: [], go: Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void'].includes(h.terrain)
                 && !(currentCard.type === 'mountains' && wouldTrapAnyUnit(h))
                 && !(currentCard.type === 'mountains' && !canPlaceMountainOnHex(h))) };
+        case 'ROTATING_RIVER': {
+            // Markiert die 6 Nachbarfelder des gerade platzierten Flusses als "go" (gold) - ein Klick
+            // darauf setzt die Richtung direkt dorthin UND bestaetigt in einem Schritt (siehe
+            // performHexClick()). Das Flussfeld selbst als "select" (blau) - Klick darauf dreht wie
+            // gehabt nur einen Schritt weiter (rotateRiver()). Nur existierende, nicht-void Felder
+            // markieren - genau die, fuer die der Klick-Handler ueberhaupt performHexClick() aufruft.
+            if (!pendingRiverHex) return none;
+            const go = hexDirections.map(d => mapData.hexes[`${pendingRiverHex.q + d.q},${pendingRiverHex.r + d.r}`])
+                .filter(h => h && h.terrain !== 'void')
+                .map(h => ({ q: h.q, r: h.r }));
+            return { select: [{ q: pendingRiverHex.q, r: pendingRiverHex.r }], go };
+        }
         case 'SELECT_SKIP':
         case 'SELECT_PUSH_TARGET_1':
         case 'SELECT_PUSH_TARGET_2':
