@@ -932,6 +932,34 @@
         #action-controls.locked, #inventory-panel.locked { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
         #turn-lock-msg { text-align: center; font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1px; color: #e57368; margin-bottom: 10px; text-transform: uppercase; }
 
+        /* ---------- #river-compass: Kompass-Ring-Steuerung fuers Fluss-Richtung-Setzen (Nutzerwunsch,
+           vorab per Mockup/GIF abgestimmt) - 6 schwebende Pfeil-Knoepfe rund um das gerade gesetzte
+           Flussfeld (Zustand "ROTATING_RIVER"). Ersetzt die vorherige goldene Nachbarfeld-Hervorhebung
+           durch ein eigenstaendiges, klar als Bedienelement erkennbares Symbol - deutlich unterscheidbar
+           von "Zielfeld anklicken" bei Bewegung/Platzierung. Position wird in JS bei jedem renderFX()-
+           Frame aus der Bildschirm-Position des Flussfeldes berechnet (siehe updateRiverCompassPosition()),
+           bleibt dadurch automatisch synchron mit Kamera-Pan/Zoom, ganz ohne eigene Event-Handler.
+           Absichtlich EIN einheitliches Design fuer Desktop UND Handy (keine @media-Unterscheidung
+           noetig) - die Buttons sind ueberall gross genug (38px) fuer Touch. */
+        #river-compass { position: fixed; inset: 0; pointer-events: none; z-index: 350; }
+        #river-compass.hidden { display: none; }
+        .river-compass-ring {
+            position: absolute; margin: 0; border: 1.5px dashed rgba(212,175,55,0.4); border-radius: 50%;
+            pointer-events: none; transform: translate(-50%, -50%);
+        }
+        .river-compass-arrow {
+            position: absolute; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(28,25,19,0.95), rgba(12,11,8,0.98));
+            border: 1.5px solid var(--gold); color: var(--gold-light); font-size: 16px; font-family: 'Cinzel', serif;
+            display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+            box-shadow: 0 0 10px rgba(212,175,55,0.5); pointer-events: auto;
+        }
+        .river-compass-arrow:hover { background: radial-gradient(circle, #f1c40f, #b8860b); color: #241c08; box-shadow: 0 0 16px rgba(241,196,15,0.85); border-color: #fff2cf; }
+        /* Zeigt, welche Richtung der Fluss GERADE hat (Standard beim Platzieren, oder nach Drehen per
+           "Drehen"-Button/Tap auf die Kachel selbst) - die drei Bedienwege bleiben dadurch visuell
+           konsistent, egal welchen man gerade benutzt. */
+        .river-compass-arrow.active { background: radial-gradient(circle, #f1c40f, #b8860b); color: #241c08; box-shadow: 0 0 16px rgba(241,196,15,0.85); border-color: #fff2cf; }
+
         /* ==================== Mobile Layout (Handy/schmales Tablet) ====================
            Greift rein ueber die Fensterbreite (responsive), nicht ueber Geraete-Erkennung - am PC
            bleibt alles exakt wie gehabt, ein Tablet im Querformat bleibt i.d.R. ebenfalls beim
@@ -1104,7 +1132,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.16</div>
+                <div class="version-tag">v1.17</div>
             </div>
         </div>
 
@@ -1488,6 +1516,22 @@
 <div id="mobile-river-controls">
     <button class="btn" onclick="rotateRiver()">↻ Drehen</button>
     <button class="btn btn-ok" onclick="confirmRiver()">✓ Setzen</button>
+</div>
+
+<!-- #river-compass: Kompass-Ring rund um das gerade gesetzte Flussfeld (siehe CSS-Kommentar dort)
+     - Klick auf einen Pfeil setzt die Richtung direkt dorthin UND bestaetigt die Platzierung in
+     einem Schritt (chooseRiverDirection(), ruft intern confirmRiver()). Position wird ausschliesslich
+     in JS gesetzt (siehe updateRiverCompassPosition(), aufgerufen aus renderFX()) - hier nur die
+     6 Knoepfe + der dekorative gestrichelte Ring als leere Huelle. "Drehen"/"Setzen" oben bleiben
+     als bekannte Alternative vollstaendig erhalten. -->
+<div id="river-compass" class="hidden">
+    <div class="river-compass-ring" id="river-compass-ring-el"></div>
+    <button class="river-compass-arrow" data-dir="0" onclick="chooseRiverDirection(0)">➤</button>
+    <button class="river-compass-arrow" data-dir="1" onclick="chooseRiverDirection(1)">➤</button>
+    <button class="river-compass-arrow" data-dir="2" onclick="chooseRiverDirection(2)">➤</button>
+    <button class="river-compass-arrow" data-dir="3" onclick="chooseRiverDirection(3)">➤</button>
+    <button class="river-compass-arrow" data-dir="4" onclick="chooseRiverDirection(4)">➤</button>
+    <button class="river-compass-arrow" data-dir="5" onclick="chooseRiverDirection(5)">➤</button>
 </div>
 
 <div id="turn-toast" class="hidden"></div>
@@ -4179,6 +4223,54 @@ function queueRiverPlacementIfOccupied(hex) {
     if (hex && getUnitsAt(hex.q, hex.r).length > 0) queuedRiverPlacementHexes.push({ q: hex.q, r: hex.r });
 }
 
+// Klick auf einen der 6 #river-compass-Pfeile (siehe HTML/CSS-Kommentare dort): setzt die
+// Fluss-Richtung direkt dorthin UND bestaetigt die Platzierung in einem Schritt - Nutzerwunsch,
+// vorab per Mockup + GIF abgestimmt ("Richtung setzen und die Platzierung bestaetigen in einem
+// einzigen Klick"). rotateRiver()/confirmRiver() bleiben fuer die "Drehen"/"Setzen"-Buttons und den
+// Tap auf die Kachel selbst unveraendert die zugrundeliegende Logik - hier nur direkt kombiniert.
+function chooseRiverDirection(dirIdx) {
+    if (!pendingRiverHex) return;
+    pendingRiverHex.direction = dirIdx;
+    confirmRiver();
+}
+
+// Positioniert die 6 #river-compass-Pfeile (+ den dekorativen Ring) in Bildschirm-Pixelkoordinaten
+// rund um pendingRiverHex - dieselbe hex->pixel-Formel wie das echte Canvas-Rendering (siehe
+// render()/renderFX(): cx = (hexSize*1.5*hex.q)*camera.zoom+camera.x, analog fuer cy), damit der
+// Kompass exakt ueber der Kachel sitzt, auch bei Kamera-Pan/Zoom. Wird aus renderFX() aufgerufen,
+// das ohnehin als Dauerschleife (rAF) laeuft - kein zusaetzlicher Event-Handler fuer Pan/Zoom noetig,
+// die Position ist dadurch automatisch immer maximal einen Frame alt. Ausserhalb von
+// "ROTATING_RIVER" blendet die Funktion den Kompass einfach aus (deckt exitReplayViewer()/
+// Zug-Wechsel/etc. automatisch mit ab, ohne eigene Sichtbarkeits-Verwaltung an jeder Stelle,
+// die gameState/pendingRiverHex aendert).
+function updateRiverCompassPosition() {
+    const wrap = document.getElementById('river-compass');
+    if (gameState !== 'ROTATING_RIVER' || !pendingRiverHex) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    const hex = pendingRiverHex;
+    const cx = (hexSize * 1.5 * hex.q) * camera.zoom + camera.x;
+    const cy = (hexSize * Math.sqrt(3) * (hex.r + hex.q / 2)) * camera.zoom + camera.y;
+    // Ring-Radius bewusst groesser als der reine Nachbarfeld-Abstand (Faktor ~1.55 der Hex-Breite) -
+    // die Pfeile schweben dadurch sichtbar ausserhalb der Kachel selbst, statt auf den Nachbarfeldern
+    // zu kleben (die dort evtl. schon Figuren/Deko zeigen), genau wie im abgestimmten Mockup/GIF.
+    const ringRadius = hexSize * camera.zoom * 1.55;
+    document.querySelectorAll('.river-compass-arrow').forEach(btn => {
+        const dirIdx = parseInt(btn.dataset.dir, 10);
+        const d = hexDirections[dirIdx];
+        // Nur die RICHTUNG des Nachbarn wird gebraucht (nicht seine tatsaechliche Position) - deshalb
+        // reicht der reine Versatz-Vektor zum Nachbarn fuer den Winkel, unabhaengig vom Ring-Radius.
+        const ndx = hexSize * 1.5 * d.q, ndy = hexSize * Math.sqrt(3) * (d.r + d.q / 2);
+        const angle = Math.atan2(ndy, ndx);
+        btn.style.left = (cx + Math.cos(angle) * ringRadius) + 'px';
+        btn.style.top = (cy + Math.sin(angle) * ringRadius) + 'px';
+        btn.style.transform = `rotate(${angle * 180 / Math.PI}deg)`;
+        btn.classList.toggle('active', dirIdx === (hex.direction || 0));
+    });
+    const ringEl = document.getElementById('river-compass-ring-el');
+    ringEl.style.left = cx + 'px'; ringEl.style.top = cy + 'px';
+    ringEl.style.width = ringEl.style.height = (ringRadius * 2) + 'px';
+}
+
 function finishCard() {
     if (currentCard && currentCard.deck === 'ACTION') {
         const p = players[currentPlayerIdx];
@@ -6498,11 +6590,17 @@ function performHexClick(rx, rz, hex) {
         // gerade zum Platzieren geschlossene Panel wieder geoeffnet werden - siehe auch die
         // schwebende #mobile-river-controls-Leiste fuer "Setzen"). Tap auf das gerade gesetzte
         // Flussfeld selbst dreht es einen Schritt weiter, wie der bestehende rotateRiver().
-        // Nutzerwunsch (Mockup vorab abgestimmt, siehe river_direction_idea.html): zusaetzliche,
-        // schnellere Steuerung - ein Klick auf eines der 6 NACHBARFELDER setzt die Richtung direkt
-        // dorthin UND bestaetigt die Platzierung in einem einzigen Klick, statt sich erst per
-        // "Drehen" durchklicken und danach extra "Setzen" druecken zu muessen. "Drehen"/"Setzen"
-        // (Button + Tap auf das Flussfeld selbst, siehe oben) bleiben unveraendert zusaetzlich
+        // Nutzerwunsch, urspruenglich hier als Klick auf eines der 6 Nachbarfelder eingefuehrt: setzt
+        // die Richtung direkt dorthin UND bestaetigt die Platzierung in einem einzigen Klick, statt
+        // sich erst per "Drehen" durchklicken und danach extra "Setzen" druecken zu muessen. Die
+        // sichtbare Bedienung dafuer ist inzwischen der eigenstaendige #river-compass-Ring (6
+        // schwebende Pfeil-Knoepfe, siehe dortige CSS/JS-Kommentare + chooseRiverDirection()) - der
+        // Nutzer fand die anfaengliche goldene Nachbarfeld-Hervorhebung nicht eindeutig genug als
+        // "das ist ein Bedienelement, kein Zielfeld" erkennbar. Diese Nachbarfeld-Erkennung hier
+        // bleibt trotzdem bestehen (rein additiv, kein Risiko): sie greift nur noch als stiller
+        // Fallback, falls ein Klick knapp neben einem Kompass-Pfeil doch noch die Karte darunter
+        // trifft - mit oder ohne sie funktioniert der Kompass identisch. "Drehen"/"Setzen" (Button +
+        // Tap auf das Flussfeld selbst, siehe oben) bleiben ebenfalls unveraendert zusaetzlich
         // bedienbar. Der Klick-Handler weiter unten (canvas.addEventListener('click', ...)) ruft
         // performHexClick() ohnehin nur fuer existierende, nicht-void Felder auf - ein Klick auf ein
         // Nachbarfeld ausserhalb der Karte (kein Hex vorhanden) kommt hier also gar nicht erst an,
@@ -6596,7 +6694,7 @@ function updateUI() {
         DRAWING: `Wähle einen der beiden Stapel zum Ziehen.`,
         DICE_ROLL: `Klicke auf "Würfeln".`,
         PLACING_TERRAIN: `Klicke ${placementsRemaining}x ein <b>gold umrandetes</b> Feld an, um die Landschaft zu platzieren.`,
-        ROTATING_RIVER: `Klicke ein <b>gold umrandetes</b> Nachbarfeld an, um die Richtung direkt zu setzen und zu bestätigen - oder drehe schrittweise und bestätige mit "Setzen".`,
+        ROTATING_RIVER: `Klicke einen der <b>Kompass-Pfeile</b> um den Fluss an, um die Richtung direkt zu setzen und zu bestätigen - oder drehe schrittweise und bestätige mit "Setzen".`,
         ACTION_VIEW: `Aktion wird ausgeführt…`,
         SWAP_CARD: `Wähle eine Karte aus deinem Inventar zum Tauschen.`,
         MOVING: selectedUnit ? `Klicke ein <b>gold umrandetes</b> Nachbarfeld an, um dorthin zu ziehen.${moveHintSummaryHtml()}` : `Klicke eine <span class="hint-select">blau umrandete</span> eigene Figur an, um sie auszuwählen.`,
@@ -7002,18 +7100,14 @@ function computeHighlightTargets() {
             return { select: [], go: Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void'].includes(h.terrain)
                 && !(currentCard.type === 'mountains' && wouldTrapAnyUnit(h))
                 && !(currentCard.type === 'mountains' && !canPlaceMountainOnHex(h))) };
-        case 'ROTATING_RIVER': {
-            // Markiert die 6 Nachbarfelder des gerade platzierten Flusses als "go" (gold) - ein Klick
-            // darauf setzt die Richtung direkt dorthin UND bestaetigt in einem Schritt (siehe
-            // performHexClick()). Das Flussfeld selbst als "select" (blau) - Klick darauf dreht wie
-            // gehabt nur einen Schritt weiter (rotateRiver()). Nur existierende, nicht-void Felder
-            // markieren - genau die, fuer die der Klick-Handler ueberhaupt performHexClick() aufruft.
+        case 'ROTATING_RIVER':
+            // Bis vor Kurzem wurden hier zusaetzlich die 6 Nachbarfelder als "go" (gold) markiert - das
+            // ist jetzt durch das eigenstaendige #river-compass-Symbol ersetzt (siehe dortige CSS/JS-
+            // Kommentare, Nutzerwunsch: klar als eigenes Bedienelement statt als "Zielfeld anklicken"
+            // erkennbar). Nur noch das Flussfeld selbst als "select" (blau) - Klick/Tap darauf dreht
+            // weiterhin nur einen Schritt weiter (rotateRiver()), das bleibt unveraendert bestehen.
             if (!pendingRiverHex) return none;
-            const go = hexDirections.map(d => mapData.hexes[`${pendingRiverHex.q + d.q},${pendingRiverHex.r + d.r}`])
-                .filter(h => h && h.terrain !== 'void')
-                .map(h => ({ q: h.q, r: h.r }));
-            return { select: [{ q: pendingRiverHex.q, r: pendingRiverHex.r }], go };
-        }
+            return { select: [{ q: pendingRiverHex.q, r: pendingRiverHex.r }], go: [] };
         case 'SELECT_SKIP':
         case 'SELECT_PUSH_TARGET_1':
         case 'SELECT_PUSH_TARGET_2':
@@ -7197,6 +7291,8 @@ function renderFX() {
             drawShieldToken(fctx, centerX + offsetX, centerY + offsetY, s * (group.length > 1 ? 0.62 : 0.78), item.color, glow, GOD_ICON_BY_COLOR[item.color]);
         });
     });
+
+    updateRiverCompassPosition(); // #river-compass (siehe dortiger Kommentar) - haengt sich hier ein, weil renderFX() ohnehin als Dauerschleife bei jedem Kamera-Pan/Zoom laeuft
 }
 function fxLoop() {
     renderFX();
