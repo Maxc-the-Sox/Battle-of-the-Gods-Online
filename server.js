@@ -257,6 +257,28 @@ wss.on('connection', ws => {
             return;
         }
 
+        if (msg.type === 'kickvote') {
+            // "Spieler ist 5 Min. inaktiv"-Abstimmung (Kick-Vote): genau wie 'chat'/'reaction' NUR ein
+            // durchgereichter Broadcast, KEIN Teil von room.latestState. Grund: der normale Spielzustand
+            // wird bei jeder Aenderung komplett neu ueberschrieben ("letzter gewinnt", siehe stateSeq-
+            // Kommentar im Client bei applyRemoteState()) - zwei fast gleichzeitige Stimmen wuerden sich
+            // dabei gegenseitig verschlucken. Als einzelne, unabhaengige Nachrichten (wie hier) sammelt
+            // stattdessen jeder Client seine Stimmen selbst in einem lokalen Set, das geht nicht verloren.
+            const code = ws.roomCode;
+            if (!code || !rooms.has(code)) return;
+            const room = rooms.get(code);
+            if (!room.members.has(ws.clientId)) return;
+            const action = (msg.action === 'kick' || msg.action === 'wait') ? msg.action : null;
+            const targetClientId = (typeof msg.targetClientId === 'string') ? msg.targetClientId.slice(0, 64) : null;
+            if (!action || !targetClientId) return;
+            // clientId kommt bewusst vom Server (ws.clientId), nicht aus der Nachricht selbst - sonst
+            // koennte sich ein Client als jemand anderes ausgebend "mitabstimmen" (gleiches Prinzip wie
+            // Name/Farbe beim Chat oben).
+            const payload = JSON.stringify({ type: 'kickvote', clientId: ws.clientId, action, targetClientId });
+            room.members.forEach((m, clientId) => { if (clientId !== ws.clientId) safeSend(m.ws, payload); });
+            return;
+        }
+
         if (msg.type === 'leave') {
             handleDisconnect(ws);
         }
