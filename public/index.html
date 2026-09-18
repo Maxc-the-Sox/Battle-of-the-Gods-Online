@@ -155,6 +155,7 @@
         .settings-grid label { font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 0.5px; text-transform: uppercase; color: #b9a86c; }
         .settings-grid input { background: #0c0b08; border: 1px solid rgba(212,175,55,0.5); color: var(--gold-light); padding: 6px; border-radius: 2px; width: 60px; text-align: center; font-family: 'Cinzel', serif; font-weight: bold; }
 
+        #continue-local-save { margin-top: 22px; }
         .button-row { display: flex; gap: 16px; margin-top: 28px; }
         .menu-btn { flex: 1; padding: 16px 0; font-size: 0.95em; font-family: 'Cinzel', serif; font-weight: bold; border-radius: 2px; cursor: pointer; text-transform: uppercase; transition: transform 0.2s, box-shadow 0.2s; letter-spacing: 1.5px; }
         .btn-start { background: linear-gradient(180deg, var(--gold-light), var(--gold-dim)); color: #241c08; border: 1px solid #fff2cf; box-shadow: 0 8px 22px rgba(212,175,55,0.3); }
@@ -596,7 +597,7 @@
         #sound-volume-slider { width: 100px; max-width: 32vw; accent-color: var(--gold-light); cursor: pointer; }
         body.chat-open #sound-popover { right: 392px; }
         /* Musik-Regler: gleiches Muster wie #sound-toggle-fab/#sound-popover, naechster freier
-           52px-Slot rechts daneben (20/72/124 = Hilfe/Sound/Musik). */
+           52px-Slot rechts daneben (20/72/124/176 = Hilfe/Sound/Musik/Verlassen, siehe #leave-game-fab weiter unten). */
         #music-toggle-fab {
             position: fixed; top: 20px; right: 124px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center; font-size: 1.15em;
@@ -620,6 +621,29 @@
         #music-volume-slider { width: 100px; max-width: 32vw; accent-color: var(--gold-light); cursor: pointer; }
         body.chat-open #music-toggle-fab { right: 444px; }
         body.chat-open #music-popover { right: 444px; }
+        /* "Spiel verlassen" - naechster freier 52px-Slot rechts daneben (20/72/124/176 = Hilfe/Sound/
+           Musik/Verlassen). Nur waehrend einer LAUFENDEN Partie sichtbar (gleicher Sichtbarkeits-
+           Lebenszyklus wie #help-fab: eingeblendet in processLoadedMap()/applyRemoteState(), wieder
+           ausgeblendet in showVictoryUI()) - im Hauptmenue/in der Lobby gibt es dafuer ja schon die
+           bestehenden "← Zurück"/"← Raum verlassen"-Buttons. */
+        #leave-game-fab {
+            position: fixed; top: 20px; right: 176px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 1.15em;
+            color: var(--gold-light); background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
+            cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5); transition: transform 0.15s, right 0.28s ease;
+        }
+        #leave-game-fab:hover { transform: scale(1.08); }
+        /* Bestaetigungs-Dialog fuer #leave-game-fab (Punkt 64) - bewusst dasselbe Fenster/Layout fuer
+           lokal UND online (Nutzerwunsch), nur der "Speichern"-Button wird online per :disabled
+           ausgegraut (siehe .btn:disabled weiter oben) statt eines eigenen Online-Dialogs. Gleiches
+           Baukasten-Prinzip wie #feedback-overlay/.feedback-box (Ueberlagerung + schmale Box). */
+        #leave-game-overlay {
+            position: fixed; inset: 0; z-index: 3010; display: flex; align-items: center; justify-content: center;
+            background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
+        }
+        .leave-game-box { width: 400px; max-width: 90vw; text-align: center; padding: 30px 30px 26px; box-sizing: border-box; }
+        #leave-game-status { text-align: center; font-family: 'Cinzel', serif; font-size: 0.82em; letter-spacing: 0.5px; margin-top: 12px; min-height: 1.4em; }
+        #leave-game-status.ok { color: #8fd19e; }
         #feedback-overlay {
             position: fixed; inset: 0; z-index: 3002; display: flex; align-items: center; justify-content: center;
             background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
@@ -804,6 +828,7 @@
         body.chat-open #feedback-fab { right: 340px; }
         body.chat-open #help-fab { right: 340px; }
         body.chat-open #sound-toggle-fab { right: 392px; }
+        body.chat-open #leave-game-fab { right: 496px; }
 
         /* ---------- Online-Modus / Lobby ---------- */
         .menu-scroll { max-height: 90vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
@@ -1120,6 +1145,13 @@
             <div class="title-flourish">⚜ ✦ ⚜</div>
             <h1>Battle of the Gods</h1>
             <p class="menu-subtitle">Ein Zeitalter der Titanen bricht an</p>
+            <!-- Nur sichtbar, wenn ein lokales Spiel automatisch zwischengespeichert wurde (siehe
+                 saveLocalGame()/updateContinueButtonUI()) - betrifft NUR den lokalen Modus, Online-
+                 Partien werden bewusst nie hier gespeichert (siehe Kommentar bei saveLocalGame()). -->
+            <div id="continue-local-save" class="hidden">
+                <button class="menu-btn btn-start" style="width:100%; box-sizing:border-box;" onclick="loadLocalSave()">▶ Fortsetzen</button>
+                <button class="help-btn" onclick="discardLocalSave()">🗑 Gespeichertes Spiel verwerfen</button>
+            </div>
             <div class="button-row">
                 <button class="menu-btn btn-start" onclick="showSetupStep('local')">⚔ Lokal spielen</button>
                 <button class="menu-btn btn-network" onclick="startNetworkMode()">🌐 Online spielen</button>
@@ -1132,7 +1164,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.17</div>
+                <div class="version-tag">v1.18</div>
             </div>
         </div>
 
@@ -1183,6 +1215,7 @@
     <input type="range" id="music-volume-slider" min="0" max="100" step="1" value="70" oninput="onMusicVolumeSliderInput(this.value)" title="Musik-Lautstärke">
 </div>
 <div id="feedback-fab" onclick="openFeedback()" title="Feedback / Bug melden">🐞</div>
+<div id="leave-game-fab" class="hidden" onclick="confirmLeaveGame()" title="Spiel verlassen">🚪</div>
 <div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
 <div id="spectator-badge" class="hidden"></div>
 
@@ -1332,6 +1365,24 @@
         </div>
         <div id="feedback-status"></div>
         </div>
+    </div>
+</div>
+
+<!-- Bestaetigungs-Dialog fuer #leave-game-fab (Punkt 64) - siehe confirmLeaveGame()/#leave-game-overlay-
+     CSS-Kommentar: dasselbe Fenster fuer lokal UND online, nur "💾 Speichern" wird online deaktiviert. -->
+<div id="leave-game-overlay" class="hidden">
+    <div class="feedback-box leave-game-box">
+        <div class="corner-tl"></div><div class="corner-tr"></div>
+        <div class="corner-bl"></div><div class="corner-br"></div>
+        <button class="tutorial-close" onclick="closeLeaveGameOverlay()">✕</button>
+        <div class="tutorial-icon">🚪</div>
+        <div class="tutorial-title">Spiel verlassen?</div>
+        <p id="leave-game-text" class="menu-subtitle" style="margin-bottom:20px;"></p>
+        <div class="feedback-nav">
+            <button id="leave-game-save-btn" class="btn btn-gold" onclick="saveGameFromLeaveDialog()">💾 Speichern</button>
+            <button id="leave-game-confirm-btn" class="btn btn-danger" onclick="doLeaveGame()">🚪 Verlassen</button>
+        </div>
+        <div id="leave-game-status"></div>
     </div>
 </div>
 
@@ -2459,6 +2510,7 @@ function processLoadedMap(data, count, presetPlayers) {
     document.getElementById('stats-panel').classList.remove('hidden');
     document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
+    document.getElementById('leave-game-fab').classList.remove('hidden');
     if (net.active) document.getElementById('room-badge').classList.remove('hidden');
     updateSpectatorBadge(); // beim Host (der applyRemoteState() fuer den eigenen Spielstart NICHT durchlaeuft) sonst nie initial gesetzt
     resetChatAndLogForNewGame();
@@ -2699,15 +2751,188 @@ function startNetworkMode() {
     } catch (e) {}
 }
 
+// Urspruenglich nur von den Buttons VOR Spielbeginn erreichbar (Lokal-Setup "← Zurück", Online-Lobby
+// "← Raum verlassen") - seit #leave-game-fab (Punkt 64) auch mitten aus einer LAUFENDEN Partie heraus
+// aufrufbar (lokal wie online), deshalb raeumt diese Funktion jetzt zusaetzlich alles auf, was ein
+// echtes Spiel an Panels/Timern/Status hinterlassen haben koennte. Fuer die alten Aufrufstellen (vor
+// Spielbeginn) sind das reine No-Ops, weil dort ohnehin noch nichts davon sichtbar/aktiv ist.
 function backToMainMenu() {
+    // KI-Zug-Schleife stoppen - sonst wuerde der naechste bereits geplante scheduleNpcCheck()-Tick
+    // nach dem Verlassen einfach weiterlaufen und im Hintergrund (unsichtbar) Spielzuege der
+    // verlassenen Partie ausfuehren, siehe runNpcStepIfNeeded().
+    clearTimeout(npcTickTimer);
+    leaveCombatMusicMode(); // zurueck zur Menuemusik, falls gerade Ring-/Kampfmusik lief
     if (net.ws) { try { net.ws.close(); } catch (e) {} }
     net.ws = null; net.active = false; net.room = null; net.connected = false; net.localNpcs = []; net.isSpectator = false;
     document.getElementById('spectator-badge').classList.add('hidden');
+    document.getElementById('room-badge').classList.add('hidden');
     const specToggle = document.getElementById('lobby-spectator-toggle');
     if (specToggle) specToggle.checked = false; // Haekchen nicht ungewollt fuer den naechsten Beitritt "merken"
     document.getElementById('lobby-overlay').classList.add('hidden');
+    // Alle Spiel-Panels/FABs, die waehrend einer laufenden Partie sichtbar sind, wieder ausblenden -
+    // vor Spielbeginn sind sie ohnehin schon "hidden", diese Zeilen sind dann einfach wirkungslos.
+    document.getElementById('ui-panel').classList.add('hidden');
+    document.getElementById('apo-panel').classList.add('hidden');
+    document.getElementById('inventory-panel').classList.add('hidden');
+    document.getElementById('turnorder-panel').classList.add('hidden');
+    document.getElementById('stats-panel').classList.add('hidden');
+    document.getElementById('mobile-dock').classList.add('hidden');
+    document.getElementById('help-fab').classList.add('hidden');
+    document.getElementById('leave-game-fab').classList.add('hidden');
+    if (typeof closeMobilePanel === 'function') closeMobilePanel(); // ein evtl. offenes Handy-Bottom-Sheet mitschliessen
+    // Dieselben globalen Variablen wie im Replay-Viewer (siehe exitReplayViewer()) einfach zuruecksetzen -
+    // ein neuer echter Spielstart (oder das Laden eines gespeicherten Spiels) baut sie ohnehin komplett
+    // frisch auf.
+    gameState = "SETUP"; isGameOver = false; mapData = { hexes: {}, landmarks: [] }; players = [];
     document.getElementById('setup-overlay').style.display = 'flex';
     showSetupStep('start'); // zur Sicherheit immer auf dem kompakten Startbildschirm landen, nicht mitten im Lokal-Setup
+    updateContinueButtonUI(); // "▶ Fortsetzen" ggf. neu einblenden, falls gerade eben (siehe saveLocalGame()) ein frischer lokaler Spielstand hinterlegt wurde
+}
+
+// Klick auf #leave-game-fab (Punkt 64) - oeffnet fuer lokale UND Online-Partien denselben Dialog
+// (#leave-game-overlay, Nutzerwunsch). Einziger Unterschied: online ist "💾 Speichern" per :disabled
+// ausgegraut (Online-Partien werden nie gespeichert, siehe saveLocalGame()-Kommentar) - "🚪 Verlassen"
+// funktioniert in beiden Faellen gleich (online genau wie ein normaler Verbindungsabbruch, siehe
+// handleDisconnect() in server.js - niemand wird "rausgeworfen", die anderen spielen einfach weiter).
+function confirmLeaveGame() {
+    if (gameState === 'SETUP') return; // sollte nie sichtbar sein (siehe Sichtbarkeits-Kommentar bei #leave-game-fab), zur Sicherheit trotzdem kein No-Op
+    const textEl = document.getElementById('leave-game-text');
+    const saveBtn = document.getElementById('leave-game-save-btn');
+    const statusEl = document.getElementById('leave-game-status');
+    statusEl.textContent = ''; statusEl.className = '';
+    if (net.active) {
+        textEl.innerHTML = 'Diese Online-Partie kann nicht gespeichert werden.<br>Die anderen Mitspieler können ohne dich weiterspielen.';
+        saveBtn.disabled = true;
+    } else {
+        textEl.textContent = 'Dein Fortschritt wird automatisch gespeichert - du kannst später im Hauptmenü fortsetzen.';
+        saveBtn.disabled = false;
+    }
+    document.getElementById('leave-game-overlay').classList.remove('hidden');
+}
+function closeLeaveGameOverlay() { document.getElementById('leave-game-overlay').classList.add('hidden'); }
+
+// "💾 Speichern" im Dialog - speichert nur (bleibt in der Partie), online ohnehin ueber :disabled
+// unerreichbar. Rein als zusaetzliche, vom Spieler bewusst ausgeloeste Bestaetigung gedacht - der
+// eigentliche Auto-Save laeuft (fuer lokale Partien) ohnehin schon nach jedem Zug (siehe updateUI()).
+function saveGameFromLeaveDialog() {
+    if (net.active || replayModeActive || gameState === 'SETUP' || isGameOver) return;
+    saveLocalGame();
+    const statusEl = document.getElementById('leave-game-status');
+    statusEl.textContent = '💾 Gespeichert'; statusEl.className = 'ok';
+}
+
+// "🚪 Verlassen" im Dialog - schliesst den Dialog und kehrt wirklich ins Hauptmenue zurueck.
+function doLeaveGame() {
+    // Fuer eine lokale Partie den aktuellen Stand sicherheitshalber noch einmal explizit sichern -
+    // normalerweise laengst durch den Auto-Save nach jedem Zug aktuell (siehe saveLocalGame() in
+    // updateUI()), hier nur zur Sicherheit, falls der letzte Zug aus irgendeinem Grund noch nicht
+    // durchgelaufen ist.
+    if (!net.active && !replayModeActive && gameState !== 'SETUP' && !isGameOver) saveLocalGame();
+    closeLeaveGameOverlay();
+    backToMainMenu();
+}
+
+// =====================================================================
+// LOKALES SPEICHERN/FORTSETZEN (Punkt 64) - NUR fuer den lokalen (Hotseat/KI-)Modus gedacht, bewusst
+// NIE fuer Online-Partien (Nutzerwunsch: "online bräuchte man das speichern auch nicht"). Technisch
+// simpel, weil serializeState() bereits GENAU das liefert, was fuer eine vollstaendig fortsetzbare
+// Partie noetig ist - dieselbe Funktion, die im Online-Modus den kompletten Spielstand an die anderen
+// Clients sendet (siehe sendStateUpdate()). loadLocalSave() ist entsprechend fast identisch mit
+// applyRemoteState() (dortiger Feld-fuer-Feld-Kommentar gilt hier genauso), nur ohne die Online-
+// spezifischen Teile (stateSeq-Frischegarantie, net.myIndex, Zuschauer-Status). Anders als der
+// Spielverlauf/Replay-Mitschnitt (siehe REPLAY-VIEWER-Sektion) ist hier immer nur GENAU EIN Stand
+// hinterlegt - der letzte -, kein Verlauf ueber die ganze Partie.
+const LOCAL_SAVE_KEY = 'botg_local_save';
+
+function saveLocalGame() {
+    try { localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify({ savedAt: Date.now(), state: serializeState() })); }
+    catch (e) { /* z.B. privater Modus mit blockiertem Storage, oder Speicher voll - einfach kein Auto-Save diesmal */ }
+}
+function clearLocalSave() {
+    try { localStorage.removeItem(LOCAL_SAVE_KEY); } catch (e) {}
+}
+function hasLocalSave() {
+    try { return !!localStorage.getItem(LOCAL_SAVE_KEY); } catch (e) { return false; }
+}
+// Blendet den "▶ Fortsetzen"-Block im Hauptmenue (#continue-local-save) je nach hasLocalSave() ein/aus -
+// aufgerufen bei jedem Seitenstart, nach backToMainMenu() und nach dem Verwerfen eines Spielstands.
+function updateContinueButtonUI() {
+    const el = document.getElementById('continue-local-save');
+    if (el) el.classList.toggle('hidden', !hasLocalSave());
+}
+function discardLocalSave() {
+    if (!confirm('Gespeichertes Spiel wirklich verwerfen?')) return;
+    clearLocalSave();
+    updateContinueButtonUI();
+}
+
+function loadLocalSave() {
+    let raw; try { raw = localStorage.getItem(LOCAL_SAVE_KEY); } catch (e) { raw = null; }
+    if (!raw) return;
+    let saved; try { saved = JSON.parse(raw); } catch (e) { clearLocalSave(); updateContinueButtonUI(); return; }
+    const state = saved && saved.state;
+    if (!state || !state.hexes || !state.players) { clearLocalSave(); updateContinueButtonUI(); return; } // z.B. beschaedigter/veralteter Eintrag
+
+    // Rein lokale Fortsetzung - falls vorher in derselben Seite (ohne Reload) schon mal eine
+    // Online-Partie lief, deren Netzwerk-Status hier sauber zuruecksetzen.
+    net.active = false; net.ws = null; net.connected = false; net.room = null; net.myIndex = -1;
+
+    // Ab hier identisch zu applyRemoteState() (siehe dortiger Feld-fuer-Feld-Kommentar) - bewusst
+    // eine eigene Kopie statt geteilter Hilfsfunktion, damit an applyRemoteState() (zentral fuer die
+    // Online-Synchronisation) fuer dieses rein lokale Feature nichts angefasst werden muss.
+    mapData.hexes = {};
+    Object.entries(state.hexes).forEach(([k, h]) => { mapData.hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, baseTerrain: h.baseTerrain, direction: h.direction, sprite: null }; });
+    mapData.landmarks = state.landmarks;
+    Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
+
+    players = state.players.map(p => ({ ...p, units: p.units.map(u => ({ ...u })), inventory: p.inventory.map(c => ({ ...c })) }));
+
+    currentPlayerIdx = state.currentPlayerIdx; gameState = state.gameState; roundCount = state.roundCount || 1;
+    drawPoints = state.drawPoints; actionPoints = state.actionPoints; collectedArtifacts = state.collectedArtifacts;
+    targetArtifacts = state.targetArtifacts; ringThresholds = state.ringThresholds; closedRings = state.closedRings;
+    pathDrawn = state.pathDrawn; pathMoved = state.pathMoved;
+    currentCard = state.currentCard; diceValue = state.diceValue; placementsRemaining = state.placementsRemaining;
+    pendingRiverHex = state.pendingRiverHex ? mapData.hexes[`${state.pendingRiverHex.q},${state.pendingRiverHex.r}`] : null;
+    selectedUnit = state.selectedUnit ? findUnitAt(state.selectedUnit.q, state.selectedUnit.r) : null;
+    riverEscapeHexes = state.riverEscapeHexes || [];
+    pendingCardSlot = state.pendingCardSlot; pushRemaining = state.pushRemaining;
+    currentPushUnit = state.currentPushUnit ? findUnitAt(state.currentPushUnit.q, state.currentPushUnit.r) : null;
+    boatLandingTargets = state.boatLandingTargets || [];
+    queuedRiverPlacementHexes = state.queuedRiverPlacementHexes || [];
+    riverInterstitialQueue = state.riverInterstitialQueue || [];
+    riverInterstitialResumeIdx = (typeof state.riverInterstitialResumeIdx === 'number') ? state.riverInterstitialResumeIdx : null;
+    riverInterstitialResumeRoundBump = !!state.riverInterstitialResumeRoundBump;
+    riverInterstitial = !!state.riverInterstitial;
+    isGameOver = state.isGameOver;
+    lastVictoryInfo = { id: state.victoryWinnerId, reason: state.victoryReason };
+    if (Array.isArray(state.gameLog)) { gameLog = state.gameLog; renderGameLog(); }
+
+    document.getElementById('setup-overlay').style.display = 'none';
+    document.getElementById('lobby-overlay').classList.add('hidden');
+    document.getElementById('ui-panel').classList.remove('hidden');
+    document.getElementById('apo-panel').classList.remove('hidden');
+    document.getElementById('inventory-panel').classList.remove('hidden');
+    document.getElementById('turnorder-panel').classList.remove('hidden');
+    document.getElementById('stats-panel').classList.remove('hidden');
+    document.getElementById('mobile-dock').classList.remove('hidden');
+    document.getElementById('help-fab').classList.remove('hidden');
+    document.getElementById('leave-game-fab').classList.remove('hidden');
+    document.getElementById('room-badge').classList.add('hidden');
+    document.getElementById('spectator-badge').classList.add('hidden');
+
+    // Sonderfall TORNADO_FX (Ring-Kollaps-Vollbild-Animation): die loest sich NICHT von selbst ueber
+    // updateUI() auf (anders als z.B. ACTION_VIEW, siehe dortigen Kommentar), sondern nur ueber den
+    // playTornadoFX()-Animations-Callback der urspruenglichen (jetzt laengst geschlossenen) Sitzung.
+    // Ohne diese Abfrage bliebe eine genau WAEHREND dieser kurzen Animation gespeicherte Partie nach
+    // dem Laden fuer immer haengen. Die Animation selbst laesst sich nach einem Neustart nicht mehr
+    // sinnvoll nachstellen - stattdessen wird ihr Ergebnis (Meteoreinschlag) einfach sofort aufgeloest.
+    if (gameState === 'TORNADO_FX') resolveTornado();
+
+    startReplayRecording(); // frische Aufzeichnung fuer den fortgesetzten Teil der Partie
+    fitMapToScreen(); centerMap();
+    updateUI(); render(); updateApoUI();
+    enterCombatMusicMode(); syncCombatMusicToRingState();
+    showNotification('▶ Gespeichertes Spiel geladen');
 }
 
 function showLobbyStep(step) {
@@ -3137,6 +3362,7 @@ function applyRemoteState(state) {
     document.getElementById('stats-panel').classList.remove('hidden');
     document.getElementById('mobile-dock').classList.remove('hidden');
     document.getElementById('help-fab').classList.remove('hidden');
+    document.getElementById('leave-game-fab').classList.remove('hidden');
     document.getElementById('room-badge').classList.remove('hidden');
     document.getElementById('room-badge-code').innerText = net.room || '';
     updateSpectatorBadge();
@@ -6349,6 +6575,10 @@ function showVictoryUI(player, reason) {
     // beim naechsten Spielstart KEIN Absturz-Wiederherstellungs-Banner dafuer auftaucht (siehe
     // replayDbFindOrphan()/offerOrphanedReplayRecovery()).
     replayDbMarkFinished();
+    // Genauso den lokalen "Fortsetzen"-Spielstand aufraeumen (Punkt 64, siehe saveLocalGame()) - eine
+    // BEENDETE Partie soll im Hauptmenue nicht mehr als "Fortsetzen" angeboten werden. Bei Online-
+    // Partien war hier ohnehin nie etwas gespeichert (saveLocalGame() laeuft nur bei !net.active).
+    clearLocalSave(); updateContinueButtonUI();
     camera.zoom = 0.5;
     centerMap();
     render();
@@ -6366,6 +6596,7 @@ function showVictoryUI(player, reason) {
     // #stats-panel zeigt dieselben Werte bereits als eigener Abschnitt direkt im Sieg-Panel (siehe
     // buildVictoryStatsHtml() oben) - waere hier oben rechts nur eine redundante Doppelanzeige.
     document.getElementById('stats-panel').classList.add('hidden');
+    document.getElementById('leave-game-fab').classList.add('hidden'); // "NEUES SPIEL"-Button im Sieg-Panel deckt das jetzt ab
 
     panel.classList.remove('hidden');
 }
@@ -6777,6 +7008,10 @@ function updateUI() {
     }
     if (net.active && !net.applyingRemote) sendStateUpdate();
     captureReplaySnapshot();
+    // Auto-Save fuer den lokalen Modus (Punkt 64) - bewusst NUR lokal (nie online, siehe
+    // saveLocalGame()-Kommentar) und nicht waehrend der reinen Replay-Wiedergabe (die aendert
+    // gameState/players zwar auch, aber nur zur ANZEIGE, nicht als echte Partie).
+    if (!net.active && !replayModeActive && gameState !== 'SETUP' && !isGameOver) saveLocalGame();
     scheduleNpcCheck();
 }
 
@@ -7303,7 +7538,7 @@ function fxLoop() {
 }
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; fxCanvas.width = window.innerWidth; fxCanvas.height = window.innerHeight; render(); }
 window.addEventListener('resize', resizeCanvas);
-resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); updateSoundMuteUI(); updateMusicMuteUI(); requestAnimationFrame(fxLoop);
+resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); updateSoundMuteUI(); updateMusicMuteUI(); updateContinueButtonUI(); requestAnimationFrame(fxLoop);
 </script>
 </body>
 </html>
