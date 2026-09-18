@@ -1210,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.26</div>
+                <div class="version-tag">v1.27</div>
             </div>
         </div>
 
@@ -7989,13 +7989,88 @@ function updateAndDrawClouds() {
     });
 }
 
+// Ring-Eskalationseffekte (Punkt 73, direkte Fortsetzung von Wetter/Punkt 72, vorab als Mockup
+// abgestimmt): im Gegensatz zu den Wolken kein einzelnes spawnendes/driftendes Objekt, sondern ein
+// durchgehender Zustand, der direkt an den Apokalypse-Status EINES Feldes haengt - "gefaehrdet" (Nebel)
+// bzw. "bereits kollabiert/void" (Asche). Laeuft wie updateAndDrawClouds() als Teil der Atmosphaere-
+// Schicht ganz zu Beginn von renderFX() - liegt also ebenfalls strukturell IMMER unter Ziel-/Auswahl-
+// Ringen und Figuren (dieselbe Garantie wie beim Wetter: kann eine Figur nie verdecken).
+function drawRingHaze() {
+    const dangerKey = currentDangerRingKey();
+    if (!dangerKey || !mapData || !mapData.hexes) return;
+    const hazeHexes = Object.values(mapData.hexes).filter(h => npcRingKeyForHex(h) === dangerKey);
+    if (!hazeHexes.length) return;
+    const nowS = performance.now() / 1000;
+    const breathe = 0.82 + Math.sin(nowS * 0.6) * 0.18; // langsames "Atmen" statt ein starrer Fleck
+    // Alpha/Farbe bewusst kraeftiger als ein "realistischer" Dunst waere und neutral-grau statt hell-
+    // weiss (Lektion aus dem ersten, zu schwachen Schatten-Versuch bei Punkt 71: auf warmem/hellem
+    // Terrain wie Sand ging eine helle, duenne Wolke beinahe unter). Zwei uebereinandergelegte
+    // Gradienten (weiter Streuschein + engerer, dichterer Kern) statt nur einem, damit einzelne
+    // Sechseck-Zentren nicht als sichtbare "Flecken-Kette" durchscheinen, sondern zu einer
+    // durchgehenden Dunstflaeche verschmelzen.
+    hazeHexes.forEach(h => {
+        const cx = (hexSize * 1.5 * h.q) * camera.zoom + camera.x, cy = (hexSize * Math.sqrt(3) * (h.r + h.q / 2)) * camera.zoom + camera.y;
+        const rWide = hexSize * 2.3 * camera.zoom, rCore = hexSize * 1.5 * camera.zoom;
+        const aWide = 0.24 * breathe, aCore = 0.4 * breathe;
+        const gradWide = fctx.createRadialGradient(cx, cy, 0, cx, cy, rWide);
+        gradWide.addColorStop(0, `rgba(150,156,162,${aWide})`);
+        gradWide.addColorStop(1, 'rgba(150,156,162,0)');
+        fctx.beginPath(); fctx.arc(cx, cy, rWide, 0, Math.PI * 2);
+        fctx.fillStyle = gradWide; fctx.fill();
+        const gradCore = fctx.createRadialGradient(cx, cy, 0, cx, cy, rCore);
+        gradCore.addColorStop(0, `rgba(170,176,182,${aCore})`);
+        gradCore.addColorStop(0.6, `rgba(170,176,182,${aCore * 0.55})`);
+        gradCore.addColorStop(1, 'rgba(170,176,182,0)');
+        fctx.beginPath(); fctx.arc(cx, cy, rCore, 0, Math.PI * 2);
+        fctx.fillStyle = gradCore; fctx.fill();
+    });
+}
+// Asche-/Funkenpartikel ueber bereits kollabierten (void) Feldern - steigen kontinuierlich auf,
+// deterministisch aus Feld-Koordinate + Partikel-Index geseedet (pseudoRandom01(), siehe Wetter-
+// Kommentar oben), damit jedes Partikel bei jedem Frame an derselben "Spur" weiterlaeuft statt zu
+// flackern. Pro Partikel ein endloser Loop von unten nach oben ueber der Kachel (Modulo auf die Zeit).
+const EMBERS_PER_VOID_HEX = 3;
+const EMBER_CYCLE_S = 3.2;
+function drawVoidEmbers() {
+    if (!mapData || !mapData.hexes) return;
+    const voidHexes = Object.values(mapData.hexes).filter(h => h.terrain === 'void');
+    if (!voidHexes.length) return;
+    const nowS = performance.now() / 1000;
+    const s = hexSize * camera.zoom;
+    voidHexes.forEach(h => {
+        const cx = (hexSize * 1.5 * h.q) * camera.zoom + camera.x, cy = (hexSize * Math.sqrt(3) * (h.r + h.q / 2)) * camera.zoom + camera.y;
+        const baseSeed = h.q * 928.37 + h.r * 173.91;
+        for (let i = 0; i < EMBERS_PER_VOID_HEX; i++) {
+            const seed = baseSeed + i * 41.7;
+            const rx = pseudoRandom01(seed) - 0.5;
+            const phaseOffset = pseudoRandom01(seed * 1.7) * EMBER_CYCLE_S;
+            const cyclePos = ((nowS + phaseOffset) % EMBER_CYCLE_S) / EMBER_CYCLE_S; // 0..1, laeuft endlos
+            const ex = cx + rx * s * 1.1, ey = cy - cyclePos * s * 2.2;
+            const size = (0.9 + pseudoRandom01(seed * 2.3) * 1.3) * (s / 40); // proportional zum aktuellen Zoom
+            const alpha = 0.85 * (1 - cyclePos * 0.85); // wird beim Aufsteigen schwaecher
+            if (alpha <= 0.02) continue;
+            const grad = fctx.createRadialGradient(ex, ey, 0, ex, ey, size * 2.4);
+            grad.addColorStop(0, `rgba(255,180,90,${alpha})`);
+            grad.addColorStop(0.5, `rgba(255,120,40,${alpha * 0.6})`);
+            grad.addColorStop(1, 'rgba(255,80,20,0)');
+            fctx.beginPath(); fctx.arc(ex, ey, size * 2.4, 0, Math.PI * 2);
+            fctx.fillStyle = grad; fctx.fill();
+            fctx.beginPath(); fctx.arc(ex, ey, size * 0.5, 0, Math.PI * 2);
+            fctx.fillStyle = `rgba(255,220,160,${alpha})`; fctx.fill();
+        }
+    });
+}
+
 function renderFX() {
     fctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
     const s = hexSize * camera.zoom, now = performance.now()/1000;
     const phase = Math.sin(now*3)*0.5+0.5;
-    // Wetter IMMER zuerst zeichnen (siehe updateAndDrawClouds()-Kommentar) - liegt dadurch optisch unter
-    // den folgenden Ziel-/Auswahl-Ringen und Spielfiguren, kann sie also strukturell nie verdecken.
+    // Atmosphaere (Wetter + Ring-Eskalation) IMMER zuerst zeichnen (siehe Kommentare oben) - liegt
+    // dadurch optisch unter den folgenden Ziel-/Auswahl-Ringen und Spielfiguren, kann sie also
+    // strukturell nie verdecken.
     updateAndDrawClouds();
+    drawRingHaze();
+    drawVoidEmbers();
     const hl = computeHighlightTargets();
 
     // Ring-Vorschau (siehe toggleRingPreview()/#apo-panel) - zeigt auf Knopfdruck rot, welche Felder
