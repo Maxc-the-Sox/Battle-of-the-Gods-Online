@@ -1210,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.27</div>
+                <div class="version-tag">v1.28</div>
             </div>
         </div>
 
@@ -1959,8 +1959,13 @@ function paintHexTerrain(sctx, cx, cy, s, terrain, decor, skipMountainPeaks) {
     sctx.restore();
     if (terrain === 'swamp') {
         sctx.save(); sctx.shadowColor = 'rgba(0,0,0,0.6)'; sctx.shadowBlur = 5;
-        sctx.font = `bold ${s * 0.85}px Arial`; sctx.textAlign = 'center'; sctx.textBaseline = 'middle'; sctx.fillStyle = 'white';
-        sctx.fillText('🏰', cx, cy); sctx.restore();
+        sctx.font = `bold ${s * 0.85}px Arial`; sctx.fillStyle = 'white';
+        // Dieselbe Zentrierungs-Korrektur wie bei drawVoidHex()/drawLandmarkBadge() (Nutzer-Bugreport
+        // zu genau dieser Klasse Bug, siehe centeredEmojiPos()-Kommentar) - beim Durchsuchen der Datei
+        // nach allen Einzel-Emoji-Stellen mit demselben naiven textAlign/textBaseline-Muster gefunden
+        // und gleich mitgefixt, auch ohne separate Nutzermeldung dazu.
+        const pos = centeredEmojiPos(sctx, '🏰', cx, cy);
+        sctx.fillText('🏰', pos.x, pos.y); sctx.restore();
     }
 }
 function groundTerrainOf(hex) {
@@ -2205,11 +2210,34 @@ function drawRiverConnections(ctx, hex, x, y, s, skipInboundSet) {
     ctx.beginPath(); ctx.arc(x,y,s*0.18,0,7); ctx.fillStyle = light; ctx.globalAlpha=0.7; ctx.fill(); ctx.globalAlpha=1;
     ctx.restore();
 }
+// Gemeinsame Zentrierungs-Hilfsfunktion fuer einzelne Emoji-Symbole (Nutzer-Bugreport: "Tempel und
+// Wolken Symbole sind nicht mittig auf den Hexfeldern", auf echtem iOS Safari aufgefallen). Der Grund:
+// textAlign:'center'/textBaseline:'middle' zentriert nur die FONT-Metrik, nicht die tatsaechliche
+// Glyphen-Bildmitte - bei Emojis weichen beide je nach Browser/Betriebssystem/Emoji-Schriftart spuerbar
+// voneinander ab (derselbe Grund, aus dem das Goetter-Wappen in drawShieldToken() schon eine eigene,
+// echte Bounding-Box-Zentrierung per measureText() bekommen hat - hier als wiederverwendbare Funktion
+// fuer alle WEITEREN Einzel-Emoji-Stellen extrahiert, die bisher nur textAlign/textBaseline
+// (drawVoidHex) oder einen fest verdrahteten, nur fuer einen Browser getunten Korrekturwert
+// (drawLandmarkBadge) benutzt haben). ctx.font muss VOR dem Aufruf bereits gesetzt sein, ctx.textAlign/
+// ctx.textBaseline werden hier passend gesetzt. fallbackXRatio/YRatio (Bruchteile der Fontgroesse) sind
+// nur die Notloesung fuer sehr alte Browser ohne actualBoundingBox*-Unterstuetzung.
+function centeredEmojiPos(ctx, icon, cx, cy, fallbackXRatio = 0.5, fallbackYRatio = 0.35) {
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    const m = ctx.measureText(icon);
+    const left = m.actualBoundingBoxLeft, right = m.actualBoundingBoxRight;
+    const asc = m.actualBoundingBoxAscent, desc = m.actualBoundingBoxDescent;
+    if ([left, right, asc, desc].every(v => typeof v === 'number' && !isNaN(v))) {
+        return { x: cx - (right - left) / 2, y: cy + (asc - desc) / 2 };
+    }
+    const fontPx = parseFloat(ctx.font) || 40; // grobe Notloesung, siehe Kommentar oben
+    return { x: cx - fontPx * fallbackXRatio, y: cy + fontPx * fallbackYRatio };
+}
 function drawVoidHex(dctx, x, y, s) {
     hexSpritePath(dctx, x, y, s); dctx.fillStyle = '#050505'; dctx.fill();
     dctx.strokeStyle = 'rgba(255,255,255,0.08)'; dctx.lineWidth = 1; dctx.stroke();
-    dctx.font = `${s}px Arial`; dctx.textAlign = 'center'; dctx.textBaseline = 'middle'; dctx.fillStyle = 'rgba(255,255,255,0.6)';
-    dctx.fillText('☁️', x, y);
+    dctx.font = `${s}px Arial`; dctx.fillStyle = 'rgba(255,255,255,0.6)';
+    const pos = centeredEmojiPos(dctx, '☁️', x, y);
+    dctx.fillText('☁️', pos.x, pos.y);
 }
 function drawShieldToken(dctx, cx, cy, s, color, glow, icon) {
     const w = s * 0.85, h = s * 1.05;
@@ -2271,11 +2299,12 @@ function drawLandmarkBadge(dctx, cx, cy, s, kind, phase) {
     dctx.strokeStyle = gold ? '#f1c40f' : '#8B7355'; dctx.lineWidth = 2; dctx.stroke(); dctx.restore();
     if (kind === 'looted') dctx.globalAlpha = 0.65;
     dctx.save(); dctx.shadowColor = 'rgba(0,0,0,0.7)'; dctx.shadowBlur = 6;
-    dctx.font = `${s * 0.95}px serif`; dctx.textAlign = 'center'; dctx.textBaseline = 'middle';
-    // Emoji-Glyphen sitzen bei textBaseline "middle" browserbedingt optisch zu hoch (die
-    // Schriftmetrik-Mitte stimmt nicht mit der tatsaechlichen Bildmitte des Symbols ueberein) -
-    // deshalb hier leicht nach unten korrigieren, damit es wirklich mittig im Badge sitzt.
-    dctx.fillText(icon, cx, cy + s * 0.075); dctx.restore(); dctx.globalAlpha = 1;
+    dctx.font = `${s * 0.95}px serif`;
+    // Nutzer-Bugreport (echtes iOS Safari): "Tempel...Symbole nicht mittig" - der bisherige fest
+    // verdrahtete Korrekturwert (+ s*0.075) war nur fuer einen Browser/eine Emoji-Schriftart getunt.
+    // Jetzt echte Bounding-Box-Zentrierung wie beim Goetter-Wappen (siehe centeredEmojiPos()-Kommentar).
+    const pos = centeredEmojiPos(dctx, icon, cx, cy);
+    dctx.fillText(icon, pos.x, pos.y); dctx.restore(); dctx.globalAlpha = 1;
     if (gold) {
         for (let i = 0; i < 5; i++) {
             const ang = phase * 0.8 + i * (Math.PI * 2 / 5);
