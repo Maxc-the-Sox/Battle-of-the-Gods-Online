@@ -332,6 +332,11 @@
             border: 1px solid color-mix(in srgb, var(--panel-color) 70%, transparent);
             text-shadow: 0 0 12px color-mix(in srgb, var(--panel-color) 70%, transparent), 0 1px 2px rgba(0,0,0,0.8);
             box-shadow: 0 0 16px color-mix(in srgb, var(--panel-color) 30%, transparent), inset 0 0 12px rgba(0,0,0,0.35);
+            cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; /* Punkt 65: klickbar, siehe cycleFocusOnActivePlayerUnit() */
+        }
+        .player-header:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 0 20px color-mix(in srgb, var(--panel-color) 50%, transparent), inset 0 0 12px rgba(0,0,0,0.35);
         }
         #guide-text { font-family: 'Cinzel', serif; background: linear-gradient(180deg, var(--gold-light), var(--gold)); color: #241c08; padding: 9px; font-size: 0.82em; font-weight: bold; text-align: center; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 8px rgba(212,175,55,0.35); }
         #guide-hint { font-family: 'Cormorant Garamond', serif; text-align: center; color: #d8c9a3; font-size: 0.92em; font-style: italic; margin-bottom: 14px; padding: 0 2px; line-height: 1.35; }
@@ -1164,7 +1169,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.18</div>
+                <div class="version-tag">v1.19</div>
             </div>
         </div>
 
@@ -1452,7 +1457,7 @@
 
 <div id="ui-panel" class="hidden">
     <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
-    <div id="player-turn-display" class="player-header">Spieler X</div>
+    <div id="player-turn-display" class="player-header" onclick="cycleFocusOnActivePlayerUnit()" title="Klicken, um zu den eigenen Figuren zu zoomen">Spieler X</div>
     <div id="guide-text">BITTE WARTEN...</div>
     <div id="guide-hint"></div>
     <div id="artifact-display">🏆 Artefakte: 0 / ?</div>
@@ -3990,6 +3995,106 @@ function focusOnPlayerUnits(p, zoom = 0.8) {
     camera.x = canvas.width / 2 - ((minX + maxX) / 2) * camera.zoom;
     camera.y = canvas.height / 2 - ((minY + maxY) / 2) * camera.zoom;
 }
+// =====================================================================
+// KAMERA-MITVERFOLGUNG (Punkt 65, Nutzerwunsch): "wenn man nicht mehr an der Reihe ist, könnte das
+// Spiel immer dahin zoomen wo gerade etwas passiert" - bestätigt für alle drei Fälle: online (nicht
+// der eigene Zug), gegen KI (KI ist dran) UND lokaler Hotseat (Zugwechsel). Für den Hotseat-Fall
+// übernimmt weiterhin die schon lange bestehende focusOnPlayerUnits()-Zeile in startTurn() - die
+// läuft ohnehin bei JEDEM Zugwechsel, auch dort schon. Diese Funktion hier deckt die beiden Fälle ab,
+// in denen bisher NICHTS automatisch mitgezoomt hat: ein passiver Online-Client/Zuschauer während des
+// Zugs eines anderen Spielers (applyRemoteState() hat die Kamera bisher nie angefasst) und die
+// laufende KI-Aktion INNERHALB ihres eigenen Zugs (startTurn() fokussiert bisher nur einmal ganz am
+// Anfang, folgt der KI aber nicht weiter, wenn sie sich z.B. über die Karte bewegt).
+// Bewusst NICHT nur Figuren-Positionen, sondern (Nutzerwunsch: "er platziert ja auch überall
+// Landschaftsplättchen hin") auch platzierte Landschafts-/Flussfelder - beides wird strukturell
+// gegen den zuletzt bekannten Stand verglichen (gleiches Diff-Prinzip wie buildReplaySnapshot(), nur
+// hier nicht zum Aufzeichnen, sondern um zu wissen, WOHIN die Kamera als nächstes soll).
+let cameraFollowUnitShadow = null; // "spielerIdx-figurIdx" -> "q,r", letzter bekannter Stand
+let cameraFollowHexShadow = null;  // "q,r" -> "terrain|direction", letzter bekannter Stand
+let cameraFollowLastPlayerIdx = null;
+
+function cameraFollowActionIfNeeded() {
+    const isPassive = net.active
+        ? (net.myIndex !== currentPlayerIdx) // online: nicht mein eigener Zug (deckt auch Zuschauer ab, net.myIndex ist dort -1)
+        : (!!players[currentPlayerIdx] && !!players[currentPlayerIdx].isNPC); // lokal: die KI ist dran
+    if (!isPassive || gameState === 'SETUP') {
+        // Eigener Zug (oder noch kein Spiel) - Kamera bleibt vollstaendig unter eigener manueller
+        // Kontrolle. Schatten zuruecksetzen, damit die naechste passive Phase wieder sauber mit einem
+        // vollen Fokus beginnt statt gegen einen laengst veralteten Stand zu vergleichen.
+        cameraFollowUnitShadow = null; cameraFollowHexShadow = null; cameraFollowLastPlayerIdx = null;
+        return;
+    }
+
+    const isNewTurn = (currentPlayerIdx !== cameraFollowLastPlayerIdx);
+    cameraFollowLastPlayerIdx = currentPlayerIdx;
+
+    if (isNewTurn || !cameraFollowUnitShadow) {
+        // Zugbeginn (oder allererster Aufruf in dieser passiven Phase, z.B. direkt nach dem Beitritt):
+        // einmal voll fokussieren, genau wie startTurn() es beim eigenen Zug auch tut - ab dem
+        // naechsten Aufruf uebernimmt der Diff unten die weitere Mitverfolgung innerhalb des Zugs.
+        focusOnPlayerUnits(players[currentPlayerIdx]);
+        activeUnitCycleIdx = -1; // siehe cycleFocusOnActivePlayerUnit() - neuer Zug, wieder bei der ersten Figur anfangen
+        cameraFollowUnitShadow = {}; cameraFollowHexShadow = {};
+        players.forEach((p, pi) => p.units.forEach((u, ui) => { cameraFollowUnitShadow[`${pi}-${ui}`] = `${u.q},${u.r}`; }));
+        Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') cameraFollowHexShadow[`${h.q},${h.r}`] = `${h.terrain}|${h.direction || 0}`; });
+        render();
+        return;
+    }
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, any = false;
+    const note = (q, r) => {
+        const x = hexSize * 1.5 * q, y = hexSize * Math.sqrt(3) * (r + q / 2);
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        any = true;
+    };
+
+    // Figuren ALLER Spieler vergleichen, nicht nur des aktiven - eine Karte des aktiven Spielers kann
+    // durchaus auch fremde (oder eigene) Figuren woanders hinbewegen (z.B. "Gegner zurückwerfen",
+    // siehe handlePushFlow()) - auch das soll die Kamera mitbekommen.
+    const newUnitShadow = {};
+    players.forEach((p, pi) => p.units.forEach((u, ui) => {
+        const key = `${pi}-${ui}`, val = `${u.q},${u.r}`;
+        newUnitShadow[key] = val;
+        if (cameraFollowUnitShadow[key] !== val) note(u.q, u.r);
+    }));
+
+    const newHexShadow = {};
+    Object.values(mapData.hexes).forEach(h => {
+        if (h.terrain === 'void') return;
+        const key = `${h.q},${h.r}`, val = `${h.terrain}|${h.direction || 0}`;
+        newHexShadow[key] = val;
+        if (cameraFollowHexShadow[key] !== val) note(h.q, h.r);
+    });
+
+    cameraFollowUnitShadow = newUnitShadow;
+    cameraFollowHexShadow = newHexShadow;
+
+    if (any) {
+        // Bewusst NUR die Position nachziehen, der Zoom bleibt unangetastet - so bleibt ein evtl.
+        // weiter rausgezoomter Blick (um mehr vom Geschehen zu sehen) erhalten, statt bei jeder
+        // kleinen Aktion wieder auf den festen Fokus-Zoom zurueckzuspringen.
+        camera.x = canvas.width / 2 - ((minX + maxX) / 2) * camera.zoom;
+        camera.y = canvas.height / 2 - ((minY + maxY) / 2) * camera.zoom;
+        render();
+    }
+}
+
+// "SPIELER X"-Kopfzeile (#player-turn-display, Punkt 65, Nutzerwunsch): Klick zoomt/zentriert
+// nacheinander auf die einzelnen Figuren des GERADE AKTIVEN Spielers (wechselt bei jedem weiteren
+// Klick zur naechsten), waehlt sie dabei aber bewusst NICHT aus (Nutzerwunsch: "nur hinzoomen" -
+// reine Navigations-Hilfe, kein Ersatz fuer den eigentlichen Klick auf die Figur selbst).
+let activeUnitCycleIdx = -1;
+function cycleFocusOnActivePlayerUnit() {
+    const p = players[currentPlayerIdx];
+    if (!p || !p.units.length) return;
+    activeUnitCycleIdx = (activeUnitCycleIdx + 1) % p.units.length;
+    const u = p.units[activeUnitCycleIdx];
+    camera.zoom = 1.1; // spuerbar naeher heran als der normale Zug-Start-Fokus (0.8) - "hinzoomen"
+    camera.x = canvas.width / 2 - (hexSize * 1.5 * u.q) * camera.zoom;
+    camera.y = canvas.height / 2 - (hexSize * Math.sqrt(3) * (u.r + u.q / 2)) * camera.zoom;
+    render();
+}
+
 function centerMap() {
     const hexes = Object.values(mapData.hexes); if (hexes.length === 0) return;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -6504,6 +6609,7 @@ function startTurn() {
     pathDrawn = false; pathMoved = false; drawPoints = 2; actionPoints = 2; gameState = "CHOOSING"; roadBonusUsedThisTurn = false;
     showNotification(`⚔️ ${playerLabel(players[currentPlayerIdx]).toUpperCase()} IST DRAN!`);
     focusOnPlayerUnits(players[currentPlayerIdx]);
+    activeUnitCycleIdx = -1; // Punkt 65: neuer Zug, das Durchklicken der Kopfzeile faengt wieder bei der ersten Figur an
     checkMyTurnNotification();
     updateUI(); render();
 }
@@ -7012,6 +7118,11 @@ function updateUI() {
     // saveLocalGame()-Kommentar) und nicht waehrend der reinen Replay-Wiedergabe (die aendert
     // gameState/players zwar auch, aber nur zur ANZEIGE, nicht als echte Partie).
     if (!net.active && !replayModeActive && gameState !== 'SETUP' && !isGameOver) saveLocalGame();
+    // Kamera-Mitverfolgung (Punkt 65) - hier zentral gehookt statt einzeln an jeder Aktions-Stelle,
+    // weil updateUI() ohnehin nach so gut wie jeder Spielhandlung laeuft (lokal UND online, siehe
+    // applyRemoteState(), das updateUI() ebenfalls aufruft). Macht selbst intern nichts, solange man
+    // am eigenen Zug ist (siehe dortige isPassive-Pruefung).
+    cameraFollowActionIfNeeded();
     scheduleNpcCheck();
 }
 
