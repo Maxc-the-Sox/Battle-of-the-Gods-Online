@@ -1210,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.28</div>
+                <div class="version-tag">v1.29</div>
             </div>
         </div>
 
@@ -2222,13 +2222,25 @@ function drawRiverConnections(ctx, hex, x, y, s, skipInboundSet) {
 // ctx.textBaseline werden hier passend gesetzt. fallbackXRatio/YRatio (Bruchteile der Fontgroesse) sind
 // nur die Notloesung fuer sehr alte Browser ohne actualBoundingBox*-Unterstuetzung.
 function centeredEmojiPos(ctx, icon, cx, cy, fallbackXRatio = 0.5, fallbackYRatio = 0.35) {
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    const m = ctx.measureText(icon);
-    const left = m.actualBoundingBoxLeft, right = m.actualBoundingBoxRight;
-    const asc = m.actualBoundingBoxAscent, desc = m.actualBoundingBoxDescent;
-    if ([left, right, asc, desc].every(v => typeof v === 'number' && !isNaN(v))) {
-        return { x: cx - (right - left) / 2, y: cy + (asc - desc) / 2 };
-    }
+    // Nutzer-Bugreport (v1.28, echtes iPhone): nach dem Pluendern einer Ruine (kind wechselt auf
+    // 'looted', Icon auf 🕸️) blieben ALLE Ruinen-Symbole dauerhaft leer, nicht nur das gerade
+    // geplünderte - auch auf ganz anderen Feldern. Ursache: manche iOS-Safari-Versionen werfen bei
+    // measureText()/actualBoundingBox* fuer bestimmte Emoji (insbesondere mit Variation-Selector wie
+    // 🕸️/🏛️) eine Ausnahme, statt nur ungueltige Werte zu liefern. Eine hier unbehandelte Ausnahme
+    // liess den umschliessenden dctx.save()/dctx.restore()-Block in drawLandmarkBadge() UNBALANCIERT
+    // zurueck (restore() wurde nie erreicht) UND brach das forEach ueber mapData.landmarks fuer den
+    // Rest des Frames ab - und weil genau derselbe Fehler bei JEDEM Frame erneut auftrat (kind bleibt
+    // ja dauerhaft 'looted'), blieben ab dann alle NACHFOLGENDEN Ruinen-Badges permanent leer. Deshalb
+    // jetzt hart gegen JEDE Art Ausnahme abgesichert (nicht nur gegen NaN/undefined-Werte).
+    try {
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        const m = ctx.measureText(icon);
+        const left = m.actualBoundingBoxLeft, right = m.actualBoundingBoxRight;
+        const asc = m.actualBoundingBoxAscent, desc = m.actualBoundingBoxDescent;
+        if ([left, right, asc, desc].every(v => typeof v === 'number' && !isNaN(v))) {
+            return { x: cx - (right - left) / 2, y: cy + (asc - desc) / 2 };
+        }
+    } catch (e) { /* siehe Kommentar oben - in die Notloesung unten durchfallen statt den Frame abzubrechen */ }
     const fontPx = parseFloat(ctx.font) || 40; // grobe Notloesung, siehe Kommentar oben
     return { x: cx - fontPx * fallbackXRatio, y: cy + fontPx * fallbackYRatio };
 }
