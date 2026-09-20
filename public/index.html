@@ -1210,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.29</div>
+                <div class="version-tag">v1.31</div>
             </div>
         </div>
 
@@ -3940,8 +3940,13 @@ function npcDoDrawing(p, diff) {
     prepareDraw(type);
 }
 
+// Bugfix (Nutzer-Spielverlauf-Export, 2026-09-19): "water" fehlte in der Ausschlussliste - eine KI
+// konnte dadurch z.B. eine Wald-Karte mitten auf ein Wasserfeld setzen (baseTerrain 'water' wurde nur
+// von 'terrain !== void'/den vier Landschaftstypen gefiltert, nicht aber von 'water' selbst). Jetzt
+// zusaetzlich ausgeschlossen - siehe auch computeHighlightTargets() (PLACING_TERRAIN-Zweig) und
+// performHexClick() weiter unten, die denselben Fehler hatten und ebenfalls korrigiert wurden.
 function npcValidTerrainPlacementHexes() {
-    return Object.values(mapData.hexes).filter(h => h.terrain !== 'void' && !['mountains', 'forest', 'river', 'road'].includes(h.terrain)
+    return Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void', 'water'].includes(h.terrain)
         && !(currentCard && currentCard.type === 'mountains' && wouldTrapAnyUnit(h))
         && !(currentCard && currentCard.type === 'mountains' && !canPlaceMountainOnHex(h)));
 }
@@ -7290,7 +7295,12 @@ function performHexClick(rx, rz, hex) {
             else { playSoundCard(); players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
         }
     } else if (gameState === "PLACING_TERRAIN" && currentCard) {
-        if (['mountains', 'forest', 'river', 'road'].includes(hex.terrain)) return;
+        // Bugfix (Nutzer-Spielverlauf-Export, 2026-09-19): 'water' fehlte hier - dies ist die
+        // eigentliche Stelle, die eine Platzierung tatsaechlich vollzieht (fuer Mensch-Klicks UND
+        // fuer die KI ueber performHexClick()), Wasserfelder waren also auch dann noch angreifbar,
+        // wenn sie irrtuemlich als Ziel gewaehlt wurden. Siehe npcValidTerrainPlacementHexes() und
+        // computeHighlightTargets() fuer die beiden vorgelagerten, ebenfalls korrigierten Filter.
+        if (['mountains', 'forest', 'river', 'road', 'water'].includes(hex.terrain)) return;
         if (currentCard.type === 'mountains') {
             if (wouldTrapAnyUnit(hex)) { alert("Hier kannst du keinen Berg setzen - das wäre der letzte offene Weg einer Figur, sie würde komplett eingemauert!"); return; }
             if (!canPlaceMountainOnHex(hex)) { alert("Hier steht eine Figur, deren Besitzer keinen Seil & Haken hat - hier kann kein Berg gesetzt werden!"); return; }
@@ -7825,7 +7835,10 @@ function computeHighlightTargets() {
         }
         case 'PLACING_TERRAIN':
             if (!currentCard) return none;
-            return { select: [], go: Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void'].includes(h.terrain)
+            // Bugfix (Nutzer-Spielverlauf-Export, 2026-09-19): 'water' fehlte in der Ausschlussliste,
+            // siehe npcValidTerrainPlacementHexes()-Kommentar fuer die volle Erklaerung - Wasserfelder
+            // wurden dadurch faelschlich gold als gueltiges Platzierungsziel markiert.
+            return { select: [], go: Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void', 'water'].includes(h.terrain)
                 && !(currentCard.type === 'mountains' && wouldTrapAnyUnit(h))
                 && !(currentCard.type === 'mountains' && !canPlaceMountainOnHex(h))) };
         case 'ROTATING_RIVER':
@@ -8102,6 +8115,45 @@ function drawVoidEmbers() {
     });
 }
 
+// Gesamtstimmung: Rottönung fuers spaete Spiel (Nutzerwunsch, direkte Fortsetzung von Punkt 73 -
+// vorab als eigenstaendiges Mockup "mood_tint_mockup.html" abgestimmt: 4 Stufen 0-3 kollabierte
+// Ringe, Nutzer wollte das Ergebnis aber direkt im echten Spiel sehen statt nur im Mockup, da die
+// Staerke auf statischen Bildern kaum einzuschaetzen war). Bewusst als LETZTER Zeichenschritt in
+// renderFX() aufgerufen (siehe dortiger Aufruf) - deckt dadurch, anders als Ring-Nebel/Asche (die nur
+// auf den jeweiligen Ringfeldern selbst liegen), die GESAMTE sichtbare Karte inkl. Wasser/Tundra ab,
+// und liegt farblich ueber allem bereits Gezeichneten (Figuren, Wetter, Ring-Effekte) - genau der
+// Sinn eines Gesamtstimmungs-Overlays. Reines Bildschirm-Koordinaten-Overlay (kein Welt-Bezug noetig,
+// bewegt sich also nicht mit der Kamera mit). Die vier Alpha-Stufen sind 1:1 aus dem abgestimmten
+// Mockup uebernommen.
+// NACHTRAG (nach erstem Test im echten Spiel): Die urspruenglichen Werte (1:1 aus dem Mockup) waren
+// im echten Spiel praktisch unsichtbar - gemessen per Screenshot-Diff zwischen 0 und 3 Ringen lag der
+// max. Farbabstand bei nur ~18/255 im Rotkanal, ueber die Flaeche gemittelt bei ~6/255. Zwei Gruende:
+// (1) die dunkle Kartenfarbe selbst laesst wenig "Spielraum" fuer eine zusaetzliche Verdunklung, und
+// (2) der Radialverlauf erreichte seine staerkste Stufe ("edge") erst bei 0.7*Breite, also genau dort,
+// wo die undurchsichtigen UI-Panels ohnehin alles verdecken - der sichtbare Kartenbereich in der Mitte
+// bekam praktisch nur den schwachen "center"-Wert ab. Deshalb: Werte grob verdreifacht, Verlauf enger
+// gezogen (Start bei 0.05*Breite statt 0.15*Breite), damit die staerkere Faerbung schon im sichtbaren
+// Kartenbereich ankommt statt erst unter den Panels.
+const MOOD_TINT_STOPS = [
+    { center: 0,    edge: 0    }, // 0 kollabierte Ringe - kein Overlay
+    { center: 0.10, edge: 0.20 }, // 1 - deutlich wahrnehmbar
+    { center: 0.18, edge: 0.35 }, // 2 - spuerbar waermer/bedrohlicher
+    { center: 0.30, edge: 0.55 }, // 3 - kraeftige Rottoenung, Spiel bleibt lesbar
+];
+function drawMoodTint() {
+    const ringsCollapsed = [closedRings.outer, closedRings.middle, closedRings.inner].filter(Boolean).length;
+    const stop = MOOD_TINT_STOPS[ringsCollapsed];
+    if (!stop || stop.edge <= 0) return;
+    fctx.save();
+    const w = fxCanvas.width, h = fxCanvas.height;
+    const grad = fctx.createRadialGradient(w / 2, h / 2, w * 0.05, w / 2, h / 2, w * 0.65);
+    grad.addColorStop(0, `rgba(150,15,10,${stop.center})`);
+    grad.addColorStop(1, `rgba(70,5,10,${stop.edge})`);
+    fctx.fillStyle = grad;
+    fctx.fillRect(0, 0, w, h);
+    fctx.restore();
+}
+
 function renderFX() {
     fctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
     const s = hexSize * camera.zoom, now = performance.now()/1000;
@@ -8251,6 +8303,10 @@ function renderFX() {
             drawShieldToken(fctx, centerX + offsetX, centerY + offsetY, tokenS, item.color, glow, GOD_ICON_BY_COLOR[item.color]);
         });
     });
+
+    // Gesamtstimmung (Rottönung, siehe drawMoodTint()-Kommentar) bewusst als ALLERLETZTER
+    // Zeichenschritt - legt sich damit ueber wirklich alles zuvor Gezeichnete (Figuren eingeschlossen).
+    drawMoodTint();
 
     updateRiverCompassPosition(); // #river-compass (siehe dortiger Kommentar) - haengt sich hier ein, weil renderFX() ohnehin als Dauerschleife bei jedem Kamera-Pan/Zoom laeuft
 }
