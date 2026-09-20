@@ -1210,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.31</div>
+                <div class="version-tag">v1.32</div>
             </div>
         </div>
 
@@ -1789,6 +1789,22 @@ let riverInterstitial = false;
 // Aktionspunkt - danach normal. Wird bei jedem Zugstart zurueckgesetzt (siehe startTurn()).
 let roadBonusUsedThisTurn = false;
 let pendingCardSlot = null, pushRemaining = 0, currentPushUnit = null;
+// Nutzerwunsch (2026-09-20): Inventar-Gegenstaende sollen auch WAEHREND des Kartenziehens (Zustand
+// "DRAWING", zwischen den beiden Kartenzuegen eines Zuges) benutzbar sein, nicht nur in CHOOSING/
+// MOVING. Aussetzen/Teleport/Gegner-zurueckwerfen wechseln dafuer kurzzeitig in einen eigenen
+// SELECT_*-Auswahlzustand (Zielfigur/-feld anklicken) - bisher sprang der Code nach Abschluss (oder
+// Abbruch per erneutem Klick auf denselben Inventar-Slot) IMMER hart zurueck auf "CHOOSING", egal aus
+// welchem Zustand heraus die Karte gestartet wurde. Das war bisher unsichtbar, weil Inventar-Nutzung
+// ohnehin nur aus CHOOSING/MOVING moeglich war und "zurueck nach CHOOSING" dort korrekt war - haette
+// man es jetzt einfach auch aus DRAWING heraus erlaubt, waere man nach Abschluss faelschlich in
+// CHOOSING statt DRAWING gelandet und haette den zweiten Kartenzug nur ueber "Karten ziehen" (setzt
+// drawPoints auf diesem Weg unerwuenscht wieder auf 2!) fortsetzen koennen. Dieser Merker haelt
+// deshalb fest, in welchen Zustand nach Abschluss/Abbruch zurueckgekehrt werden soll - siehe
+// handleInventoryClick() (setzt ihn) sowie performHexClick() (liest ihn statt hart "CHOOSING" zu
+// setzen). Muss wie pendingCardSlot mit ueber die Leitung/den lokalen Spielstand (siehe serializeState()/
+// applyRemoteState()/loadLocalSave()), sonst wuerde ein Sync/Reload mitten in der Auswahl die
+// Rueckkehr in den falschen Zustand verfaelschen.
+let pendingCardReturnState = "CHOOSING";
 let boatLandingTargets = [];
 let isGameOver = false;
 
@@ -3096,6 +3112,7 @@ function loadLocalSave() {
     selectedUnit = state.selectedUnit ? findUnitAt(state.selectedUnit.q, state.selectedUnit.r) : null;
     riverEscapeHexes = state.riverEscapeHexes || [];
     pendingCardSlot = state.pendingCardSlot; pushRemaining = state.pushRemaining;
+    pendingCardReturnState = state.pendingCardReturnState || "CHOOSING";
     currentPushUnit = state.currentPushUnit ? findUnitAt(state.currentPushUnit.q, state.currentPushUnit.r) : null;
     boatLandingTargets = state.boatLandingTargets || [];
     queuedRiverPlacementHexes = state.queuedRiverPlacementHexes || [];
@@ -3612,7 +3629,7 @@ function serializeState() {
         pendingRiverHex: pendingRiverHex ? { q: pendingRiverHex.q, r: pendingRiverHex.r } : null,
         selectedUnit: selectedUnit ? { q: selectedUnit.q, r: selectedUnit.r } : null,
         riverEscapeHexes: (riverEscapeHexes || []).map(h => ({ q: h.q, r: h.r })),
-        pendingCardSlot, pushRemaining,
+        pendingCardSlot, pushRemaining, pendingCardReturnState,
         currentPushUnit: currentPushUnit ? { q: currentPushUnit.q, r: currentPushUnit.r } : null,
         boatLandingTargets: (boatLandingTargets || []).map(h => ({ q: h.q, r: h.r })),
         // Landschaft-auf-stehende-Figur-Sonderzuege (siehe checkTurnEnd()/startRiverInterstitials()) -
@@ -3686,6 +3703,7 @@ function applyRemoteState(state) {
     selectedUnit = state.selectedUnit ? findUnitAt(state.selectedUnit.q, state.selectedUnit.r) : null;
     riverEscapeHexes = state.riverEscapeHexes || [];
     pendingCardSlot = state.pendingCardSlot; pushRemaining = state.pushRemaining;
+    pendingCardReturnState = state.pendingCardReturnState || "CHOOSING";
     currentPushUnit = state.currentPushUnit ? findUnitAt(state.currentPushUnit.q, state.currentPushUnit.r) : null;
     boatLandingTargets = state.boatLandingTargets || [];
     queuedRiverPlacementHexes = state.queuedRiverPlacementHexes || [];
@@ -4996,24 +5014,29 @@ function handleInventoryClick(slotIdx) {
     const p = players[currentPlayerIdx], card = p.inventory[slotIdx];
     if (gameState === "SWAP_CARD") { addLogEntry(`🔄 ${playerLabel(p)} tauscht Karte im Inventar: ${card ? (card.icon+' '+card.name) : '?'} raus, ${currentCard.icon} ${currentCard.name} rein`); p.inventory[slotIdx] = currentCard; discardNewCard(true); return; }
     
-    if (pendingCardSlot === slotIdx && gameState !== "CHOOSING" && gameState !== "MOVING") {
+    if (pendingCardSlot === slotIdx && gameState !== "CHOOSING" && gameState !== "MOVING" && gameState !== "DRAWING") {
         pendingCardSlot = null;
         selectedUnit = null;
         currentPushUnit = null;
         pushRemaining = 0;
-        gameState = "CHOOSING";
+        gameState = pendingCardReturnState; // siehe pendingCardReturnState-Kommentar oben - statt hart "CHOOSING"
+        pendingCardReturnState = "CHOOSING";
         updateUI();
         render();
         return;
     }
 
-    if (gameState === "CHOOSING" || gameState === "MOVING") {
+    // Nutzerwunsch: Inventar-Gegenstaende jetzt auch waehrend "DRAWING" nutzbar - also auch zwischen
+    // den beiden Kartenzuegen eines Zuges, nicht mehr nur davor/danach (CHOOSING) oder waehrend des
+    // Bewegens (MOVING). Siehe pendingCardReturnState-Kommentar oben fuer den Grund, warum die
+    // SELECT_*-Unterzustaende unten sich den Ausgangszustand merken muessen.
+    if (gameState === "CHOOSING" || gameState === "MOVING" || gameState === "DRAWING") {
         if (!card) return;
         if (card.type === 'tool_hook' || card.type === 'tool_boat') { alert("Dies ist ein passives Werkzeug. Es wird automatisch benutzt, wenn du auf das entsprechende Feld ziehst!"); return; }
         if (card.type === 'extra_move') { playSoundCard(); addLogEntry(`🏃 ${playerLabel(p)} spielt Extra Zug`); p.inventory.splice(slotIdx, 1); actionPoints++; pathMoved = false; }
-        else if (card.type === 'skip_turn') { gameState = "SELECT_SKIP"; pendingCardSlot = slotIdx; }
-        else if (card.type === 'teleport') { gameState = "SELECT_TELEPORT_UNIT"; pendingCardSlot = slotIdx; }
-        else if (card.type === 'push_enemy') { gameState = "SELECT_PUSH_TARGET_1"; pendingCardSlot = slotIdx; pushRemaining = 2; currentPushUnit = null; } 
+        else if (card.type === 'skip_turn') { pendingCardReturnState = gameState; gameState = "SELECT_SKIP"; pendingCardSlot = slotIdx; }
+        else if (card.type === 'teleport') { pendingCardReturnState = gameState; gameState = "SELECT_TELEPORT_UNIT"; pendingCardSlot = slotIdx; }
+        else if (card.type === 'push_enemy') { pendingCardReturnState = gameState; gameState = "SELECT_PUSH_TARGET_1"; pendingCardSlot = slotIdx; pushRemaining = 2; currentPushUnit = null; }
         updateUI();
     }
 }
@@ -7292,7 +7315,7 @@ function performHexClick(rx, rz, hex) {
             currentPushUnit = null; selectedUnit = null;
             pushRemaining--;
             if (pushRemaining > 0) gameState = "SELECT_PUSH_TARGET_2";
-            else { playSoundCard(); players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; }
+            else { playSoundCard(); players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = pendingCardReturnState; pendingCardReturnState = "CHOOSING"; }
         }
     } else if (gameState === "PLACING_TERRAIN" && currentCard) {
         // Bugfix (Nutzer-Spielverlauf-Export, 2026-09-19): 'water' fehlte hier - dies ist die
@@ -7350,7 +7373,7 @@ function performHexClick(rx, rz, hex) {
             showNotification(`⏭️ ${playerLabel(owner).toUpperCase()} SETZT SCHON AUS – KARTE WIRKUNGSLOS`);
         } else if (owner) {
             playSoundCard();
-            addLogEntry(`🚫 ${playerLabel(players[currentPlayerIdx])} spielt Aussetzen-Karte gegen ${playerLabel(owner)}`); owner.skipped = true; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING";
+            addLogEntry(`🚫 ${playerLabel(players[currentPlayerIdx])} spielt Aussetzen-Karte gegen ${playerLabel(owner)}`); owner.skipped = true; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = pendingCardReturnState; pendingCardReturnState = "CHOOSING";
         }
     } else if (gameState === "SELECT_TELEPORT_UNIT") {
         const u = players[currentPlayerIdx].units.find(u => u.q === rx && u.r === rz); if (u) { selectedUnit = u; gameState = "SELECT_TELEPORT_TARGET"; }
@@ -7359,7 +7382,7 @@ function performHexClick(rx, rz, hex) {
         if (lm && lm.looted) {
             playSoundCard();
             addLogEntry(`✨ ${playerLabel(players[currentPlayerIdx])} teleportiert Figur: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
-            selectedUnit.q = rx; selectedUnit.r = rz; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); selectedUnit = null; gameState = "CHOOSING";
+            selectedUnit.q = rx; selectedUnit.r = rz; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); selectedUnit = null; gameState = pendingCardReturnState; pendingCardReturnState = "CHOOSING";
         }
     } else if (gameState === "SELECT_PUSH_TARGET_1" || gameState === "SELECT_PUSH_TARGET_2") {
         const u = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz))?.units.find(u => u.q === rx && u.r === rz);
@@ -7373,7 +7396,7 @@ function performHexClick(rx, rz, hex) {
             if (!handlePushFlow(currentPushUnit)) {
                 pushRemaining--;
                 if (pushRemaining > 0) { gameState = "SELECT_PUSH_TARGET_2"; currentPushUnit = null; }
-                else { playSoundCard(); players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = "CHOOSING"; currentPushUnit = null; }
+                else { playSoundCard(); players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); gameState = pendingCardReturnState; pendingCardReturnState = "CHOOSING"; currentPushUnit = null; }
             }
         }
     }
