@@ -13,10 +13,30 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// ---------------------------------------------------------------------------
+// Admin-Ansicht (Nutzerwunsch: als Entwickler sehen, welche Räume gerade offen
+// sind, ohne den Raum-Code vorher zu kennen, und von dort direkt als Zuschauer
+// beitreten koennen). Bewusst KEIN echtes Login mit Benutzerkonto/Datenbank
+// (siehe Chat-Verlauf dazu) - stattdessen ein einzelnes geteiltes Passwort,
+// das der Server per Umgebungsvariable bekommt (Fallback fuer lokales Testen/
+// falls die Variable auf Render nicht gesetzt wird). WICHTIG: das echte
+// Passwort sollte als ADMIN_PASSWORD-Umgebungsvariable bei Render hinterlegt
+// werden, statt sich auf den Fallback-Wert hier zu verlassen - der Fallback
+// landet sonst im (evtl. oeffentlichen) GitHub-Repo.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'MTS666';
+// Signiert den Session-Cookie (siehe signAdminToken()/verifyAdminToken() unten) - komplett
+// zustandslos (kein Datenspeicher noetig), leitet sich mangels eigener Variable einfach vom
+// Passwort selbst ab. Kann ueber eine eigene ADMIN_SESSION_SECRET-Variable ueberschrieben
+// werden, ist aber fuer dieses kleine Freundes-Projekt nicht zwingend noetig.
+const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || ('botg-admin-session-' + ADMIN_PASSWORD);
+const ADMIN_COOKIE_NAME = 'botg_admin_session';
+const ADMIN_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 Tage eingeloggt bleiben
 
 const MIME = {
     '.html': 'text/html; charset=utf-8',
@@ -60,7 +80,197 @@ function serveStatic(req, res) {
     });
 }
 
-const server = http.createServer(serveStatic);
+// ---------------------------------------------------------------------------
+// Admin-Ansicht: /admin zeigt (nach Passwort-Eingabe) die gerade offenen
+// Raeume, damit der Entwickler ein laufendes Spiel finden kann, ohne den
+// Raum-Code vorher zu kennen - siehe Kommentar bei ADMIN_PASSWORD oben.
+// Bewusst als eigene kleine Routing-Schicht VOR serveStatic() (siehe
+// requestHandler() weiter unten), nicht als echtes Framework - passt damit
+// zum Rest dieses Servers ("kein Express noetig").
+// ---------------------------------------------------------------------------
+
+// Signierter, zustandsloser Session-Token (Ablaufzeitstempel + HMAC-Signatur) -
+// braucht dadurch KEINEN serverseitigen Sitzungsspeicher (der ja bei jedem
+// Neustart/Redeploy ohnehin verloren ginge, siehe restliche In-Memory-Architektur
+// dieses Servers). Ein abgelaufener oder mit falschem Secret signierter Token
+// gilt einfach als "nicht eingeloggt".
+function signAdminToken(expiresAt) {
+    const payload = String(expiresAt);
+    const sig = crypto.createHmac('sha256', ADMIN_SESSION_SECRET).update(payload).digest('hex');
+    return `${payload}.${sig}`;
+}
+function verifyAdminToken(token) {
+    if (!token || typeof token !== 'string') return false;
+    const dot = token.indexOf('.');
+    if (dot === -1) return false;
+    const payload = token.slice(0, dot), sig = token.slice(dot + 1);
+    const expected = crypto.createHmac('sha256', ADMIN_SESSION_SECRET).update(payload).digest('hex');
+    // Laengen muessen fuer timingSafeEqual identisch sein, sonst wirft es eine Ausnahme statt
+    // einfach "false" zu liefern - ein Laengenunterschied bedeutet aber ohnehin "ungueltig".
+    if (sig.length !== expected.length) return false;
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+    const expiresAt = Number(payload);
+    return Number.isFinite(expiresAt) && Date.now() < expiresAt;
+}
+function parseCookies(req) {
+    const out = {};
+    const header = req.headers.cookie;
+    if (!header) return out;
+    header.split(';').forEach(part => {
+        const eq = part.indexOf('=');
+        if (eq === -1) return;
+        const k = part.slice(0, eq).trim();
+        if (k) out[k] = decodeURIComponent(part.slice(eq + 1).trim());
+    });
+    return out;
+}
+function isAdminAuthed(req) { return verifyAdminToken(parseCookies(req)[ADMIN_COOKIE_NAME]); }
+
+// Fuer alles, was aus Spielernamen (freier Text, siehe sanitizeName()) oder Raum-Codes in die
+// Admin-Seite eingebettet wird - ein Spieler koennte sonst per Namensfeld eigenes HTML/JS in
+// die Admin-Seite einschleusen (Self-XSS gegen den eingeloggten Entwickler).
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Liest den POST-Body ein (application/x-www-form-urlencoded, vom simplen HTML-<form> unten) -
+// mit Groessenlimit, damit niemand den Server mit einem endlosen Request-Body traktieren kann.
+function readBody(req, maxBytes, cb) {
+    let size = 0; const chunks = []; let aborted = false;
+    req.on('data', chunk => {
+        size += chunk.length;
+        if (size > maxBytes) { aborted = true; try { req.destroy(); } catch (e) {} return; }
+        chunks.push(chunk);
+    });
+    req.on('end', () => { if (!aborted) cb(Buffer.concat(chunks).toString('utf8')); });
+    req.on('error', () => {});
+}
+function sendHtml(res, status, html) {
+    res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(html);
+}
+
+const ADMIN_PAGE_STYLE = `
+    body { background:#12161c; color:#e8e6df; font-family:system-ui,-apple-system,sans-serif; margin:0; padding:32px 16px; }
+    .wrap { max-width:820px; margin:0 auto; }
+    h1 { font-size:1.4em; margin:0 0 4px; }
+    .sub { color:#9099a8; font-size:0.9em; margin:0 0 24px; }
+    form.login { display:flex; gap:8px; max-width:320px; }
+    input[type=password] { flex:1; padding:10px 12px; border-radius:8px; border:1px solid #3a4250; background:#1c222c; color:#e8e6df; }
+    button, .btn { padding:10px 16px; border-radius:8px; border:1px solid #d4af37; background:#d4af37; color:#1c1a12; font-weight:600; cursor:pointer; text-decoration:none; display:inline-block; }
+    .error { color:#ff6b6b; margin-bottom:12px; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th, td { text-align:left; padding:10px 8px; border-bottom:1px solid #2a3038; font-size:0.92em; vertical-align:middle; }
+    th { color:#9099a8; font-weight:600; font-size:0.8em; text-transform:uppercase; letter-spacing:0.04em; }
+    .code { font-family:monospace; font-size:1.05em; letter-spacing:0.05em; }
+    .chip { display:inline-block; padding:2px 8px; margin:2px 3px 2px 0; border-radius:999px; background:#1c222c; border:1px solid var(--c,#555); font-size:0.85em; }
+    .muted { color:#5a6270; }
+    .empty { color:#9099a8; padding:24px 0; }
+    .top-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    a.logout { color:#9099a8; font-size:0.85em; }
+`;
+
+function adminLoginPageHtml(showError) {
+    return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin – Battle of the Gods</title><style>${ADMIN_PAGE_STYLE}</style></head><body><div class="wrap">
+<h1>🔒 Admin-Zugang</h1>
+<p class="sub">Battle of the Gods – offene Räume einsehen</p>
+${showError ? '<p class="error">Falsches Passwort.</p>' : ''}
+<form class="login" method="POST" action="/admin/login">
+  <input type="password" name="password" placeholder="Passwort" autofocus required autocomplete="current-password">
+  <button type="submit">Einloggen</button>
+</form>
+</div></body></html>`;
+}
+
+function adminRoomsPageHtml() {
+    const entries = Array.from(rooms.entries());
+    // Laufende Partien zuerst, danach nach Mitgliederzahl - die interessantesten Raeume oben.
+    entries.sort((a, b) => {
+        const aStarted = !!a[1].latestState, bStarted = !!b[1].latestState;
+        if (aStarted !== bStarted) return aStarted ? -1 : 1;
+        return b[1].members.size - a[1].members.size;
+    });
+    const rows = entries.map(([code, room]) => {
+        const members = Array.from(room.members.values());
+        const players = members.filter(m => !m.spectator);
+        const spectators = members.filter(m => m.spectator);
+        const started = !!room.latestState;
+        const round = (started && room.latestState && room.latestState.roundCount) ? room.latestState.roundCount : null;
+        const playerChips = players.length
+            ? players.map(p => `<span class="chip" style="--c:${escapeHtml(p.color)}">${escapeHtml(p.name)}</span>`).join('')
+            : '<span class="muted">–</span>';
+        const joinUrl = `/?room=${encodeURIComponent(code)}&spectator=1`;
+        return `<tr>
+            <td class="code">${escapeHtml(code)}</td>
+            <td>${started ? ('🟢 läuft' + (round ? ` · Runde ${escapeHtml(String(round))}` : '')) : '🟡 Lobby'}</td>
+            <td>${playerChips}</td>
+            <td>${spectators.length}</td>
+            <td><a class="btn" href="${joinUrl}" target="_blank" rel="noopener">👀 Zuschauen</a></td>
+        </tr>`;
+    }).join('\n');
+
+    const body = entries.length
+        ? `<table><thead><tr><th>Code</th><th>Status</th><th>Spieler</th><th>Zuschauer</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+        : `<p class="empty">Gerade sind keine Räume offen.</p>`;
+
+    return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="20">
+<title>Admin – Battle of the Gods</title><style>${ADMIN_PAGE_STYLE}</style></head><body><div class="wrap">
+<div class="top-row"><div><h1>🎮 Offene Räume</h1><p class="sub">Aktualisiert automatisch alle 20s · ${entries.length} Raum/Räume gerade aktiv</p></div>
+<form method="POST" action="/admin/logout"><button type="submit" style="background:transparent;border-color:#3a4250;color:#9099a8;font-weight:400;">Ausloggen</button></form></div>
+${body}
+</div></body></html>`;
+}
+
+function handleAdminGet(req, res) {
+    if (!isAdminAuthed(req)) {
+        const qs = new URLSearchParams(req.url.split('?')[1] || '');
+        sendHtml(res, 200, adminLoginPageHtml(qs.get('error') === '1'));
+        return;
+    }
+    sendHtml(res, 200, adminRoomsPageHtml());
+}
+
+function handleAdminLogin(req, res) {
+    readBody(req, 2048, body => {
+        const params = new URLSearchParams(body);
+        const password = params.get('password') || '';
+        const ok = password.length === ADMIN_PASSWORD.length
+            && crypto.timingSafeEqual(Buffer.from(password), Buffer.from(ADMIN_PASSWORD));
+        if (!ok) {
+            res.writeHead(302, { Location: '/admin?error=1' });
+            res.end();
+            return;
+        }
+        const token = signAdminToken(Date.now() + ADMIN_SESSION_MAX_AGE_MS);
+        res.writeHead(302, {
+            'Set-Cookie': `${ADMIN_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(ADMIN_SESSION_MAX_AGE_MS / 1000)}`,
+            Location: '/admin'
+        });
+        res.end();
+    });
+}
+
+function handleAdminLogout(req, res) {
+    res.writeHead(302, {
+        'Set-Cookie': `${ADMIN_COOKIE_NAME}=; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=0`,
+        Location: '/admin'
+    });
+    res.end();
+}
+
+// Kleine Routing-Schicht: /admin* wird hier abgefangen, alles andere geht weiter an den
+// bestehenden statischen Datei-Server (unveraendert).
+function requestHandler(req, res) {
+    const urlPath = req.url.split('?')[0];
+    if (urlPath === '/admin' && req.method === 'GET') return handleAdminGet(req, res);
+    if (urlPath === '/admin/login' && req.method === 'POST') return handleAdminLogin(req, res);
+    if (urlPath === '/admin/logout' && req.method === 'POST') return handleAdminLogout(req, res);
+    return serveStatic(req, res);
+}
+
+const server = http.createServer(requestHandler);
 
 // ---------------------------------------------------------------------------
 // WebSocket-Raeume
