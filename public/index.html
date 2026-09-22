@@ -672,6 +672,12 @@
             position: fixed; inset: 0; z-index: 3011; display: flex; align-items: center; justify-content: center;
             background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
         }
+        /* Metamorphose-Zielwahl-Popup (siehe #metamorphose-overlay im Markup/chooseMetaTarget() im JS) -
+           dasselbe Ueberlagerungs-Prinzip wie #kickvote-overlay/#leave-game-overlay. */
+        #metamorphose-overlay {
+            position: fixed; inset: 0; z-index: 3011; display: flex; align-items: center; justify-content: center;
+            background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
+        }
         #leave-game-status { text-align: center; font-family: 'Cinzel', serif; font-size: 0.82em; letter-spacing: 0.5px; margin-top: 12px; min-height: 1.4em; }
         #leave-game-status.ok { color: #8fd19e; }
         #feedback-overlay {
@@ -1210,7 +1216,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.33</div>
+                <div class="version-tag">v1.35</div>
             </div>
         </div>
 
@@ -1473,6 +1479,21 @@
             <button class="btn btn-gold" onclick="castKickVote('wait')">⏳ Noch 5 Minuten geben</button>
             <button class="btn btn-secondary" onclick="confirmLeaveGame()">🚪 Selbst verlassen</button>
         </div>
+    </div>
+</div>
+
+<!-- Metamorphose-Zielwahl-Popup (siehe SELECT_META_TARGET/chooseMetaTarget()/renderMetamorphoseOverlay()
+     im JS-Abschnitt "METAMORPHOSE-KARTE + ZWANGSRÄUMUNG VOM BERG"): erscheint, sobald eine gültige
+     Feldgruppe angeklickt wurde, und bietet die 3 übrigen Landschafts-Typen als Ziel an. -->
+<div id="metamorphose-overlay" class="hidden">
+    <div class="feedback-box leave-game-box">
+        <div class="corner-tl"></div><div class="corner-tr"></div>
+        <div class="corner-bl"></div><div class="corner-br"></div>
+        <div class="tutorial-icon">🦋</div>
+        <div class="tutorial-title">Metamorphose</div>
+        <p class="menu-subtitle" style="margin-bottom:14px;">Wähle den neuen Landschafts-Typ für die gewählte Feldgruppe.</p>
+        <div id="metamorphose-target-buttons" class="feedback-nav" style="flex-direction:column; gap:10px;"></div>
+        <button class="btn btn-secondary" style="margin-top:10px;" onclick="cancelMetaSelection()">Abbrechen</button>
     </div>
 </div>
 
@@ -1785,6 +1806,29 @@ let riverInterstitialResumeRoundBump = false; // true, wenn beim Zurueckschalten
 // der Eingabe die normalen Zugende-Regeln (finishPath()/checkTurnEnd()) gelten oder stattdessen die
 // Warteschlange weiterlaeuft (siehe processNextRiverInterstitial()).
 let riverInterstitial = false;
+// =====================================================================
+// METAMORPHOSE-KARTE + ZWANGSRÄUMUNG VOM BERG
+// =====================================================================
+// Ablauf beim Spielen der Metamorphose-Karte: SELECT_META_GROUP (Feldgruppe anklicken) ->
+// SELECT_META_TARGET (Zieltyp im Overlay waehlen) -> bei Ziel "Fluss" zusaetzlich META_MOUTH
+// (Muendung festlegen, nutzt denselben Fluss-Kompass wie ROTATING_RIVER). metaGroup haelt die per
+// Flutfuellung gefundene, zusammenhaengende Feldgruppe (siehe floodFillSameTerrain()).
+let metaGroup = [];
+let metaTargetType = null;
+// Warteschlange fuer Figuren, die ohne Seil & Haken auf einem neu entstandenen Bergfeld stehen (siehe
+// resolveMountainOccupants()) - analog zu queuedRiverPlacementHexes/riverInterstitialQueue, aber schon
+// direkt auf Figuren-Ebene statt erst ueber Feld-Koordinaten aufgeloest zu werden (Eintraege:
+// {ownerId, unitQ, unitR}). Wird wie die Fluss-Warteschlange erst am Zugende der handelnden Person
+// abgearbeitet (siehe checkTurnEnd()/processInterstitialChains()/processNextMountainEviction()).
+let mountainEvictionQueue = [];
+// Kandidaten-Felder fuer die aktuell zu raeumende Figur, falls mehrere gleich nahe freie Felder
+// existieren - dann waehlt die betroffene Person selbst (siehe SELECT_EVICTION_TARGET).
+let evictionTargets = [];
+// true, waehrend eine vom Berg vertriebene Figur zusaetzlich noch RIVER_ESCAPE/BOAT_LANDING durchlaufen
+// muss (weil das naechstgelegene freie Feld ein Fluss war) - steuert wie riverInterstitial, wohin es
+// danach zurueckgeht (siehe performHexClick()/sweepUnitAlongRiver()).
+let mountainEvictionRiverLanding = false;
+
 // Regel "Straßenbonus": der erste Schritt auf/entlang einer Straße in einem Zug kostet keinen
 // Aktionspunkt - danach normal. Wird bei jedem Zugstart zurueckgesetzt (siehe startTurn()).
 let roadBonusUsedThisTurn = false;
@@ -2709,10 +2753,10 @@ function generateRuinLandscapes() {
                     const type = (index % 2 === 0) ? 'mountains' : 'river';
                     applyTerrain(nHex, type);
                     // NEU: Flüsse zeigen nach außen (Richtung = Index)
-                    if (type === 'river') nHex.direction = index; 
+                    if (type === 'river') nHex.direction = index;
                 }
             });
-            return; 
+            return;
         }
 
         // --- NORMALE RUINEN ---
@@ -2728,7 +2772,7 @@ function generateRuinLandscapes() {
         } else if (centerHex.terrain === 'hills') {
             targetType = 'forest';
             forbiddenNeighbor = 'plains';
-        } 
+        }
         // Tundra -> nichts tun
 
         if (targetType) {
@@ -2790,30 +2834,190 @@ function wouldTrapAnyUnit(targetHex) {
 
 // Liefert ALLE Figuren (ueber alle Spieler hinweg) auf einem Feld, jeweils mit ihrem Besitzer -
 // gebraucht, seit Landschaftskarten jetzt auch auf bereits besetzte Felder gesetzt werden duerfen
-// (siehe canPlaceMountainOnHex()/performHexClick()/startRiverInterstitials() weiter unten).
+// (siehe resolveMountainOccupants()/performHexClick()/startRiverInterstitials() weiter unten).
 function getUnitsAt(q, r) {
     const result = [];
     players.forEach(pl => pl.units.forEach(u => { if (u.q === q && u.r === r) result.push({ player: pl, unit: u }); }));
     return result;
 }
 
-// Berg auf ein bereits besetztes Feld setzen: nur erlaubt, wenn ALLE dort stehenden Figuren-Besitzer
-// je einen Seil & Haken PRO EIGENER FIGUR auf dem Feld beisteuern koennen (zwei eigene Figuren auf
-// demselben Feld brauchen also zwei Karten) - fehlt auch nur einer davon, ist das GESAMTE Feld fuer
-// die Berg-Platzierung gesperrt (kein Teil-Erfolg, "alles oder nichts" pro Feld). Beim Fluss gilt das
-// NICHT - dort wird stattdessen jede betroffene Figur einzeln nach den normalen Fluss-Regeln behandelt
-// (siehe startRiverInterstitials()).
-function canPlaceMountainOnHex(hex) {
-    const occupants = getUnitsAt(hex.q, hex.r);
-    if (occupants.length === 0) return true;
-    const neededByOwner = new Map();
-    occupants.forEach(o => neededByOwner.set(o.player.id, (neededByOwner.get(o.player.id) || 0) + 1));
-    for (const [ownerId, needed] of neededByOwner) {
-        const owner = players.find(pl => pl.id === ownerId);
-        const have = owner ? owner.inventory.filter(c => c.type === 'tool_hook').length : 0;
-        if (have < needed) return false;
+// Ersetzt durch die Zwangsraeumungs-Regel (siehe mountainEvictionQueue/resolveMountainOccupants()
+// weiter unten, Aufruf aus performHexClick()): eine Bergplatzierung/-verwandlung auf einer besetzten
+// Figur wird nicht mehr komplett blockiert, wenn der/die Besitzer:in keinen Seil & Haken hat -
+// stattdessen bleibt die Platzierung gueltig und die betroffene Figur wird am Zugende automatisch vom
+// Berg vertrieben (naechstgelegenes freies Feld). Die alte "alles oder nichts"-Sperre
+// canPlaceMountainOnHex() gibt es deshalb nicht mehr. Fluss auf eine stehende Figur war schon immer
+// separat geregelt (siehe startRiverInterstitials()) und bleibt unveraendert.
+
+// ---------- Metamorphose: Feldgruppe + Zieltyp waehlen ----------
+const ALL_LANDSCAPE_TYPES = [
+    { type: 'mountains', name: 'Berg', icon: '⛰️' },
+    { type: 'forest', name: 'Wald', icon: '🌲' },
+    { type: 'river', name: 'Fluss', icon: '🌊' },
+    { type: 'road', name: 'Straße', icon: '🛤️' }
+];
+// Flutfuellung ausgehend von (startQ,startR): liefert alle Felder derselben, zusammenhaengenden
+// Landschaftsgruppe (gleicher hex.terrain wie das Startfeld) - generische Variante von
+// getConnectedRivers() fuer beliebige Landschaftstypen, gebraucht fuer SELECT_META_GROUP.
+function floodFillSameTerrain(startQ, startR) {
+    const origin = mapData.hexes[`${startQ},${startR}`];
+    if (!origin) return [];
+    const terrain = origin.terrain;
+    const visited = new Set();
+    const queue = [{ q: startQ, r: startR }];
+    const group = [];
+    while (queue.length > 0) {
+        const cur = queue.shift();
+        const key = `${cur.q},${cur.r}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        const h = mapData.hexes[key];
+        if (!h || h.terrain !== terrain) continue;
+        group.push(h);
+        hexDirections.forEach(d => {
+            const nq = cur.q + d.q, nr = cur.r + d.r;
+            if (!visited.has(`${nq},${nr}`)) queue.push({ q: nq, r: nr });
+        });
     }
-    return true;
+    return group;
+}
+function renderMetamorphoseOverlay() {
+    const overlay = document.getElementById('metamorphose-overlay');
+    if (gameState !== 'SELECT_META_TARGET' || metaGroup.length === 0) { overlay.classList.add('hidden'); return; }
+    overlay.classList.remove('hidden');
+    const currentType = metaGroup[0].terrain;
+    const wrap = document.getElementById('metamorphose-target-buttons');
+    wrap.innerHTML = ALL_LANDSCAPE_TYPES.filter(t => t.type !== currentType).map(t =>
+        `<button class="btn btn-gold" onclick="chooseMetaTarget('${t.type}')">${t.icon} ${t.name}</button>`
+    ).join('');
+}
+function cancelMetaSelection() {
+    metaGroup = []; metaTargetType = null; pendingRiverHex = null;
+    gameState = pendingCardReturnState; pendingCardReturnState = "CHOOSING";
+    updateUI(); render();
+}
+function chooseMetaTarget(type) {
+    if (gameState !== 'SELECT_META_TARGET') return;
+    metaTargetType = type;
+    if (type === 'river') {
+        pendingRiverHex = null;
+        gameState = 'META_MOUTH';
+        updateUI(); render();
+    } else {
+        applyMetaNonRiver(type);
+    }
+}
+// Prueft (fuer Ziel "Berg") in EINEM Rutsch, ob die komplette Gruppe als Berg irgendeine Figur auf der
+// Karte komplett einmauern wuerde - bewusst NICHT durch getrenntes Aufrufen von wouldTrapAnyUnit() pro
+// Feld, weil sich der Effekt erst durch die Kombination mehrerer gleichzeitig neuer Bergfelder ergeben
+// kann (jedes Feld fuer sich allein wuerde den letzten Fluchtweg evtl. noch nicht komplett zubauen).
+function metaGroupWouldTrapAnyUnit() {
+    const groupKeys = new Set(metaGroup.map(h => `${h.q},${h.r}`));
+    for (const p of players) {
+        for (const u of p.units) {
+            const stillOpenElsewhere = hexDirections.some(d => {
+                const nq = u.q + d.q, nr = u.r + d.r;
+                if (groupKeys.has(`${nq},${nr}`)) return false;
+                const nh = mapData.hexes[`${nq},${nr}`];
+                return nh && !['mountains', 'water', 'void'].includes(nh.terrain);
+            });
+            if (!stillOpenElsewhere) return true;
+        }
+    }
+    return false;
+}
+function applyMetaNonRiver(type) {
+    if (type === 'mountains' && metaGroupWouldTrapAnyUnit()) {
+        alert("Hier kannst du nicht verwandeln - mindestens eine Figur würde komplett eingemauert!");
+        return;
+    }
+    playSoundTileClick();
+    const typeInfo = ALL_LANDSCAPE_TYPES.find(t => t.type === type);
+    metaGroup.forEach(h => { h.terrain = type; bakeHex(h); });
+    addLogEntry(`🦋 ${playerLabel(players[currentPlayerIdx])} verwandelt ${metaGroup.length} Feld(er) mit Metamorphose in ${typeInfo.icon} ${typeInfo.name}`);
+    if (type === 'mountains') metaGroup.forEach(h => resolveMountainOccupants(h));
+    finishMetaCard();
+}
+// Baut, ausgehend vom gewaehlten Muendungsfeld (mouthHex, dessen Richtung schon per Fluss-Kompass
+// gesetzt wurde), per Breitensuche INNERHALB der Gruppe einen Fluss-Baum: jedes andere Feld der Gruppe
+// bekommt die Richtung zugewiesen, die zu seinem Nachbarn eine Stufe naeher an der Muendung zeigt.
+// Bildet die Gruppe geometrisch einen geschlossenen Ring, entscheidet die (deterministische) Reihenfolge
+// von hexDirections/BFS, welche Seite "gewinnt" - technisch eine feste Konvention statt einer echten
+// geometrischen Uhrzeigersinn-Berechnung, faellt aber praktisch mit ihr zusammen.
+function assignMetaRiverDirections(group, mouthHex) {
+    const groupSet = new Set(group.map(h => `${h.q},${h.r}`));
+    const parentDir = new Map();
+    const visited = new Set([`${mouthHex.q},${mouthHex.r}`]);
+    const queue = [mouthHex];
+    while (queue.length > 0) {
+        const cur = queue.shift();
+        hexDirections.forEach((d, dirIdx) => {
+            const nq = cur.q + d.q, nr = cur.r + d.r, key = `${nq},${nr}`;
+            if (!groupSet.has(key) || visited.has(key)) return;
+            visited.add(key);
+            parentDir.set(key, opposite(dirIdx));
+            queue.push(mapData.hexes[key]);
+        });
+    }
+    group.forEach(h => {
+        const key = `${h.q},${h.r}`;
+        if (key === `${mouthHex.q},${mouthHex.r}`) return;
+        h.direction = parentDir.has(key) ? parentDir.get(key) : (h.direction || 0);
+    });
+}
+function confirmMetaMouth() {
+    if (!pendingRiverHex) return;
+    assignMetaRiverDirections(metaGroup, pendingRiverHex);
+    metaGroup.forEach(h => { h.terrain = 'river'; bakeHex(h); });
+    addLogEntry(`🦋 ${playerLabel(players[currentPlayerIdx])} verwandelt ${metaGroup.length} Feld(er) mit Metamorphose in 🌊 Fluss`);
+    metaGroup.forEach(h => queueRiverPlacementIfOccupied(h));
+    pendingRiverHex = null;
+    finishMetaCard();
+}
+function finishMetaCard() {
+    metaGroup = []; metaTargetType = null;
+    playSoundCard();
+    players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1);
+    gameState = pendingCardReturnState; pendingCardReturnState = "CHOOSING";
+    updateUI(); render();
+}
+// ---------- Zwangsraeumung vom Berg (kein Seil & Haken) ----------
+// Ersetzt consumeHooksForMountainPlacement(): verbraucht weiterhin Seil & Haken PRO Figur, wenn
+// vorhanden, aber blockiert die Platzierung nicht mehr, falls nicht genug Karten da sind - stattdessen
+// wird jede Figur ohne verfuegbaren Haken in mountainEvictionQueue eingereiht und am Zugende zwangs-
+// geraeumt (siehe processNextMountainEviction()).
+function resolveMountainOccupants(hex) {
+    const occupants = getUnitsAt(hex.q, hex.r);
+    if (occupants.length === 0) return;
+    const byOwner = new Map();
+    occupants.forEach(o => { if (!byOwner.has(o.player)) byOwner.set(o.player, []); byOwner.get(o.player).push(o.unit); });
+    const consumedNames = [];
+    byOwner.forEach((units, owner) => {
+        units.forEach(unit => {
+            const idx = owner.inventory.findIndex(c => c.type === 'tool_hook');
+            if (idx !== -1) {
+                owner.inventory.splice(idx, 1);
+                if (!consumedNames.includes(playerLabel(owner))) consumedNames.push(playerLabel(owner));
+            } else {
+                mountainEvictionQueue.push({ ownerId: owner.id, unitQ: unit.q, unitR: unit.r });
+            }
+        });
+    });
+    if (consumedNames.length > 0) showNotification(`⛰️ Berg unter stehender Figur gesetzt - Seil & Haken von ${consumedNames.join(', ')} verbraucht!`);
+}
+// Naechstgelegene(s) freie(s) Feld(er) per reiner Hex-Luftlinie (kein begehbarer Pfad noetig) - "frei"
+// heisst hier: kein Berg (die Figur hat ja gerade KEINEN Haken), kein Wasser/void. Gibt bei mehreren
+// gleich nahen Treffern ALLE zurueck, damit die betroffene Person selbst waehlen kann.
+function findNearestFreeHexes(q, r) {
+    let minDist = Infinity, best = [];
+    Object.values(mapData.hexes).forEach(h => {
+        if (['mountains', 'water', 'void'].includes(h.terrain)) return;
+        const d = getHexDistance(q, r, h.q, h.r);
+        if (d === 0) return;
+        if (d < minDist) { minDist = d; best = [h]; }
+        else if (d === minDist) best.push(h);
+    });
+    return best;
 }
 
 // =====================================================================
@@ -3806,8 +4010,22 @@ function npcStep(p) {
         case 'SELECT_TELEPORT_TARGET': return npcDoSelectTeleportTarget(p, diff);
         case 'SELECT_PUSH_TARGET_1': case 'SELECT_PUSH_TARGET_2': return npcDoSelectPushTarget(p, diff);
         case 'SELECT_PUSH_DESTINATION': return npcDoSelectPushDestination(p, diff);
+        case 'SELECT_EVICTION_TARGET': return npcDoSelectEvictionTarget(p, diff);
+        // SELECT_META_GROUP/SELECT_META_TARGET/META_MOUTH: keine KI-Behandlung noetig, siehe
+        // npcCardUsefulness() - eine KI bewertet Metamorphose immer mit 0 und spielt die Karte
+        // dadurch nie aktiv aus (genau wie sie z.B. auch nie eine ihr unbekannte neue Kartenart
+        // faelschlich einsetzen wuerde), diese Zustaende werden fuer eine KI also nie erreicht.
         default: return; // unbekannter/kurzlebiger Zustand - beim naechsten Tick erneut schauen
     }
+}
+
+// KI muss (unabhaengig davon, wer die Bergkarte/Metamorphose gespielt hat) ohne Seil & Haken vom Berg
+// herunter und hat mehrere gleich nahe freie Felder zur Auswahl - waehlt einfach eines zufaellig aus,
+// echte Strategie waere hier Overkill fuer einen seltenen Sonderfall.
+function npcDoSelectEvictionTarget(p, diff) {
+    if (evictionTargets.length === 0) { selectedUnit = null; processNextMountainEviction(); return; }
+    const target = pickRandom(evictionTargets);
+    performHexClick(target.q, target.r, mapData.hexes[`${target.q},${target.r}`]);
 }
 
 // Sicherheitsnetz: falls die KI irgendwo in einen unerwarteten Zustand laeuft (z.B. durch eine
@@ -3817,13 +4035,17 @@ function npcSafetyBailout() {
     try {
         if (['SELECT_SKIP', 'SELECT_TELEPORT_UNIT', 'SELECT_TELEPORT_TARGET', 'SELECT_PUSH_TARGET_1', 'SELECT_PUSH_TARGET_2', 'SELECT_PUSH_DESTINATION'].includes(gameState)) {
             npcCancelPendingCard();
-        } else if (['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE', 'SWAP_CARD'].includes(gameState)) {
+        } else if (['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE', 'SWAP_CARD', 'SELECT_META_GROUP', 'SELECT_META_TARGET', 'META_MOUTH'].includes(gameState)) {
             cancelCurrentCard();
+        } else if (gameState === 'SELECT_EVICTION_TARGET') {
+            if (evictionTargets.length > 0) { const t = evictionTargets[0]; evictionTargets = []; resolveMountainEviction(players[currentPlayerIdx], selectedUnit, mapData.hexes[`${t.q},${t.r}`]); }
+            else { selectedUnit = null; processNextMountainEviction(); }
         } else if (['MOVING', 'RIVER_ESCAPE', 'RIVER_ESCAPE_PUSH', 'BOAT_LANDING'].includes(gameState)) {
             // Sonderfall "Landschaft auf stehende Figur gesetzt" (siehe processNextRiverInterstitial()):
             // finishPath() wuerde hier die falschen Zugende-Regeln anwenden (die des UMGESCHALTETEN
             // Spielers statt der Warteschlangen-Logik) - stattdessen diesen Eintrag einfach ueberspringen.
             if (riverInterstitial) { riverInterstitial = false; selectedUnit = null; boatLandingTargets = []; riverEscapeHexes = []; processNextRiverInterstitial(); }
+            else if (mountainEvictionRiverLanding) { mountainEvictionRiverLanding = false; mountainEvictionOnDone = null; selectedUnit = null; boatLandingTargets = []; riverEscapeHexes = []; processNextMountainEviction(); }
             else finishPath();
         } else if (gameState === 'CHOOSING') {
             pathMoved = true; pathDrawn = true; checkTurnEnd();
@@ -3972,8 +4194,7 @@ function npcDoDrawing(p, diff) {
 // performHexClick() weiter unten, die denselben Fehler hatten und ebenfalls korrigiert wurden.
 function npcValidTerrainPlacementHexes() {
     return Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void', 'water'].includes(h.terrain)
-        && !(currentCard && currentCard.type === 'mountains' && wouldTrapAnyUnit(h))
-        && !(currentCard && currentCard.type === 'mountains' && !canPlaceMountainOnHex(h)));
+        && !(currentCard && currentCard.type === 'mountains' && wouldTrapAnyUnit(h)));
 }
 function npcDoPlacingTerrain(p, diff) {
     let candidates = npcValidTerrainPlacementHexes();
@@ -4815,11 +5036,12 @@ const CARD_INFO = {
     mountains: "Landschaftskarte: platziert Bergfelder auf der Karte.",
     forest: "Landschaftskarte: platziert Waldfelder auf der Karte.",
     river: "Landschaftskarte: platziert einen Fluss - danach ausrichten und bestätigen.",
-    road: "Landschaftskarte: platziert eine Straße - der erste Straßen-Schritt pro Zug ist kostenlos."
+    road: "Landschaftskarte: platziert eine Straße - der erste Straßen-Schritt pro Zug ist kostenlos.",
+    metamorphose: "Wandelt eine zusammenhängende Gruppe gleichartiger, bereits gelegter Landschaftsfelder (Berg/Wald/Fluss/Straße) in einen anderen Typ um."
 };
 function handleChoice(choice) {
-    if (choice === 'DRAWING') { drawPoints = 2; gameState = "DRAWING"; } else if (choice === 'MOVING') { gameState = "MOVING"; } 
-    updateUI(); render(); 
+    if (choice === 'DRAWING') { drawPoints = 2; gameState = "DRAWING"; } else if (choice === 'MOVING') { gameState = "MOVING"; }
+    updateUI(); render();
 }
 
 function prepareDraw(type) {
@@ -4837,8 +5059,9 @@ function prepareDraw(type) {
             {name:"Teleport",type:"teleport",icon:"✨"},
             {name:"Gegner zurückwerfen",type:"push_enemy",icon:"💨"},
             {name:"Wirbelsturm",type:"tornado",icon:"🌪️"},
-            {name:"Seil & Haken",type:"tool_hook",icon:"🪢"}, 
-            {name:"Ruderboot",type:"tool_boat",icon:"🛶"} 
+            {name:"Metamorphose",type:"metamorphose",icon:"🦋"},
+            {name:"Seil & Haken",type:"tool_hook",icon:"🪢"},
+            {name:"Ruderboot",type:"tool_boat",icon:"🛶"}
         ];
         currentCard = cards[Math.floor(Math.random()*cards.length)];
         currentCard.deck = "ACTION";
@@ -4848,7 +5071,7 @@ function prepareDraw(type) {
             executeTornado();
             return;
         }
-        
+
         gameState = "ACTION_VIEW";
     }
     diceValue = 0; document.getElementById('dice-symbol').innerText = "?";
@@ -4968,7 +5191,7 @@ function queueRiverPlacementIfOccupied(hex) {
 function chooseRiverDirection(dirIdx) {
     if (!pendingRiverHex) return;
     pendingRiverHex.direction = dirIdx;
-    confirmRiver();
+    if (gameState === 'META_MOUTH') confirmMetaMouth(); else confirmRiver();
 }
 
 // Positioniert die 6 #river-compass-Pfeile (+ den dekorativen Ring) in Bildschirm-Pixelkoordinaten
@@ -4982,7 +5205,7 @@ function chooseRiverDirection(dirIdx) {
 // die gameState/pendingRiverHex aendert).
 function updateRiverCompassPosition() {
     const wrap = document.getElementById('river-compass');
-    if (gameState !== 'ROTATING_RIVER' || !pendingRiverHex) { wrap.classList.add('hidden'); return; }
+    if (!['ROTATING_RIVER', 'META_MOUTH'].includes(gameState) || !pendingRiverHex) { wrap.classList.add('hidden'); return; }
     wrap.classList.remove('hidden');
     const hex = pendingRiverHex;
     const cx = (hexSize * 1.5 * hex.q) * camera.zoom + camera.x;
@@ -5020,12 +5243,13 @@ function finishCard() {
 function handleInventoryClick(slotIdx) {
     const p = players[currentPlayerIdx], card = p.inventory[slotIdx];
     if (gameState === "SWAP_CARD") { addLogEntry(`🔄 ${playerLabel(p)} tauscht Karte im Inventar: ${card ? (card.icon+' '+card.name) : '?'} raus, ${currentCard.icon} ${currentCard.name} rein`); p.inventory[slotIdx] = currentCard; discardNewCard(true); return; }
-    
+
     if (pendingCardSlot === slotIdx && gameState !== "CHOOSING" && gameState !== "MOVING" && gameState !== "DRAWING") {
         pendingCardSlot = null;
         selectedUnit = null;
         currentPushUnit = null;
         pushRemaining = 0;
+        metaGroup = []; metaTargetType = null; pendingRiverHex = null; // Metamorphose-Abbruch (siehe SELECT_META_GROUP/SELECT_META_TARGET/META_MOUTH)
         gameState = pendingCardReturnState; // siehe pendingCardReturnState-Kommentar oben - statt hart "CHOOSING"
         pendingCardReturnState = "CHOOSING";
         updateUI();
@@ -5044,6 +5268,7 @@ function handleInventoryClick(slotIdx) {
         else if (card.type === 'skip_turn') { pendingCardReturnState = gameState; gameState = "SELECT_SKIP"; pendingCardSlot = slotIdx; }
         else if (card.type === 'teleport') { pendingCardReturnState = gameState; gameState = "SELECT_TELEPORT_UNIT"; pendingCardSlot = slotIdx; }
         else if (card.type === 'push_enemy') { pendingCardReturnState = gameState; gameState = "SELECT_PUSH_TARGET_1"; pendingCardSlot = slotIdx; pushRemaining = 2; currentPushUnit = null; }
+        else if (card.type === 'metamorphose') { pendingCardReturnState = gameState; gameState = "SELECT_META_GROUP"; pendingCardSlot = slotIdx; metaGroup = []; metaTargetType = null; }
         updateUI();
     }
 }
@@ -5071,12 +5296,32 @@ function advanceTurn() {
 }
 function checkTurnEnd() {
     if (pathDrawn && pathMoved) {
-        // Bevor es zum naechsten Spieler weitergeht: falls dieser Zug per Landschaftskarte Fluss-Felder
-        // unter bereits stehende Figuren gesetzt hat, muessen die betroffenen (NICHT aktiven) Spieler
-        // jetzt noch ihren Fluss-Sonderzug machen - siehe startRiverInterstitials().
-        if (queuedRiverPlacementHexes.length > 0) { startRiverInterstitials(); return; }
+        // Bevor es zum naechsten Spieler weitergeht: falls dieser Zug Fluss-Felder unter bereits
+        // stehenden Figuren gesetzt hat (Landschaftskarte ODER Metamorphose) UND/ODER Figuren ohne
+        // Seil & Haken auf neuen Bergfeldern zwangsgeraeumt werden muessen, laufen jetzt erst die
+        // betroffenen (NICHT aktiven) Spieler ihre Sonderzuege ab - siehe processInterstitialChains().
+        // Der Rueckkehr-Spielerindex (immer: die Person NACH der handelnden) wird zentral HIER einmal
+        // bestimmt, weil beide Warteschlangen im selben Zug entstehen und sich ihn teilen koennen.
+        if (mountainEvictionQueue.length > 0 || queuedRiverPlacementHexes.length > 0) {
+            riverInterstitialResumeIdx = (currentPlayerIdx + 1) % players.length;
+            riverInterstitialResumeRoundBump = riverInterstitialResumeIdx === 0;
+            processInterstitialChains();
+            return;
+        }
         advanceTurn(); startTurn();
     } else { gameState = "CHOOSING"; updateUI(); render(); }
+}
+// Arbeitet nacheinander BEIDE Sonderzug-Warteschlangen ab (erst Berg-Zwangsraeumung, dann Fluss-
+// Sonderzuege), bis beide leer sind, und schaltet danach zum vorab in checkTurnEnd() gemerkten
+// riverInterstitialResumeIdx zurueck. Wird von processNextMountainEviction()/processNextRiverInterstitial()
+// aufgerufen, sobald ihre jeweils eigene Warteschlange gerade leer geworden ist.
+function processInterstitialChains() {
+    if (mountainEvictionQueue.length > 0) { processNextMountainEviction(); return; }
+    if (queuedRiverPlacementHexes.length > 0) { startRiverInterstitials(); return; }
+    const resumeIdx = riverInterstitialResumeIdx, bump = riverInterstitialResumeRoundBump;
+    riverInterstitialResumeIdx = null; riverInterstitialResumeRoundBump = false;
+    currentPlayerIdx = resumeIdx; if (bump) roundCount++;
+    startTurn();
 }
 
 // =====================================================================
@@ -5089,10 +5334,9 @@ function checkTurnEnd() {
 // merkt sich, zu welchem Spieler nach Abarbeiten ALLER Eintraege zurueckgeschaltet werden soll: der
 // Spieler NACH dem, der die Karte gesetzt hat (nicht der/die zuletzt betroffene(n) Spieler).
 function startRiverInterstitials() {
-    const actingIdx = currentPlayerIdx;
-    riverInterstitialResumeIdx = (actingIdx + 1) % players.length;
-    riverInterstitialResumeRoundBump = riverInterstitialResumeIdx === 0;
-
+    // riverInterstitialResumeIdx/-RoundBump werden seit der Zwangsraeumungs-Regel zentral in
+    // checkTurnEnd()/processInterstitialChains() gesetzt (zwei unabhaengige Warteschlangen koennen sich
+    // im selben Zug einen gemeinsamen Rueckkehr-Spielerindex teilen muessen) - hier nicht mehr noetig.
     riverInterstitialQueue = [];
     queuedRiverPlacementHexes.forEach(({ q, r }) => {
         getUnitsAt(q, r).forEach(({ player, unit }) => {
@@ -5111,10 +5355,10 @@ function startRiverInterstitials() {
 // riverInterstitialResumeIdx (= Spieler NACH dem, der die Karte gesetzt hat).
 function processNextRiverInterstitial() {
     if (riverInterstitialQueue.length === 0) {
-        const resumeIdx = riverInterstitialResumeIdx, bump = riverInterstitialResumeRoundBump;
-        riverInterstitialResumeIdx = null; riverInterstitialResumeRoundBump = false;
-        currentPlayerIdx = resumeIdx; if (bump) roundCount++;
-        startTurn();
+        // Statt direkt zurueckzuschalten: erst pruefen, ob inzwischen auch noch eine Berg-
+        // Zwangsraeumung anliegt (kann im selben Zug zusaetzlich entstanden sein) - siehe
+        // processInterstitialChains().
+        processInterstitialChains();
         return;
     }
     const entry = riverInterstitialQueue.shift();
@@ -5165,7 +5409,13 @@ function processNextRiverInterstitial() {
 // processMovement()), nur eben ausgeloest durch eine Platzierung statt durch einen eigenen Schritt.
 // Laeuft die Kette in eine Sackgasse, waehlt der BETROFFENE Spieler selbst ein Ufer-Nachbarfeld
 // (RIVER_ESCAPE) - genau wie er es bei einer eigenen Bewegung auch wuerde.
-function sweepUnitAlongRiver(unit, owner) {
+// onDone (optional): wird die Funktion von der Berg-Zwangsraeumung aus aufgerufen (weil das
+// naechstgelegene freie Feld ein Fluss war), landet die betroffene Figur hier genau wie beim
+// normalen Fluss-Sonderzug - nur dass am Ende NICHT processNextRiverInterstitial() weiterlaeuft,
+// sondern der uebergebene onDone-Callback (siehe resolveMountainEviction()). Ohne onDone verhaelt
+// sich die Funktion exakt wie zuvor (Standard-Fluss-Sonderzug, setzt riverInterstitial).
+function sweepUnitAlongRiver(unit, owner, onDone) {
+    const usingCustomFlow = typeof onDone === 'function';
     let curH = mapData.hexes[`${unit.q},${unit.r}`];
     while (true) {
         const dir = hexDirections[curH.direction || 0];
@@ -5177,13 +5427,15 @@ function sweepUnitAlongRiver(unit, owner) {
             if (riverEscapeHexes.length > 0) {
                 currentPlayerIdx = players.indexOf(owner);
                 selectedUnit = unit;
-                riverInterstitial = true;
+                if (usingCustomFlow) { mountainEvictionRiverLanding = true; mountainEvictionOnDone = onDone; }
+                else { riverInterstitial = true; }
                 gameState = "RIVER_ESCAPE";
                 showNotification(`🌊 ${playerLabel(owner).toUpperCase()} IST DRAN: Figur wurde von einem neu gesetzten Fluss erfasst - Ufer wählen!`);
                 updateUI(); render();
             } else {
                 // Kein Ausweg (extrem selten) - Figur bleibt einfach stehen.
-                selectedUnit = null; processNextRiverInterstitial();
+                selectedUnit = null;
+                if (usingCustomFlow) onDone(); else processNextRiverInterstitial();
             }
             return;
         } else if (nH.terrain === 'river') {
@@ -5191,10 +5443,90 @@ function sweepUnitAlongRiver(unit, owner) {
         } else {
             unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR, owner);
             selectedUnit = null;
-            processNextRiverInterstitial();
+            if (usingCustomFlow) onDone(); else processNextRiverInterstitial();
             return;
         }
     }
+}
+// Merkt sich waehrend mountainEvictionRiverLanding, wohin nach RIVER_ESCAPE/BOAT_LANDING zurueckgekehrt
+// werden soll (siehe sweepUnitAlongRiver()/resolveMountainEviction()/performHexClick()).
+let mountainEvictionOnDone = null;
+
+// =====================================================================
+// ZWANGSRÄUMUNG VOM BERG: WARTESCHLANGE ABARBEITEN
+// =====================================================================
+// Analog zu processNextRiverInterstitial(), aber fuer Figuren ohne Seil & Haken auf einem neuen
+// Bergfeld (siehe mountainEvictionQueue/resolveMountainOccupants()). Prueft bei jedem Eintrag defensiv
+// erneut, ob die Figur/der Besitzer noch existiert und das Feld ueberhaupt noch Berg ist (kann sich
+// durch einen Ring-Kollaps oder eine zwischenzeitliche weitere Metamorphose geaendert haben).
+function processNextMountainEviction() {
+    if (mountainEvictionQueue.length === 0) { processInterstitialChains(); return; }
+    const entry = mountainEvictionQueue.shift();
+    const owner = players.find(pl => pl.id === entry.ownerId);
+    const unit = owner ? owner.units.find(u => u.q === entry.unitQ && u.r === entry.unitR) : null;
+    if (!owner || !unit) { processNextMountainEviction(); return; }
+    const hex = mapData.hexes[`${unit.q},${unit.r}`];
+    if (!hex || hex.terrain !== 'mountains') { processNextMountainEviction(); return; }
+    // Hat der/die Besitzer:in zwischenzeitlich doch einen Haken bekommen (z.B. per Extra-Zug-Karte
+    // dazwischen einen weiteren gezogen) - dann einfach jetzt verbrauchen statt zu vertreiben.
+    const hookIdx = owner.inventory.findIndex(c => c.type === 'tool_hook');
+    if (hookIdx !== -1) {
+        owner.inventory.splice(hookIdx, 1);
+        showNotification(`⛰️ ${playerLabel(owner)} nutzt einen Seil & Haken, um auf dem Berg zu bleiben.`);
+        processNextMountainEviction();
+        return;
+    }
+    const candidates = findNearestFreeHexes(unit.q, unit.r);
+    currentPlayerIdx = players.indexOf(owner);
+    selectedUnit = unit;
+    if (candidates.length === 0) {
+        // Extrem selten: nirgends auf der ganzen Karte ein freies Feld - Figur bleibt einfach stehen.
+        selectedUnit = null; processNextMountainEviction(); return;
+    }
+    if (candidates.length === 1) {
+        resolveMountainEviction(owner, unit, candidates[0]);
+    } else {
+        evictionTargets = candidates;
+        gameState = "SELECT_EVICTION_TARGET";
+        showNotification(`⛰️ ${playerLabel(owner).toUpperCase()} IST DRAN: Figur muss ohne Seil & Haken vom Berg herunter - freies Feld wählen!`);
+        updateUI(); render();
+    }
+}
+// Setzt die Figur auf targetHex - landet sie dabei auf einem Fluss, greift ab hier exakt dieselbe
+// Ufer-/Boots-Logik wie beim normalen Fluss-Sonderzug (siehe sweepUnitAlongRiver()), nur dass danach
+// wieder processNextMountainEviction() statt processNextRiverInterstitial() weiterlaeuft. Landet sie
+// auf einer ungeplünderten Ruine, plündert checkLandmark() sie automatisch wie immer.
+function resolveMountainEviction(owner, unit, targetHex) {
+    unit.q = targetHex.q; unit.r = targetHex.r;
+    addLogEntry(`⛰️ ${playerLabel(owner)} ohne Seil & Haken vom Berg vertrieben: Figur landet bei (${targetHex.q},${targetHex.r})`);
+    evictionTargets = [];
+    if (targetHex.terrain === 'river') {
+        const hasBoat = owner.inventory.some(c => c.type === 'tool_boat');
+        if (hasBoat) {
+            const riverGroup = getConnectedRivers(targetHex.q, targetHex.r);
+            const shores = []; const seen = new Set();
+            riverGroup.forEach(rh => {
+                hexDirections.forEach(d => {
+                    const sQ = rh.q + d.q, sR = rh.r + d.r, sHex = mapData.hexes[`${sQ},${sR}`];
+                    if (sHex && !['river', 'water', 'void'].includes(sHex.terrain) && !players.some(pl => pl.units.some(u => u.q === sQ && u.r === sR))) {
+                        const key = `${sQ},${sR}`; if (!seen.has(key)) { seen.add(key); shores.push(sHex); }
+                    }
+                });
+            });
+            boatLandingTargets = shores;
+            if (boatLandingTargets.length === 0) { checkLandmark(targetHex.q, targetHex.r, owner); selectedUnit = null; processNextMountainEviction(); return; }
+            mountainEvictionRiverLanding = true;
+            gameState = "BOAT_LANDING";
+            showNotification(`🛶 ${playerLabel(owner).toUpperCase()} IST DRAN: vom Berg vertrieben, landet im Fluss - Ufer wählen (Ruderboot wird verbraucht)!`);
+            updateUI(); render();
+        } else {
+            sweepUnitAlongRiver(unit, owner, processNextMountainEviction);
+        }
+        return;
+    }
+    checkLandmark(targetHex.q, targetHex.r, owner);
+    selectedUnit = null;
+    processNextMountainEviction();
 }
 
 // Wie showNotification(), aber OHNE addLogEntry() - fuer Meldungen, die schon VOR Spielbeginn
@@ -5230,13 +5562,14 @@ const tutorialPages = [
     { icon: '🏛️', title: 'Ziel des Spiels', html: `Sammelt gemeinsam <b>Artefakte</b> aus den Ruinen der Insel. Sobald genug gefunden wurden, gewinnt, wer als Erster den <b>Tempel</b> erreicht.<br><br>Doch Vorsicht: Mit jedem Fortschritt bricht die Welt an ihren Rändern weg. Bleibt am Ende nur noch <b>ein Spieler mit Figuren</b> übrig, gewinnt automatisch er.` },
     { icon: '⚙️', title: 'Vorbereitung', html: `Wählt die Spieleranzahl (2–6) sowie optional die <b>Ziel-Artefakte</b> und die drei <b>Ring-Schwellen</b> der Apokalypse.<br><br>Danach setzt jeder Spieler reihum seine <b>2 Figuren</b> auf ein Feld mit Startburg (Sumpf-Textur).` },
     { icon: '🎲', title: 'Der Spielzug', html: `In jedem Zug musst du <b>beides</b> erledigen — die Reihenfolge ist egal:<ul><li><b>2× Karte ziehen</b></li><li><b>Bewegen</b></li></ul>Erst wenn beides abgeschlossen ist, ist der nächste Spieler an der Reihe.` },
-    { icon: '🗺️', title: 'Karten ziehen: Landschaft', html: `Eine <b>Landschaftskarte</b> (Berg, Wald, Fluss oder Straße) bestimmt per Würfelwurf, wie viele Felder du setzen darfst. Klicke dazu freie Felder auf der Karte an.<br><br>Einen <b>Fluss</b> musst du zusätzlich per „Drehen" ausrichten und mit „Setzen" bestätigen — er verbindet sich automatisch mit anschließenden Flussfeldern.<br><br>⛰️ <b>Einmauer-Schutz:</b> Du kannst nie den letzten offenen Nachbarn einer Figur mit einem Berg zubauen — egal ob eigene oder gegnerische Figur, egal wo auf der Karte. Mindestens ein Weg zum Entkommen bleibt immer frei.<br><br>🧍 <b>Landschaft auf eine stehende Figur setzen:</b> Ein <b>Berg</b> geht nur, wenn die dort stehende Figur (egal ob eigene oder gegnerische) einen <b>Seil & Haken</b> besitzt — er wird dabei verbraucht, die Figur bleibt einfach stehen und gilt ab sofort als „schon auf dem Berg". Stehen mehrere Figuren auf dem Feld, braucht JEDE ihren eigenen Seil & Haken, sonst geht der Berg dort gar nicht. Ein <b>Fluss</b> erfasst eine dort stehende Figur nach deinem Zug ganz normal nach den Fluss-Regeln — mit <b>Ruderboot</b> darf sich die betroffene Person ein Ufer aussuchen (Boot wird verbraucht), ohne Boot wird sie automatisch mitgerissen.` },
+    { icon: '🗺️', title: 'Karten ziehen: Landschaft', html: `Eine <b>Landschaftskarte</b> (Berg, Wald, Fluss oder Straße) bestimmt per Würfelwurf, wie viele Felder du setzen darfst. Klicke dazu freie Felder auf der Karte an.<br><br>Einen <b>Fluss</b> musst du zusätzlich per „Drehen" ausrichten und mit „Setzen" bestätigen — er verbindet sich automatisch mit anschließenden Flussfeldern.<br><br>⛰️ <b>Einmauer-Schutz:</b> Du kannst nie den letzten offenen Nachbarn einer Figur mit einem Berg zubauen — egal ob eigene oder gegnerische Figur, egal wo auf der Karte. Mindestens ein Weg zum Entkommen bleibt immer frei.<br><br>🧍 <b>Landschaft auf eine stehende Figur setzen:</b> Ein <b>Berg</b> lässt sich immer setzen, auch auf ein besetztes Feld. Besitzt die dort stehende Figur (egal ob eigene oder gegnerische) einen <b>Seil & Haken</b>, wird er automatisch verbraucht und sie bleibt einfach stehen. Ohne Haken muss sie stattdessen am <b>Ende des Zugs</b> vom Berg herunter — auf das nächstgelegene freie Feld (reine Luftlinie, kein begehbarer Weg nötig; bei mehreren gleich nahen Feldern wählt die betroffene Person selbst). Landet sie dabei zufällig auf einer noch ungeplünderten Ruine, wird die automatisch mitgeplündert; landet sie im Fluss, gelten dieselben Regeln wie unten beschrieben. Ein <b>Fluss</b> erfasst eine dort stehende Figur nach deinem Zug ganz normal nach den Fluss-Regeln — mit <b>Ruderboot</b> darf sich die betroffene Person ein Ufer aussuchen (Boot wird verbraucht), ohne Boot wird sie automatisch mitgerissen.` },
     { icon: '🃏', title: 'Karten ziehen: Aktionen', html: `<b>Aktionskarten</b> wandern in dein Inventar (max. 3 — ist es voll, musst du beim nächsten Ziehen tauschen).<ul>
         <li>🏃 <b>Extra Zug</b>: sofort +1 Aktionspunkt</li>
         <li>🚫 <b>Aussetzen</b>: ein Gegner setzt die nächste Runde aus</li>
         <li>✨ <b>Teleport</b>: eigene Figur sofort auf eine bereits geplünderte Ruine versetzen</li>
         <li>💨 <b>Gegner zurückwerfen</b>: bis zu 2 gegnerische Figuren je ein Feld verschieben</li>
         <li>🌪️ <b>Wirbelsturm</b>: wirkt sofort — bläst alle eigenen Figuren an den Kartenrand und beendet den Zug</li>
+        <li>🦋 <b>Metamorphose</b>: wandelt eine zusammenhängende Gruppe gleichartiger, bereits gelegter Landschaftsfelder (Berg/Wald/Fluss/Straße) in einen anderen Typ um — bei Fluss wählst du wie gewohnt eine Mündung, der Rest der Gruppe richtet sich automatisch danach aus</li>
         <li>🪢 <b>Seil & Haken</b> / 🛶 <b>Ruderboot</b>: passive Werkzeuge, die sich automatisch verbrauchen, sobald du auf Berge bzw. einen Fluss ziehst</li>
     </ul>` },
     { icon: '🧭', title: 'Bewegen im Gelände', demo: 'movement', html: `Du hast <b>2 Aktionspunkte</b> pro Zug, jedes Feld kostet normalerweise 1 Punkt.<ul>
@@ -7182,7 +7515,7 @@ function getConnectedRivers(startQ, startR) {
 
 function processMovement(unit, tQ, tR) {
     const oldHex = mapData.hexes[`${unit.q},${unit.r}`], newHex = mapData.hexes[`${tQ},${tR}`];
-    if (!newHex || ['void', 'water'].includes(newHex.terrain)) return false; 
+    if (!newHex || ['void', 'water'].includes(newHex.terrain)) return false;
 
     const p = players[currentPlayerIdx];
 
@@ -7205,8 +7538,8 @@ function processMovement(unit, tQ, tR) {
     if (newHex.terrain === 'river') {
         const boatIndex = p.inventory.findIndex(c => c.type === 'tool_boat');
         if (boatIndex !== -1) {
-            selectedUnit = unit; 
-            let rivers = getConnectedRivers(tQ, tR); 
+            selectedUnit = unit;
+            let rivers = getConnectedRivers(tQ, tR);
             let shores = [];
             let seen = new Set();
             rivers.forEach(r => {
@@ -7219,12 +7552,12 @@ function processMovement(unit, tQ, tR) {
                     }
                 }
             });
-            boatLandingTargets = shores; 
+            boatLandingTargets = shores;
             if(boatLandingTargets.length > 0) {
-                unit.q = tQ; unit.r = tR; 
-                gameState = "BOAT_LANDING"; 
+                unit.q = tQ; unit.r = tR;
+                gameState = "BOAT_LANDING";
                 updateUI(); render();
-                return true; 
+                return true;
             }
         }
     }
@@ -7234,7 +7567,7 @@ function processMovement(unit, tQ, tR) {
     let usedRoadBonus = false;
     if (newHex.terrain === 'road' && !roadBonusUsedThisTurn) { cost = 0; usedRoadBonus = true; }
     unit.q = tQ; unit.r = tR; checkLandmark(tQ, tR);
-    
+
     if (newHex.terrain === 'river') {
         let curH = newHex;
         while (true) {
@@ -7253,27 +7586,6 @@ function processMovement(unit, tQ, tR) {
     updateUI(); render();
 }
 
-// Verbraucht fuer JEDE auf hex stehende Figur einen Seil & Haken ihres jeweiligen Besitzers (siehe
-// canPlaceMountainOnHex() fuer die vorherige Pruefung, ob genug Karten vorhanden sind - wird hier
-// bewusst nicht nochmal geprueft). Die Figur(en) bleiben dabei einfach stehen und gelten ab sofort als
-// "schon auf einem Berg" - das ergibt sich automatisch daraus, dass processMovement()/
-// computeHighlightTargets() dafuer nur hex.terrain === 'mountains' pruefen, keine Extra-Markierung.
-function consumeHooksForMountainPlacement(hex) {
-    const occupants = getUnitsAt(hex.q, hex.r);
-    if (occupants.length === 0) return;
-    const byOwner = new Map();
-    occupants.forEach(o => byOwner.set(o.player, (byOwner.get(o.player) || 0) + 1));
-    const names = [];
-    byOwner.forEach((count, owner) => {
-        for (let i = 0; i < count; i++) {
-            const idx = owner.inventory.findIndex(c => c.type === 'tool_hook');
-            if (idx !== -1) owner.inventory.splice(idx, 1);
-        }
-        names.push(playerLabel(owner));
-    });
-    showNotification(`⛰️ Berg unter stehender Figur gesetzt - Seil & Haken von ${names.join(', ')} verbraucht!`);
-}
-
 function performHexClick(rx, rz, hex) {
     if (replayModeActive) return; // Gehoert eigentlich schon durch isControllable() im click-Listener abgefangen - zusaetzliche Absicherung
     if (gameState === "PLACING" && hex.terrain === 'swamp') {
@@ -7281,7 +7593,7 @@ function performHexClick(rx, rz, hex) {
         addLogEntry(`🏕️ ${playerLabel(players[currentPlayerIdx])} setzt Startfigur auf (${rx},${rz})`);
         players[currentPlayerIdx].units.push({ q: rx, r: rz });
         if (players.reduce((sum, p) => sum + p.units.length, 0) === players.length * 2) { currentPlayerIdx = 0; startTurn(); } else { currentPlayerIdx = (currentPlayerIdx + 1) % players.length; }
-    } else if (gameState === "MOVING") { 
+    } else if (gameState === "MOVING") {
         let dist = selectedUnit ? getHexDistance(selectedUnit.q, selectedUnit.r, rx, rz) : 0;
         if (selectedUnit && dist === 1) processMovement(selectedUnit, rx, rz);
         else { const u = players[currentPlayerIdx].units.find(u => u.q === rx && u.r === rz); if (u) selectedUnit = u; }
@@ -7293,6 +7605,9 @@ function performHexClick(rx, rz, hex) {
             // NICHT die normalen Zugende-Regeln des aktuell umgeschalteten Spielers anwenden, sondern
             // mit der Warteschlange weitermachen (siehe processNextRiverInterstitial()).
             if (riverInterstitial) { riverInterstitial = false; selectedUnit = null; processNextRiverInterstitial(); return; }
+            // Gleicher Sonderfall, ausgeloest durch eine Berg-Zwangsraeumung, deren naechstgelegenes
+            // freies Feld ein Fluss war (siehe resolveMountainEviction()/sweepUnitAlongRiver()).
+            if (mountainEvictionRiverLanding) { mountainEvictionRiverLanding = false; const cb = mountainEvictionOnDone; mountainEvictionOnDone = null; selectedUnit = null; cb(); return; }
             actionPoints = 0; finishPath();
         }
     } else if (gameState === "BOAT_LANDING") {
@@ -7312,6 +7627,7 @@ function performHexClick(rx, rz, hex) {
             // Siehe Kommentar im RIVER_ESCAPE-Zweig oben - derselbe Sonderfall gilt hier fuer den
             // Boots-Sonderzug eines betroffenen (nicht aktiven) Spielers.
             if (riverInterstitial) { riverInterstitial = false; selectedUnit = null; processNextRiverInterstitial(); return; }
+            if (mountainEvictionRiverLanding) { mountainEvictionRiverLanding = false; mountainEvictionOnDone = null; selectedUnit = null; processNextMountainEviction(); return; }
             actionPoints = 0; finishPath();
         }
     } else if (gameState === "RIVER_ESCAPE_PUSH") {
@@ -7333,14 +7649,13 @@ function performHexClick(rx, rz, hex) {
         if (['mountains', 'forest', 'river', 'road', 'water'].includes(hex.terrain)) return;
         if (currentCard.type === 'mountains') {
             if (wouldTrapAnyUnit(hex)) { alert("Hier kannst du keinen Berg setzen - das wäre der letzte offene Weg einer Figur, sie würde komplett eingemauert!"); return; }
-            if (!canPlaceMountainOnHex(hex)) { alert("Hier steht eine Figur, deren Besitzer keinen Seil & Haken hat - hier kann kein Berg gesetzt werden!"); return; }
         }
         playSoundTileClick();
         hex.terrain = currentCard.type; bakeHex(hex);
         // Kein manuelles "hat sich geaendert"-Flag mehr noetig hier - buildReplaySnapshot() erkennt diese
         // Aenderung von selbst per Strukturvergleich (siehe lastSnapshottedHexesShadow-Kommentar dort).
         addLogEntry(`🗺️ ${playerLabel(players[currentPlayerIdx])} platziert ${currentCard.icon} ${currentCard.name} auf Feld (${hex.q},${hex.r})`);
-        if (currentCard.type === 'mountains') consumeHooksForMountainPlacement(hex);
+        if (currentCard.type === 'mountains') resolveMountainOccupants(hex);
         if (currentCard.type === 'river') { hex.direction = 0; pendingRiverHex = hex; gameState = "ROTATING_RIVER"; } else { placementsRemaining--; if (placementsRemaining <= 0) finishCard(); }
     } else if (gameState === "ROTATING_RIVER") {
         // Nutzerwunsch: Fluss drehen direkt auf dem Spielbrett moeglich machen, statt zwingend den
@@ -7367,6 +7682,31 @@ function performHexClick(rx, rz, hex) {
         else if (pendingRiverHex) {
             const dirIdx = hexDirections.findIndex(d => pendingRiverHex.q + d.q === rx && pendingRiverHex.r + d.r === rz);
             if (dirIdx !== -1) { pendingRiverHex.direction = dirIdx; confirmRiver(); }
+        }
+    } else if (gameState === "SELECT_META_GROUP") {
+        if (['mountains', 'forest', 'river', 'road'].includes(hex.terrain)) {
+            metaGroup = floodFillSameTerrain(rx, rz);
+            gameState = "SELECT_META_TARGET";
+            updateUI(); render();
+        }
+    } else if (gameState === "META_MOUTH") {
+        if (!pendingRiverHex) {
+            if (metaGroup.some(h => h.q === rx && h.r === rz)) {
+                pendingRiverHex = mapData.hexes[`${rx},${rz}`];
+                pendingRiverHex.direction = 0;
+                updateUI(); render();
+            }
+        } else if (rx === pendingRiverHex.q && rz === pendingRiverHex.r) {
+            rotateRiver();
+        } else {
+            const dirIdx = hexDirections.findIndex(d => pendingRiverHex.q + d.q === rx && pendingRiverHex.r + d.r === rz);
+            if (dirIdx !== -1) { pendingRiverHex.direction = dirIdx; confirmMetaMouth(); }
+        }
+    } else if (gameState === "SELECT_EVICTION_TARGET") {
+        const target = evictionTargets.find(t => t.q === rx && t.r === rz);
+        if (target) {
+            const owner = players[currentPlayerIdx], unit = selectedUnit;
+            resolveMountainEviction(owner, unit, mapData.hexes[`${target.q},${target.r}`]);
         }
     } else if (gameState === "SELECT_SKIP") {
         const owner = players.find(p => p.id !== players[currentPlayerIdx].id && p.units.some(u => u.q === rx && u.r === rz));
@@ -7440,11 +7780,11 @@ function updateUI() {
     document.getElementById('cards-left-display').innerText = drawPoints;
     document.getElementById('btn-choice-draw').disabled = pathDrawn;
     document.getElementById('btn-choice-move').disabled = pathMoved;
-    const states = { PLACING: "FIGUR SETZEN", CHOOSING: "AKTION WÄHLEN", DRAWING: "STAPEL WÄHLEN", DICE_ROLL: "WÜRFELN!", PLACING_TERRAIN: `${placementsRemaining}X SETZEN`, ROTATING_RIVER: "FLUSS DREHEN", ACTION_VIEW: "AKTION GEZOGEN", SWAP_CARD: "INVENTAR TAUSCHEN", MOVING: selectedUnit ? "ZIEHEN" : "FIGUR WÄHLEN", SELECT_PUSH_TARGET_1: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_TARGET_2: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_DESTINATION: "ZIELFELD WÄHLEN", RIVER_ESCAPE: "ANS UFER RETTEN", RIVER_ESCAPE_PUSH: "GEGNER RETTEN", BOAT_LANDING: "UFER WÄHLEN", TORNADO_FX: "🌪️ STURM!" };
+    const states = { PLACING: "FIGUR SETZEN", CHOOSING: "AKTION WÄHLEN", DRAWING: "STAPEL WÄHLEN", DICE_ROLL: "WÜRFELN!", PLACING_TERRAIN: `${placementsRemaining}X SETZEN`, ROTATING_RIVER: "FLUSS DREHEN", ACTION_VIEW: "AKTION GEZOGEN", SWAP_CARD: "INVENTAR TAUSCHEN", MOVING: selectedUnit ? "ZIEHEN" : "FIGUR WÄHLEN", SELECT_PUSH_TARGET_1: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_TARGET_2: `GEGNER WÄHLEN (${pushRemaining})`, SELECT_PUSH_DESTINATION: "ZIELFELD WÄHLEN", RIVER_ESCAPE: "ANS UFER RETTEN", RIVER_ESCAPE_PUSH: "GEGNER RETTEN", BOAT_LANDING: "UFER WÄHLEN", TORNADO_FX: "🌪️ STURM!", SELECT_META_GROUP: "🦋 GRUPPE WÄHLEN", SELECT_META_TARGET: "🦋 ZIEL WÄHLEN", META_MOUTH: "🦋 MÜNDUNG WÄHLEN", SELECT_EVICTION_TARGET: "⛰️ VOM BERG VERTRIEBEN" };
     // Sonderfall "Landschaft auf stehende Figur gesetzt" (siehe processNextRiverInterstitial()): dann
     // ist NICHT der eigentliche Zug dieses Spielers dran, sondern nur ein kurzer Fluss-Sonderzug -
     // eigener Text statt "ANS UFER RETTEN"/"UFER WÄHLEN", damit das nicht mit dem echten Zug verwechselt wird.
-    guide.innerText = riverInterstitial ? "🌊 FLUSS-SONDERZUG" : (states[gameState] || "BITTE WARTEN...");
+    guide.innerText = (riverInterstitial || mountainEvictionRiverLanding) ? "🌊 FLUSS-SONDERZUG" : (states[gameState] || "BITTE WARTEN...");
     // Klartext-Hinweis darunter: erklaert in Worten, was gerade anklickbar ist - passend zu den
     // farbigen Markierungen auf dem Spielfeld (siehe computeHighlightTargets()/renderFX()).
     const hints = {
@@ -7465,9 +7805,13 @@ function updateUI() {
         BOAT_LANDING: `Klicke ein <b>gold umrandetes</b> Ufer-Feld zum Anlanden an.`,
         SELECT_SKIP: `Klicke eine <span class="hint-select">blau umrandete</span> gegnerische Figur an, die aussetzen muss.`,
         SELECT_TELEPORT_UNIT: `Klicke eine <span class="hint-select">blau umrandete</span> eigene Figur an, die teleportiert werden soll.`,
-        SELECT_TELEPORT_TARGET: `Klicke ein <b>gold umrandetes</b> geplündertes Ruinen-Feld als Ziel an.`
+        SELECT_TELEPORT_TARGET: `Klicke ein <b>gold umrandetes</b> geplündertes Ruinen-Feld als Ziel an.`,
+        SELECT_META_GROUP: `Klicke ein <b>gold umrandetes</b> Feld einer zusammenhängenden Landschafts-Gruppe (Berg/Wald/Fluss/Straße) an.`,
+        SELECT_META_TARGET: `Wähle im Fenster den neuen Landschafts-Typ.`,
+        META_MOUTH: pendingRiverHex ? `Klicke einen der <b>Kompass-Pfeile</b> um die Mündung, um die Richtung zu setzen und zu bestätigen.` : `Klicke ein <b>gold umrandetes</b> Feld der Gruppe an - das wird die Mündung.`,
+        SELECT_EVICTION_TARGET: `Klicke ein <b>gold umrandetes</b> Feld an, um die Figur dort abzusetzen.`
     };
-    document.getElementById('guide-hint').innerHTML = riverInterstitial
+    document.getElementById('guide-hint').innerHTML = (riverInterstitial || mountainEvictionRiverLanding)
         ? `Deine Figur wurde durch eine neu gesetzte Fluss-Karte erfasst - klicke ein <b>gold umrandetes</b> Ufer-Feld an.`
         : (hints[gameState] || '');
     document.getElementById('choice-area').classList.toggle('hidden', gameState !== 'CHOOSING');
@@ -7477,13 +7821,14 @@ function updateUI() {
     document.getElementById('dice-section').classList.toggle('hidden', !['DICE_ROLL', 'PLACING_TERRAIN'].includes(gameState));
     document.getElementById('btn-roll-dice').classList.toggle('hidden', gameState !== 'DICE_ROLL');
     document.getElementById('rotation-controls').classList.toggle('hidden', gameState !== 'ROTATING_RIVER');
+    renderMetamorphoseOverlay();
     // Mobile-Pendant zu #rotation-controls (siehe #mobile-river-controls oben) - erscheint unabhaengig
     // davon, ob eines der Panels gerade geoeffnet ist.
     document.getElementById('mobile-river-controls').classList.toggle('show', gameState === 'ROTATING_RIVER');
     document.getElementById('btn-finish-drawing').classList.toggle('hidden', !['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE'].includes(gameState));
     document.getElementById('btn-discard-new').classList.toggle('hidden', gameState !== 'SWAP_CARD');
 
-    document.getElementById('movement-area').classList.toggle('hidden', gameState !== 'MOVING' && gameState !== 'RIVER_ESCAPE' && gameState !== 'RIVER_ESCAPE_PUSH' && gameState !== 'BOAT_LANDING'); 
+    document.getElementById('movement-area').classList.toggle('hidden', gameState !== 'MOVING' && gameState !== 'RIVER_ESCAPE' && gameState !== 'RIVER_ESCAPE_PUSH' && gameState !== 'BOAT_LANDING');
     document.getElementById('ap-display').innerText = `AKTIONSPUNKTE: ${actionPoints}`;
     if (currentCard) {
         document.getElementById('card-icon').innerText = currentCard.icon;
@@ -7868,9 +8213,11 @@ function computeHighlightTargets() {
             // Bugfix (Nutzer-Spielverlauf-Export, 2026-09-19): 'water' fehlte in der Ausschlussliste,
             // siehe npcValidTerrainPlacementHexes()-Kommentar fuer die volle Erklaerung - Wasserfelder
             // wurden dadurch faelschlich gold als gueltiges Platzierungsziel markiert.
+            // Kein Haken-Filter mehr (siehe Zwangsraeumungs-Regel/resolveMountainOccupants()) - eine
+            // Bergplatzierung auf einer Figur ohne Haken ist jetzt immer gueltig, nur der Einmauer-
+            // Schutz (letzter offener Fluchtweg) blockiert weiterhin.
             return { select: [], go: Object.values(mapData.hexes).filter(h => !['mountains', 'forest', 'river', 'road', 'void', 'water'].includes(h.terrain)
-                && !(currentCard.type === 'mountains' && wouldTrapAnyUnit(h))
-                && !(currentCard.type === 'mountains' && !canPlaceMountainOnHex(h))) };
+                && !(currentCard.type === 'mountains' && wouldTrapAnyUnit(h))) };
         case 'ROTATING_RIVER':
             // Bis vor Kurzem wurden hier zusaetzlich die 6 Nachbarfelder als "go" (gold) markiert - das
             // ist jetzt durch das eigenstaendige #river-compass-Symbol ersetzt (siehe dortige CSS/JS-
@@ -7879,6 +8226,13 @@ function computeHighlightTargets() {
             // weiterhin nur einen Schritt weiter (rotateRiver()), das bleibt unveraendert bestehen.
             if (!pendingRiverHex) return none;
             return { select: [{ q: pendingRiverHex.q, r: pendingRiverHex.r }], go: [] };
+        case 'SELECT_META_GROUP':
+            return { select: [], go: Object.values(mapData.hexes).filter(h => ['mountains', 'forest', 'river', 'road'].includes(h.terrain)) };
+        case 'META_MOUTH':
+            if (!pendingRiverHex) return { select: [], go: metaGroup.map(h => ({ q: h.q, r: h.r })) };
+            return { select: [{ q: pendingRiverHex.q, r: pendingRiverHex.r }], go: [] };
+        case 'SELECT_EVICTION_TARGET':
+            return { select: selectedUnit ? [{ q: selectedUnit.q, r: selectedUnit.r }] : [], go: evictionTargets };
         case 'SELECT_SKIP':
         case 'SELECT_PUSH_TARGET_1':
         case 'SELECT_PUSH_TARGET_2':
