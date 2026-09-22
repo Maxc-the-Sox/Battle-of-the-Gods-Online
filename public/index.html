@@ -339,7 +339,12 @@
             box-shadow: 0 0 20px color-mix(in srgb, var(--panel-color) 50%, transparent), inset 0 0 12px rgba(0,0,0,0.35);
         }
         #guide-text { font-family: 'Cinzel', serif; background: linear-gradient(180deg, var(--gold-light), var(--gold)); color: #241c08; padding: 9px; font-size: 0.82em; font-weight: bold; text-align: center; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 8px rgba(212,175,55,0.35); }
-        #guide-hint { font-family: 'Cormorant Garamond', serif; text-align: center; color: #d8c9a3; font-size: 0.92em; font-style: italic; margin-bottom: 14px; padding: 0 2px; line-height: 1.35; }
+        #guide-hint { font-family: 'Cormorant Garamond', serif; text-align: center; color: #f1c40f; font-size: 0.92em; font-style: normal; margin-bottom: 14px; padding: 0 2px; line-height: 1.35; }
+        /* Nutzerwunsch: der Hinweistext soll insgesamt so heraussteche wie bisher nur die fett
+           gesetzten Begriffe darin (daher dieselbe Gold-Farbe #f1c40f fuer die ganze Zeile, nicht
+           mehr kursiv) - dafuer bekommt er zusaetzlich ein kleines Icon voran, damit man ihn auch
+           beim ueberfliegen des Panels sofort als Hinweis erkennt, nicht als normalen Fliesstext. */
+        #guide-hint::before { content: "💡 "; }
         #guide-hint b { color: #f1c40f; font-style: normal; }
         #guide-hint .hint-select { color: #85c1e9; font-style: normal; font-weight: bold; }
         /* Bewegungs-Kosten-Hinweise (siehe moveHintSummaryHtml()) - bewusst als fixer UI-Text statt
@@ -1216,7 +1221,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.35</div>
+                <div class="version-tag">v1.36</div>
             </div>
         </div>
 
@@ -1575,7 +1580,7 @@
     <div id="action-controls">
         <div id="choice-area">
             <button id="btn-choice-draw" class="btn btn-gold" onclick="handleChoice('DRAWING')">⚔ 2x Karte ziehen</button>
-            <button id="btn-choice-move" class="btn" onclick="handleChoice('MOVING')">🧭 Bewegen</button>
+            <button id="btn-choice-move" class="btn btn-gold" onclick="handleChoice('MOVING')">🧭 Bewegen</button>
         </div>
         <div id="drawing-area" class="hidden">
             <div id="draw-selection">
@@ -7789,7 +7794,7 @@ function updateUI() {
     // farbigen Markierungen auf dem Spielfeld (siehe computeHighlightTargets()/renderFX()).
     const hints = {
         PLACING: `Klicke ein <b>gold umrandetes</b> Sumpf-Feld an, um deine Figur zu platzieren.`,
-        CHOOSING: `Wähle unten eine Aktion: Karten ziehen oder eine Figur bewegen.`,
+        CHOOSING: `Wähle unten eine Aktion: Karten ziehen oder eine Figur bewegen — du musst am Ende ohnehin beides erledigen, die Reihenfolge ist dir überlassen.`,
         DRAWING: `Wähle einen der beiden Stapel zum Ziehen.`,
         DICE_ROLL: `Klicke auf "Würfeln".`,
         PLACING_TERRAIN: `Klicke ${placementsRemaining}x ein <b>gold umrandetes</b> Feld an, um die Landschaft zu platzieren.`,
