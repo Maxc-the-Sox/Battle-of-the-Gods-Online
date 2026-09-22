@@ -660,6 +660,34 @@
            automatisch mitgezoomt wird (sonst koennte man sich fragen, warum die Kamera bei der naechsten
            gegnerischen Aktion "nicht mehr reagiert" - sieht aber aus wie gewollt). */
         #camera-lock-fab.cam-follow-off { background: linear-gradient(180deg, #4a3a1f, #2a2010); border-color: rgba(241,196,15,0.7); box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 12px rgba(241,196,15,0.35); }
+        /* FreeRoam-Adminmodus (Nutzerwunsch) - naechster freier 52px-Slot rechts daneben (20/72/124/
+           176/228/280 = Hilfe/Sound/Musik/Verlassen/Kamera-Automatik/FreeRoam). Gleiches Baukasten-
+           Prinzip wie #camera-lock-fab, inkl. eigenem "aktiv"-Zustand (.active), analog zu dessen
+           .cam-follow-off. Sichtbarkeits-Lebenszyklus wie #leave-game-fab, zusaetzlich nur fuer
+           isAdminUser (siehe updateUI()). */
+        #freeroam-fab {
+            position: fixed; top: 20px; right: 280px; z-index: 3001; width: 42px; height: 42px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 1.15em;
+            color: var(--gold-light); background: linear-gradient(180deg, #2c281f, #17140f); border: 1px solid rgba(212,175,55,0.55);
+            cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5); transition: transform 0.15s, right 0.28s ease, background 0.2s, border-color 0.2s;
+        }
+        #freeroam-fab:hover { transform: scale(1.08); }
+        #freeroam-fab.active { background: linear-gradient(180deg, #4a3a1f, #2a2010); border-color: rgba(241,196,15,0.7); box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 12px rgba(241,196,15,0.35); }
+        body.chat-open #freeroam-fab { right: 600px; }
+        /* Leiste unterhalb der FAB-Reihe, nur sichtbar solange freeroamActive true ist (siehe
+           updateUI()) - bewusst dauerhaft eingeblendet (nicht nur beim Klick auf den FAB), damit
+           jederzeit erkennbar bleibt, dass der Modus gerade laeuft (auch fuer online zuschauende
+           Mitspieler auf demselben Geraet, falls sie ueber die Schulter schauen). */
+        #freeroam-bar {
+            position: fixed; top: 68px; right: 280px; z-index: 3001;
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: min(90vw, 360px);
+            background: linear-gradient(180deg, #4a3a1f, #2a2010); border: 1px solid rgba(241,196,15,0.7);
+            border-radius: 14px; padding: 8px 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            font-family: 'Cinzel', serif; font-size: 0.78em; color: var(--gold-light); letter-spacing: 0.3px;
+            transition: right 0.28s ease;
+        }
+        #freeroam-bar.hidden { display: none; }
+        body.chat-open #freeroam-bar { right: 600px; }
         /* Bestaetigungs-Dialog fuer #leave-game-fab (Punkt 64) - bewusst dasselbe Fenster/Layout fuer
            lokal UND online (Nutzerwunsch), nur der "Speichern"-Button wird online per :disabled
            ausgegraut (siehe .btn:disabled weiter oben) statt eines eigenen Online-Dialogs. Gleiches
@@ -680,6 +708,12 @@
         /* Metamorphose-Zielwahl-Popup (siehe #metamorphose-overlay im Markup/chooseMetaTarget() im JS) -
            dasselbe Ueberlagerungs-Prinzip wie #kickvote-overlay/#leave-game-overlay. */
         #metamorphose-overlay {
+            position: fixed; inset: 0; z-index: 3011; display: flex; align-items: center; justify-content: center;
+            background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
+        }
+        /* FreeRoam-Kartenwahl (siehe #freeroam-picker-overlay im Markup) - dasselbe Ueberlagerungs-
+           Prinzip wie #metamorphose-overlay/#kickvote-overlay. */
+        #freeroam-picker-overlay {
             position: fixed; inset: 0; z-index: 3011; display: flex; align-items: center; justify-content: center;
             background: rgba(5,5,8,0.78); backdrop-filter: blur(3px);
         }
@@ -1221,7 +1255,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.36</div>
+                <div class="version-tag">v1.38</div>
             </div>
         </div>
 
@@ -1279,6 +1313,16 @@
 <!-- "Kamera-Automatik ein/aus" (Punkt 66) - siehe CSS-Kommentar bei #camera-lock-fab und
      toggleCameraFollow() weiter unten im Skript. -->
 <div id="camera-lock-fab" class="hidden" onclick="toggleCameraFollow()" title="Kamera-Automatik AN (klicken zum Ausschalten)">🎥</div>
+<!-- FreeRoam-Adminmodus (Nutzerwunsch, siehe "FREEROAM-ADMINMODUS"-Abschnitt im Skript) - naechster
+     freier 52px-Slot rechts daneben (20/72/124/176/228/280 = Hilfe/Sound/Musik/Verlassen/Kamera-
+     Automatik/FreeRoam). Nur sichtbar, wenn checkAdminStatus() dieses Browser-Cookie als
+     Admin-Session erkannt hat - siehe updateUI(). -->
+<div id="freeroam-fab" class="hidden" onclick="toggleFreeroam()" title="FreeRoam-Modus (Admin): frei Karten wählen, unabhängig vom Zug">🛠️</div>
+<div id="freeroam-bar" class="hidden">
+    <span>🛠️ FreeRoam aktiv</span>
+    <button class="btn btn-gold" style="padding:6px 12px; font-size:0.85em;" onclick="openFreeroamPicker()">🃏 Karte wählen</button>
+    <button id="freeroam-finish-btn" class="btn btn-secondary hidden" style="padding:6px 12px; font-size:0.85em;" onclick="freeroamFinishPlacing()">✅ Fertig platzieren</button>
+</div>
 <div id="room-badge" class="hidden">🌐 RAUM: <span id="room-badge-code"></span></div>
 <div id="spectator-badge" class="hidden"></div>
 
@@ -1502,6 +1546,26 @@
     </div>
 </div>
 
+<!-- FreeRoam-Kartenwahl (siehe openFreeroamPicker()/freeroamPickCard() im JS-Abschnitt
+     "FREEROAM-ADMINMODUS"): dasselbe Fenster-Baukasten-Prinzip wie #metamorphose-overlay, nur mit
+     zwei Gruppen (Landschaft/Aktion) statt einer festen Zielauswahl. -->
+<div id="freeroam-picker-overlay" class="hidden">
+    <div class="feedback-box">
+        <div class="corner-tl"></div><div class="corner-tr"></div>
+        <div class="corner-bl"></div><div class="corner-br"></div>
+        <button class="tutorial-close" onclick="closeFreeroamPicker()">✕</button>
+        <div class="feedback-scroll" style="text-align:center;">
+        <div class="tutorial-icon">🛠️</div>
+        <div class="tutorial-title">FreeRoam: Karte wählen</div>
+        <p class="menu-subtitle" style="margin-bottom:10px;">Landschaftskarte (wird sofort gesetzt, 20x hintereinander möglich):</p>
+        <div id="freeroam-landscape-list" class="feedback-nav" style="flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
+        <p class="menu-subtitle" style="margin-bottom:10px;">Aktionskarte:</p>
+        <div id="freeroam-action-list" class="feedback-nav" style="flex-wrap:wrap; gap:8px;"></div>
+        <button class="btn btn-secondary" style="margin-top:16px;" onclick="closeFreeroamPicker()">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
 <div id="chat-sidebar-tab" class="hidden" onclick="toggleChatPanel()">💬 CHAT<span class="chat-unread-dot"></span></div>
 <div id="chat-sidebar-panel" class="hidden">
     <div id="chat-sidebar-tabs">
@@ -1584,8 +1648,8 @@
         </div>
         <div id="drawing-area" class="hidden">
             <div id="draw-selection">
-                <button class="btn" data-sfx-skip onclick="prepareDraw('LANDSCAPE')">Landschaftskarte ziehen</button>
-                <button class="btn" data-sfx-skip onclick="prepareDraw('ACTION')">Aktionskarte ziehen</button>
+                <button class="btn btn-gold" data-sfx-skip onclick="prepareDraw('LANDSCAPE')">Landschaftskarte ziehen</button>
+                <button class="btn btn-gold" data-sfx-skip onclick="prepareDraw('ACTION')">Aktionskarte ziehen</button>
                 <p style="text-align:center; font-size:0.85em; margin-top:8px; font-family:'Cormorant Garamond',serif;">Noch <span id="cards-left-display">2</span> Karten</p>
             </div>
             <div id="active-card" class="hidden">
@@ -1776,6 +1840,11 @@ let clouds = [];
 let nextCloudSpawnMs = 0;
 let weatherLastTs = null;
 let players = [], currentPlayerIdx = 0, gameState = "SETUP";
+// FreeRoam-Adminmodus (Nutzerwunsch): siehe checkAdminStatus()/isControllable()/"FREEROAM-ADMINMODUS"-
+// Abschnitt weiter unten. isAdminUser wird einmal beim Laden per /admin/check gegen den bestehenden
+// Admin-Session-Cookie geprueft (server.js) - freeroamActive schaltet den Modus fuer DIESEN Browser
+// an/aus, ist also unabhaengig von isAdminUser (man kann eingeloggt sein, den Modus aber gerade nicht nutzen).
+let isAdminUser = false, freeroamActive = false;
 // Grob gezaehlte "Runde" (jedes Mal, wenn currentPlayerIdx wieder bei 0 ankommt, siehe advanceTurn())
 // - nur fuer die Statistik auf dem Sieges-Screen gedacht, hat keine Auswirkung auf die eigentliche
 // Spiellogik. Zaehlt bewusst NICHT die anfaengliche Figuren-Platzierung mit (siehe performHexClick()).
@@ -2861,6 +2930,139 @@ const ALL_LANDSCAPE_TYPES = [
     { type: 'river', name: 'Fluss', icon: '🌊' },
     { type: 'road', name: 'Straße', icon: '🛤️' }
 ];
+// Spiegelt bewusst 1:1 die Aktionskarten-Liste in prepareDraw() (Name/Typ/Icon) - eigene Konstante
+// nur fuer den FreeRoam-Kartenwaehler (siehe openFreeroamPicker()), damit dieser nicht selbst eine
+// dritte, abweichende Kartendefinition erfinden muss. Bei einer neuen Aktionskarte in prepareDraw()
+// auch HIER ergaenzen, sonst taucht sie im FreeRoam-Waehler nicht auf.
+const ALL_ACTION_TYPES = [
+    { type: 'extra_move', name: 'Extra Zug', icon: '🏃' },
+    { type: 'skip_turn', name: 'Aussetzen', icon: '🚫' },
+    { type: 'teleport', name: 'Teleport', icon: '✨' },
+    { type: 'push_enemy', name: 'Gegner zurückwerfen', icon: '💨' },
+    { type: 'tornado', name: 'Wirbelsturm', icon: '🌪️' },
+    { type: 'metamorphose', name: 'Metamorphose', icon: '🦋' },
+    { type: 'tool_hook', name: 'Seil & Haken', icon: '🪢' },
+    { type: 'tool_boat', name: 'Ruderboot', icon: '🛶' }
+];
+// ---------- FREEROAM-ADMINMODUS ----------
+// Nutzerwunsch: "ich kann Landschaftsfelder setzen die ich will und auch alle Karten benutzen um so
+// die ganzen Mechaniken auszutesten". Bewusst KEIN separater, regelfreier "Mal-Modus": FreeRoam
+// nutzt fuer die eigentliche Platzierung/Kartenwirkung exakt dieselben, laengst getesteten Zustaende/
+// Funktionen wie ein normaler Zug (DICE_ROLL/PLACING_TERRAIN/ACTION_VIEW/finishCard() usw.) - es wird
+// nur an zwei Stellen eingegriffen: (1) welche Karte man bekommt (hier frei waehlbar statt zufaellig),
+// (2) dass man ueberhaupt handeln darf, egal wer/wann eigentlich dran ist (siehe isControllable()
+// oben). Dadurch bleiben alle Regeln (Einmauer-Schutz, Ruinen-Autoloot, Fluss-Sonderzuege, ...) auch
+// im FreeRoam-Modus aktiv - man testet die echte Mechanik, keine Parallel-Implementierung.
+//
+// Zugriff: siehe checkAdminStatus() - ausschliesslich ueber denselben Admin-Session-Cookie, den man
+// sich durch ein Passwort-Login auf /admin (server.js) holt. Ein einmal (in diesem Browser) erfolgtes
+// Login schaltet den Modus dauerhaft (30 Tage, solange das Cookie gueltig ist) frei - sowohl fuer
+// lokale als auch fuer Online-Partien, da beide dieselbe Seite vom selben Server laden.
+
+// Einmal beim Laden geprueft (siehe Bootstrap-Aufruf ganz unten im Skript) - rein informativ fuer
+// diesen einen Seitenaufruf, kein Live-Abo. Ein Logout auf /admin wirkt daher erst nach einem
+// Neuladen dieser Seite - fuer ein kleines Freundesprojekt voellig ausreichend.
+async function checkAdminStatus() {
+    try {
+        const res = await fetch('/admin/check', { credentials: 'same-origin' });
+        isAdminUser = res.ok;
+    } catch (e) { isAdminUser = false; }
+    // Komfort-Vorbereitung fuer den "🛠️ Editor"-Link aus der Admin-Raumliste (server.js,
+    // adminRoomsPageHtml()): der Link haengt zusaetzlich ?freeroam=1 an. Der Parameter selbst schaltet
+    // NICHTS frei (das macht ausschliesslich das Cookie oben) - er sorgt nur dafuer, dass der Modus,
+    // FALLS isAdminUser wirklich true ist, gleich beim Beitreten schon aktiv ist, statt dass man nach
+    // dem Beitreten erst manuell auf den FreeRoam-Knopf klicken muesste.
+    try {
+        if (isAdminUser && new URLSearchParams(location.search).get('freeroam') === '1') freeroamActive = true;
+    } catch (e) {}
+    // Bewusst KEIN updateUI()-Aufruf hier: beim Booten (siehe Aufrufstelle ganz unten im Skript) ist
+    // gameState noch "SETUP" und players noch leer - updateUI() geht aber von einem laufenden Spiel
+    // aus (u.a. players[currentPlayerIdx].inventory) und wuerde an dieser Stelle abstuerzen. isAdminUser
+    // wird stattdessen einfach nur gesetzt - der naechste ohnehin faellige updateUI()-Aufruf (sobald
+    // wirklich ein Spiel startet, lange nach diesem schnellen Fetch) liest den Wert dann ganz normal.
+}
+
+// Bricht eine gerade laufende FreeRoam-Kartenwahl/-Platzierung sauber ab und kehrt zu CHOOSING
+// zurueck - bewusst NICHT ueber finishCard() (das wuerde drawPoints verbrauchen und ggf. in
+// DRAWING_DONE enden, siehe dortiger Kommentar) - FreeRoam ignoriert die normale Zug-Buchhaltung
+// (Zieh-/Aktionspunkte) komplett, siehe freeroamPickCard().
+function freeroamResetToChoosing() {
+    currentCard = null; placementsRemaining = 0;
+    gameState = 'CHOOSING';
+    updateUI(); render();
+}
+
+// Klick auf den 🛠️-Knopf oben rechts (nur sichtbar/nutzbar fuer isAdminUser, siehe updateUI()).
+function toggleFreeroam() {
+    if (!isAdminUser) return;
+    if (freeroamActive) {
+        // Sauber abschliessen statt mitten in einer Kartenwahl/Platzierung "einfrieren" zu lassen -
+        // sonst koennte das Panel fuer alle anderen (Online-)Mitspieler in einem halbfertigen Zustand
+        // haengen bleiben, sobald der echte Zug-Inhaber danach wieder die Kontrolle hat.
+        if (currentCard || gameState === 'PLACING_TERRAIN' || gameState === 'DICE_ROLL') freeroamResetToChoosing();
+        freeroamActive = false;
+        addLogEntry('🛠️ FreeRoam-Modus beendet.');
+    } else {
+        freeroamActive = true;
+        addLogEntry(`🛠️ ${playerLabel(players[currentPlayerIdx])} nutzt jetzt den FreeRoam-Modus (Admin-Test).`);
+    }
+    updateUI();
+    closeFreeroamPicker();
+}
+
+function openFreeroamPicker() {
+    if (!freeroamActive) return;
+    const landWrap = document.getElementById('freeroam-landscape-list');
+    landWrap.innerHTML = ALL_LANDSCAPE_TYPES.map(t =>
+        `<button class="btn btn-gold" onclick="freeroamPickCard('LANDSCAPE','${t.type}')">${t.icon} ${t.name}</button>`
+    ).join('');
+    const actionWrap = document.getElementById('freeroam-action-list');
+    actionWrap.innerHTML = ALL_ACTION_TYPES.map(t =>
+        `<button class="btn btn-gold" onclick="freeroamPickCard('ACTION','${t.type}')">${t.icon} ${t.name}</button>`
+    ).join('');
+    document.getElementById('freeroam-picker-overlay').classList.remove('hidden');
+}
+function closeFreeroamPicker() {
+    document.getElementById('freeroam-picker-overlay').classList.add('hidden');
+}
+
+// Legt die gewaehlte Karte direkt als currentCard fest, genau wie es prepareDraw() sonst per Zufall
+// taete - ab hier laeuft alles ueber dieselben, bereits bestehenden Zustaende/Funktionen weiter
+// (Wuerfeln entfaellt bewusst: placementsRemaining wird grosszuegig fest vorbelegt, damit man mehrere
+// Felder direkt hintereinander setzen kann, ohne fuer jedes einzelne neu "wuerfeln" zu muessen).
+function freeroamPickCard(deck, type) {
+    if (!freeroamActive) return;
+    // drawPoints/actionPoints hier bewusst immer wieder aufgefrischt - FreeRoam soll beliebig oft
+    // hintereinander Karten "ziehen" koennen, ohne durch die normale 2x-pro-Zug-Buchhaltung in
+    // DRAWING_DONE zu laufen (die fuer einen echten Zug gedacht ist, nicht fuer freies Testen).
+    drawPoints = 2; actionPoints = 2;
+    closeFreeroamPicker();
+    if (deck === 'LANDSCAPE') {
+        const info = ALL_LANDSCAPE_TYPES.find(t => t.type === type);
+        if (!info) return;
+        currentCard = Object.assign({}, info, { deck: 'LANDSCAPE' });
+        placementsRemaining = 20;
+        addLogEntry(`🛠️ FreeRoam: ${playerLabel(players[currentPlayerIdx])} wählt ${currentCard.icon} ${currentCard.name} (${placementsRemaining}x setzbar).`);
+        diceValue = 0;
+        gameState = 'PLACING_TERRAIN';
+    } else {
+        const info = ALL_ACTION_TYPES.find(t => t.type === type);
+        if (!info) return;
+        currentCard = Object.assign({}, info, { deck: 'ACTION' });
+        addLogEntry(`🛠️ FreeRoam: ${playerLabel(players[currentPlayerIdx])} wählt ${currentCard.icon} ${currentCard.name}.`);
+        if (currentCard.type === 'tornado') { executeTornado(); return; }
+        gameState = 'ACTION_VIEW';
+    }
+    updateUI(); render();
+}
+
+// "✅ Fertig platzieren" - nur waehrend PLACING_TERRAIN im FreeRoam-Modus sichtbar (siehe updateUI()),
+// falls man nicht alle 20 vorbelegten Platzierungen tatsaechlich verbrauchen will.
+function freeroamFinishPlacing() {
+    if (!freeroamActive || gameState !== 'PLACING_TERRAIN') return;
+    freeroamResetToChoosing();
+}
+
 // Flutfuellung ausgehend von (startQ,startR): liefert alle Felder derselben, zusammenhaengenden
 // Landschaftsgruppe (gleicher hex.terrain wie das Startfeld) - generische Variante von
 // getConnectedRivers() fuer beliebige Landschaftstypen, gebraucht fuer SELECT_META_GROUP.
@@ -3106,6 +3308,11 @@ function isMyTurn() { return !net.active || net.myIndex === currentPlayerIdx; }
 function isControllable() {
     if (replayModeActive) return false; // Wiedergabe ist reines Zuschauen, siehe REPLAY-VIEWER oben
     if (isGameOver) return false;
+    // FreeRoam-Adminmodus (Nutzerwunsch, siehe Abschnitt "FREEROAM-ADMINMODUS" weiter unten): setzt
+    // sich bewusst ueber Zugreihenfolge, KI-Sperre UND Zuschauer-Status hinweg - genau das soll der
+    // Modus ja koennen ("egal wer/wann dran ist, alles austesten"). replayModeActive/isGameOver
+    // bleiben trotzdem gesperrt (siehe Checks oben), das macht in beiden Faellen ohnehin keinen Sinn.
+    if (freeroamActive) return true;
     // Absicherung (eigentlich unerreichbar, siehe kicked-Ueberspring-Logik in startTurn()): ein per
     // Abstimmung rausgeworfener Spieler (Punkt "Kick-Vote") soll unter keinen Umstaenden mehr etwas
     // steuern koennen, selbst nicht im theoretischen Randfall einer kurzen Ueberschneidung, bevor
@@ -7833,6 +8040,13 @@ function updateUI() {
     document.getElementById('btn-finish-drawing').classList.toggle('hidden', !['DRAWING', 'DICE_ROLL', 'PLACING_TERRAIN', 'ROTATING_RIVER', 'ACTION_VIEW', 'DRAWING_DONE'].includes(gameState));
     document.getElementById('btn-discard-new').classList.toggle('hidden', gameState !== 'SWAP_CARD');
 
+    // FreeRoam-Adminmodus (siehe Abschnitt "FREEROAM-ADMINMODUS"): #freeroam-fab nur fuer eingeloggte
+    // Admins UND nur waehrend einer laufenden Partie sichtbar, exakt wie #leave-game-fab.
+    document.getElementById('freeroam-fab').classList.toggle('hidden', !isAdminUser || gameState === 'SETUP');
+    document.getElementById('freeroam-fab').classList.toggle('active', freeroamActive);
+    document.getElementById('freeroam-bar').classList.toggle('hidden', !freeroamActive || gameState === 'SETUP');
+    document.getElementById('freeroam-finish-btn').classList.toggle('hidden', gameState !== 'PLACING_TERRAIN');
+
     document.getElementById('movement-area').classList.toggle('hidden', gameState !== 'MOVING' && gameState !== 'RIVER_ESCAPE' && gameState !== 'RIVER_ESCAPE_PUSH' && gameState !== 'BOAT_LANDING');
     document.getElementById('ap-display').innerText = `AKTIONSPUNKTE: ${actionPoints}`;
     if (currentCard) {
@@ -8709,6 +8923,7 @@ function fxLoop() {
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; fxCanvas.width = window.innerWidth; fxCanvas.height = window.innerHeight; render(); }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas(); updateDefaultSettings(); renderPlayerTypeSelectors(); updateSoundMuteUI(); updateMusicMuteUI(); updateContinueButtonUI(); requestAnimationFrame(fxLoop);
+checkAdminStatus(); // FreeRoam-Adminmodus (siehe "FREEROAM-ADMINMODUS"-Abschnitt) - einmal pro Seitenaufruf gegen /admin/check pruefen
 </script>
 </body>
 </html>
