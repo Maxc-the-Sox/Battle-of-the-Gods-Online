@@ -1210,7 +1210,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.32</div>
+                <div class="version-tag">v1.33</div>
             </div>
         </div>
 
@@ -2924,6 +2924,13 @@ function startNetworkMode() {
         const params = new URLSearchParams(location.search);
         const roomFromLink = params.get('room');
         if (roomFromLink) document.getElementById('lobby-room-input').value = roomFromLink.toUpperCase();
+        // Nutzerwunsch (Admin-Ansicht, siehe server.js): ein "Zuschauen"-Link von dort verlinkt
+        // hierher mit ?room=CODE&spectator=1 - das Haekchen soll dann gleich mit gesetzt sein,
+        // damit ein einziger Klick auf "Beitreten" direkt als Zuschauer reinbringt.
+        if (params.get('spectator') === '1') {
+            const specToggle = document.getElementById('lobby-spectator-toggle');
+            if (specToggle) specToggle.checked = true;
+        }
     } catch (e) {}
 }
 
