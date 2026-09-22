@@ -201,12 +201,20 @@ function adminRoomsPageHtml() {
             ? players.map(p => `<span class="chip" style="--c:${escapeHtml(p.color)}">${escapeHtml(p.name)}</span>`).join('')
             : '<span class="muted">–</span>';
         const joinUrl = `/?room=${encodeURIComponent(code)}&spectator=1`;
+        // Editor-Link (Nutzerwunsch: FreeRoam-Modus direkt aus der Admin-Raumliste erreichbar) -
+        // fuehrt in denselben Raum als Zuschauer, aber mit ?freeroam=1 zusaetzlich in der URL. Der
+        // Parameter selbst schaltet NICHTS frei (siehe checkAdminStatus() im Client) - er ist nur eine
+        // Komfort-Abkuerzung, die die FreeRoam-Leiste beim Laden schon vorbereitet/anzeigt. Die
+        // eigentliche Freischaltung passiert ausschliesslich ueber denselben Admin-Session-Cookie, den
+        // dieser Browser durch den Login auf /admin bereits besitzt (per /admin/check geprueft) -
+        // jemand ohne dieses Cookie sieht die FreeRoam-Leiste also auch mit diesem Link nicht.
+        const editorUrl = `/?room=${encodeURIComponent(code)}&spectator=1&freeroam=1`;
         return `<tr>
             <td class="code">${escapeHtml(code)}</td>
             <td>${started ? ('🟢 läuft' + (round ? ` · Runde ${escapeHtml(String(round))}` : '')) : '🟡 Lobby'}</td>
             <td>${playerChips}</td>
             <td>${spectators.length}</td>
-            <td><a class="btn" href="${joinUrl}" target="_blank" rel="noopener">👀 Zuschauen</a></td>
+            <td><a class="btn" href="${joinUrl}" target="_blank" rel="noopener">👀 Zuschauen</a> <a class="btn" href="${editorUrl}" target="_blank" rel="noopener" style="background:#8e7220;border-color:#8e7220;">🛠️ Editor</a></td>
         </tr>`;
     }).join('\n');
 
@@ -260,6 +268,20 @@ function handleAdminLogout(req, res) {
     res.end();
 }
 
+// Nutzerwunsch (FreeRoam-Modus): der Client (public/index.html, checkAdminStatus()) fragt das hier
+// bei jedem Seitenaufruf einmal leise ab, um zu wissen, ob DIESER Browser gerade mit dem Admin-
+// Passwort auf /admin eingeloggt ist - genau dieselbe Pruefung, die /admin selbst schon macht
+// (isAdminAuthed()), nur als schlanke JSON-Antwort statt einer ganzen HTML-Seite. Bewusst KEINE
+// neue Login-Logik: das Cookie kommt einzig vom bestehenden /admin/login-Formular, ein Aufruf
+// dieser Route allein kann also niemandem Adminrechte verschaffen, der sie nicht schon per Passwort
+// erhalten hat. Cache-Control: no-store, damit ein zwischengespeichertes "ok" nach einem Logout
+// nicht faelschlich weiter als Freischaltung gilt.
+function handleAdminCheck(req, res) {
+    const ok = isAdminAuthed(req);
+    res.writeHead(ok ? 200 : 401, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ admin: ok }));
+}
+
 // Kleine Routing-Schicht: /admin* wird hier abgefangen, alles andere geht weiter an den
 // bestehenden statischen Datei-Server (unveraendert).
 function requestHandler(req, res) {
@@ -267,6 +289,7 @@ function requestHandler(req, res) {
     if (urlPath === '/admin' && req.method === 'GET') return handleAdminGet(req, res);
     if (urlPath === '/admin/login' && req.method === 'POST') return handleAdminLogin(req, res);
     if (urlPath === '/admin/logout' && req.method === 'POST') return handleAdminLogout(req, res);
+    if (urlPath === '/admin/check' && req.method === 'GET') return handleAdminCheck(req, res);
     return serveStatic(req, res);
 }
 
