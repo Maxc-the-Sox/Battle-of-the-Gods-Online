@@ -166,7 +166,7 @@
         select { padding: 12px; width: 100%; background: #0c0b08; color: #f3e2a9; border: 1px solid rgba(212,175,55,0.5); border-radius: 2px; font-size: 1.05em; font-family: 'Cinzel', serif; outline: none; box-sizing: border-box; }
 
         /* ---------- UI Panels (ornamentaler Rahmen, Spielerfarbe via --panel-color) ---------- */
-        #ui-panel, #inventory-panel, #apo-panel, #victory-panel, #turnorder-panel, #stats-panel {
+        #ui-panel, #inventory-panel, #apo-panel, #victory-panel, #turnorder-panel, #stats-panel, #opponent-turn-panel {
             position: absolute;
             background: linear-gradient(160deg, rgba(38,34,26,0.92), rgba(18,16,12,0.95));
             border: 1px solid var(--panel-color, var(--gold));
@@ -189,6 +189,31 @@
            #ui-panel/#apo-panel/#inventory-panel - AUSSER im Replay, das (wie #turnorder-panel)
            ohnehin kein Dock hat und deshalb per .replay-mode direkt positioniert wird (siehe dort). */
         #stats-panel { --panel-color: var(--gold); z-index: 10; top: 20px; right: 20px; font-size: 0.92em; }
+        /* ---------- Punkt 88 (Nutzerwunsch): "ein Fenster/Hinweis soll aufgehen, wenn die KI oder ein
+           menschlicher Gegenspieler am Zug ist und live zeigt, was der gerade macht". Bewusst unten
+           LINKS: das ist auf Desktop-Breiten (siehe #apo-panel-Kommentar oben) die einzige der vier
+           Ecken, die NICHT schon von einem der bestehenden Panels belegt ist (oben links #ui-panel,
+           oben rechts #stats-panel, unten rechts #inventory-panel, #apo-panel ist seit seiner Leisten-
+           Umstellung keine Ecke mehr) - deckt dadurch garantiert kein Spielfeld ab, das nicht ohnehin
+           schon neben einem anderen Panel liegt. Erscheint NUR, wenn gerade tatsaechlich ein FREMDER
+           Zug laeuft (siehe opponentTurnPanelShouldShow() im Skript) - anders als die anderen Panels
+           hier also nicht dauerhaft sichtbar, sondern kommt/geht je nach Zug. Bewusst deutlich
+           schmaler/kompakter als die anderen 280px-Panels (Nutzerwunsch: "nicht stoeren"). */
+        #opponent-turn-panel { --panel-color: #48c9b0; z-index: 12; bottom: 20px; left: 20px; width: 240px; padding: 12px 14px 14px; font-size: 0.88em; }
+        .otp-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .otp-dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,0.4); flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+        .otp-player-label { flex: 1; font-family: 'Cinzel', serif; font-size: 0.92em; letter-spacing: 0.4px; color: #b9e8dd; line-height: 1.3; }
+        .otp-close-btn {
+            background: none; border: none; color: #9a8f6f; font-size: 1.15em; line-height: 1; cursor: pointer;
+            padding: 2px 4px; flex-shrink: 0; border-radius: 3px; transition: color 0.2s, background 0.2s;
+        }
+        .otp-close-btn:hover { color: #f3e2a9; background: rgba(212,175,55,0.15); }
+        .otp-action-text { color: #d8cfa9; font-style: italic; line-height: 1.4; min-height: 1.4em; }
+        /* Nutzer war sich beim Handy unsicher ("evtl weglassen") - bewusst ganz weggelassen statt einer
+           halbgaren mobilen Variante: auf ohnehin schon engem Bildschirmplatz waere ein zusaetzliches,
+           kommendes/gehendes Panel eher zusaetzliche Unruhe als Hilfe. Kann bei Bedarf spaeter als
+           eigener #mobile-dock-Button ergaenzt werden, falls der Nutzer das doch will. */
+        @media (max-width: 700px) { #opponent-turn-panel { display: none !important; } }
         /* ---------- Zugreihenfolge-Panel: analog zum Apokalypse-Panel gleich darunter, nur als Leiste
            oben statt unten (siehe @media min-width:701px weiter unten) und ohne Ring-Status-Inhalt -
            auf Handy/Tablet (max-width:700px) unveraendert als eigenes Bottom-Sheet-Panel ueber
@@ -319,6 +344,12 @@
                auf die tatsaechliche Leisten-Hoehe gesetzt (siehe Skript), 58px ist nur ein NAherungs-
                Fallback bevor JS das erste Mal misst bzw. falls ResizeObserver fehlen sollte. */
             #inventory-panel { bottom: calc(var(--apo-bar-h, 58px) + 12px); }
+            /* Punkt 88 (Nutzerfeedback: "Hinweisfeld wird vom unteren Banner überdeckt") - dasselbe
+               Problem/derselbe Fix wie bei #inventory-panel direkt darüber: #opponent-turn-panel sitzt
+               ebenfalls unten (nur links statt rechts) und wurde beim Hinzufügen nicht an die volle-
+               Breite-Apokalypse-Leiste angepasst. Test lief nur mit direkter Zustandsmanipulation ohne
+               die Leiste sichtbar am Bildschirmrand zu pruefen - genau dieser Fall ist dabei durchgerutscht. */
+            #opponent-turn-panel { bottom: calc(var(--apo-bar-h, 58px) + 12px); }
         }
 
         .panel-header { font-family: 'Cinzel', serif; font-weight: 700; text-align: center; letter-spacing: 2px; text-transform: uppercase; font-size: 0.88em; color: var(--panel-color, var(--gold)); text-shadow: 0 0 10px color-mix(in srgb, var(--panel-color, var(--gold)) 60%, transparent); padding-bottom: 9px; margin-bottom: 12px; position: relative; }
@@ -1255,7 +1286,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.39</div>
+                <div class="version-tag">v1.43</div>
             </div>
         </div>
 
@@ -1700,6 +1731,23 @@
     <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
     <div class="victory-stats-header">Statistik</div>
     <div id="stats-panel-body"></div>
+</div>
+
+<!-- #opponent-turn-panel (Punkt 88, Nutzerwunsch): erscheint waehrend eines FREMDEN Zugs (KI ODER
+     ein anderer echter Spieler online, siehe opponentTurnPanelShouldShow() im Skript) unten links
+     und zeigt live, was diese Person gerade macht - wiederverwendet dafuer denselben Text, der auch
+     im Spielprotokoll landet (addLogEntry()), keine eigene Text-Pipeline. Manuell wegklickbar
+     (Nutzerwunsch) ueber den ×-Button - das Schliessen gilt nur fuer den aktuellen Zug, beim
+     naechsten Zug erscheint es automatisch wieder (siehe dismissOpponentTurnPanel()/otpTurnKey()).
+     Bewusst NICHT ueber den Handy-Dock erreichbar (siehe CSS-Kommentar bei #opponent-turn-panel). -->
+<div id="opponent-turn-panel" class="hidden">
+    <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
+    <div class="otp-header">
+        <span id="otp-player-dot" class="otp-dot"></span>
+        <span id="otp-player-label" class="otp-player-label"></span>
+        <button class="otp-close-btn" onclick="dismissOpponentTurnPanel()" title="Für diesen Zug ausblenden">×</button>
+    </div>
+    <div id="otp-action-text" class="otp-action-text"></div>
 </div>
 
 <!-- #apo-panel: Apokalypse-Status. Auf Desktop (siehe @media min-width:701px im <style>) als
@@ -3393,6 +3441,7 @@ function backToMainMenu() {
     document.getElementById('inventory-panel').classList.add('hidden');
     document.getElementById('turnorder-panel').classList.add('hidden');
     document.getElementById('stats-panel').classList.add('hidden');
+    document.getElementById('opponent-turn-panel').classList.add('hidden'); // Punkt 88, siehe Kommentar dort
     document.getElementById('mobile-dock').classList.add('hidden');
     document.getElementById('help-fab').classList.add('hidden');
     document.getElementById('leave-game-fab').classList.add('hidden');
@@ -4177,6 +4226,15 @@ function applyRemoteState(state) {
 // (das passiert automatisch, weil updateUI() bei jeder Aenderung sendet).
 const NPC_TICK_MS = 650;
 const NPC_CARD_TYPES = ['tool_hook', 'tool_boat']; // "passive" Karten, die die KI nie aktiv anklickt
+// Punkt 86 (KI-Ueberarbeitung, per Test aufgedeckter Bug): npcStep() hat bewusst KEINE Behandlung
+// fuer SELECT_META_GROUP/SELECT_META_TARGET/META_MOUTH (siehe dortiger Kommentar), weil
+// npcCardUsefulness() fuer 'metamorphose' immer 0 liefert und Mittel/Schwer die Karte dadurch nie
+// aktiv anklicken. Bei LEICHT stimmte diese Annahme aber nicht: npcMaybeUseInventoryCard() waehlt
+// dort komplett ZUFAELLIG aus allen nicht-passiven Karten - konnte also durchaus auch Metamorphose
+// erwischen und damit gameState fuer immer in SELECT_META_GROUP haengen lassen (per Playwright-
+// Testlauf reproduziert: KI blieb nach einer zufaelligen Metamorphose-Auswahl komplett stehen,
+// keine Fehlermeldung, einfach eingefroren). Deshalb hier zusaetzlich ausgeschlossen.
+const NPC_UNPLAYABLE_CARD_TYPES = ['tool_hook', 'tool_boat', 'metamorphose'];
 let npcTickTimer = null;
 
 function isHostOrLocal() { return !net.active || net.clientId === net.hostId; }
@@ -4289,14 +4347,22 @@ function npcOpponentUnits(p) {
     players.forEach(pl => { if (pl.id !== p.id) pl.units.forEach(u => list.push({ unit: u, owner: pl })); });
     return list;
 }
-function npcLeadingOpponentTargetUnit(p) {
+// Punkt 86 (KI-Ueberarbeitung): liefert jetzt den vollen Eintrag {unit, owner} statt nur der Figur,
+// damit npcCardUsefulness() unten auch den BESITZER des fuehrenden Gegners kennt (fuer den
+// Ruinen-Rueckstand-Bonus). npcLeadingOpponentTargetUnit() bleibt als duennmer Wrapper bestehen,
+// da er an mehreren Stellen (Aussetzen/Schubsen-Zielwahl) weiterhin nur die Figur braucht.
+function npcLeadingOpponentEntry(p) {
     const list = npcOpponentUnits(p);
     if (list.length === 0) return null;
     const temple = templeLandmark();
-    if (!temple) return pickRandom(list).unit;
+    if (!temple) return pickRandom(list);
     let best = list[0], bestD = Infinity;
     list.forEach(entry => { const d = getHexDistance(entry.unit.q, entry.unit.r, temple.q, temple.r); if (d < bestD) { bestD = d; best = entry; } });
-    return best.unit;
+    return best;
+}
+function npcLeadingOpponentTargetUnit(p) {
+    const entry = npcLeadingOpponentEntry(p);
+    return entry ? entry.unit : null;
 }
 
 // ---------- KI: Ring-Kollaps-Gefahr einschaetzen ----------
@@ -4388,16 +4454,32 @@ function npcDoChoosing(p, diff) {
     let choice;
     if (pathDrawn && !pathMoved) choice = 'MOVING';
     else if (!pathDrawn && pathMoved) choice = 'DRAWING';
-    else choice = (diff === 'easy') ? (Math.random() < 0.5 ? 'DRAWING' : 'MOVING') : 'DRAWING';
+    else if (diff === 'easy') { choice = Math.random() < 0.5 ? 'DRAWING' : 'MOVING'; }
+    else {
+        // Punkt 86 (KI-Ueberarbeitung): vorher wurde bei Mittel/Schwer IMMER zuerst gezogen, selbst
+        // wenn eine eigene Figur schon akut auf einem bald einstuerzenden Feld stand (siehe
+        // npcHexCollapseRisk) und eigentlich dringend fliehen muesste - ein Hauptgrund, warum die KI
+        // sich "ahnungslos" anfuehlte. Jetzt: bei akuter Gefahr zuerst bewegen, sonst wie bisher ziehen.
+        const inDanger = p.units.some(u => npcHexCollapseRisk(mapData.hexes[`${u.q},${u.r}`]) >= 2);
+        choice = inDanger ? 'MOVING' : 'DRAWING';
+    }
     handleChoice(choice);
 }
 
 // ---------- Karten ziehen ----------
+// Punkt 86 (KI-Ueberarbeitung): war bisher praktisch eine Muenze mit leichter Gewichtung (30%
+// Aktionskarte, unabhaengig vom Inventar-Inhalt) - jetzt an den tatsaechlichen Bedarf gekoppelt:
+// zieht bevorzugt eine Aktionskarte, solange das Inventar (noch) KEINE der wirklich nuetzlichen
+// Aktionskarten enthaelt (Extra Zug/Teleport/Schubsen/Aussetzen/Werkzeuge - siehe
+// npcCardUsefulness()/NPC_CARD_VALUE), sonst eher eine Landschaftskarte, weil weitere Aktionskarten
+// dann ohnehin ueberwiegend ungenutzt liegen bleiben bzw. beim naechsten Tausch als "am wenigsten
+// wertvoll" wieder rausfliegen.
 function npcDoDrawing(p, diff) {
-    let type;
-    if (diff === 'easy') type = Math.random() < 0.5 ? 'LANDSCAPE' : 'ACTION';
-    else type = (p.inventory.length < 3 || Math.random() < 0.3) ? 'ACTION' : 'LANDSCAPE';
-    prepareDraw(type);
+    if (diff === 'easy') { prepareDraw(Math.random() < 0.5 ? 'LANDSCAPE' : 'ACTION'); return; }
+    const usefulActionTypes = ['extra_move', 'teleport', 'push_enemy', 'skip_turn', 'tool_hook', 'tool_boat'];
+    const hasUsefulAction = p.inventory.some(c => usefulActionTypes.includes(c.type));
+    const wantsAction = p.inventory.length < 3 || !hasUsefulAction;
+    prepareDraw(Math.random() < (wantsAction ? 0.75 : 0.25) ? 'ACTION' : 'LANDSCAPE');
 }
 
 // Bugfix (Nutzer-Spielverlauf-Export, 2026-09-19): "water" fehlte in der Ausschlussliste - eine KI
@@ -4496,7 +4578,13 @@ function npcDoRotatingRiver(p, diff) {
     }
 }
 
-const NPC_CARD_VALUE = { tool_hook: 3, tool_boat: 3, teleport: 4, extra_move: 2, push_enemy: 2, skip_turn: 1 };
+// Punkt 87 (Nachtrag zu 86): 'metamorphose' bekommt jetzt einen EIGENEN, bewusst niedrigsten Wert
+// statt (wie bisher) ueber den generischen Fallback (`?? 2`) zufaellig auf derselben Stufe wie
+// Extra Zug/Schubsen zu landen. Die Karte wird von der KI ohnehin nie aktiv gespielt (siehe
+// NPC_UNPLAYABLE_CARD_TYPES) - sie ist fuer die KI aktuell buchstaeblich wertlos, sollte also beim
+// Kartentausch (npcDoSwapCard) IMMER als erstes weichen, statt zufaellig einen Inventarplatz zu
+// blockieren, der stattdessen eine tatsaechlich nutzbare Karte halten koennte.
+const NPC_CARD_VALUE = { tool_hook: 3, tool_boat: 3, teleport: 4, extra_move: 2, push_enemy: 2, skip_turn: 1, metamorphose: 0 };
 function npcDoSwapCard(p, diff) {
     let slotIdx;
     if (diff === 'easy') { slotIdx = Math.floor(Math.random() * 3); }
@@ -4523,17 +4611,31 @@ function npcCardUsefulness(p, card) {
         return bestGain;
     }
     if (card.type === 'push_enemy' || card.type === 'skip_turn') {
-        const leader = npcLeadingOpponentTargetUnit(p);
-        const temple = templeLandmark();
-        if (!leader || !temple) return 0;
-        const d = getHexDistance(leader.q, leader.r, temple.q, temple.r);
-        return Math.max(0, 8 - d) * (card.type === 'skip_turn' ? 0.6 : 0.8);
+        // Punkt 86 (KI-Ueberarbeitung): die alte Formel bezog sich starr auf die Distanz des
+        // Fuehrenden zum TEMPEL - das ergab ueber weite Strecken des Spiels praktisch immer 0, weil
+        // der Tempel erst ganz am Ende relevant wird. Diese Karten verstaubten dadurch quasi immer
+        // bis zum Kartentausch im Inventar. Jetzt stattdessen auf das tatsaechliche AKTUELLE Ziel des
+        // Fuehrenden bezogen (naechste Ruine oder Tempel, siehe objectiveHexFor()), damit die Karten
+        // schon waehrend der normalen Ruinen-Jagd relevant werden. Zusaetzlich ein Dringlichkeits-
+        // Bonus, wenn man selbst im Ruinen-Wettlauf zurueckliegt - der groesste eigene Anreiz, den
+        // Fuehrenden auszubremsen, statt neutral mitzulaufen.
+        const leaderEntry = npcLeadingOpponentEntry(p);
+        if (!leaderEntry) return 0;
+        const leader = leaderEntry.unit;
+        const leaderObj = objectiveHexFor(leader);
+        if (!leaderObj) return 0;
+        const d = getHexDistance(leader.q, leader.r, leaderObj.q, leaderObj.r);
+        let value = Math.max(0, 12 - d) * (card.type === 'skip_turn' ? 0.45 : 0.6);
+        const ownLoot = p.ruinsLooted || 0;
+        const leaderLoot = (leaderEntry.owner && leaderEntry.owner.ruinsLooted) || 0;
+        if (leaderLoot > ownLoot) value += (leaderLoot - ownLoot) * 0.8;
+        return value;
     }
     return 0;
 }
 function npcMaybeUseInventoryCard(p, diff) {
     const usable = [];
-    p.inventory.forEach((c, i) => { if (!NPC_CARD_TYPES.includes(c.type)) usable.push({ idx: i, card: c }); });
+    p.inventory.forEach((c, i) => { if (!NPC_UNPLAYABLE_CARD_TYPES.includes(c.type)) usable.push({ idx: i, card: c }); });
     if (usable.length === 0) return false;
     if (diff === 'easy') {
         if (Math.random() < 0.75) return false;
@@ -6867,6 +6969,60 @@ function renderGameLog() {
     }).join('');
     view.scrollTop = view.scrollHeight;
 }
+
+// =====================================================================
+// Punkt 88 (Nutzerwunsch): "ein Fenster soll aufgehen, wenn die KI oder ein menschlicher
+// Gegenspieler am Zug ist, und darin auflisten was dieser gerade macht". Wiederverwendet bewusst
+// dieselben addLogEntry()-Texte, die ohnehin schon bei jeder Aktion entstehen (siehe dort) - keine
+// zweite, parallele "was passiert gerade"-Pipeline. Gilt fuer KI-Gegner UND echte Mitspieler
+// online (Nutzer-Entscheidung), NICHT fuer lokalen Hotseat gegen einen menschlichen Mitspieler
+// (der sitzt ohnehin am selben Geraet, siehe isMyTurn()-Kommentar weiter oben).
+// =====================================================================
+let otpDismissedTurnKey = null; // welcher Zug (siehe otpTurnKey()) gerade per ×-Klick ausgeblendet wurde
+let otpTurnKeySeen = null;      // letzter Zug, fuer den bereits gerendert wurde - erkennt einen Zugwechsel
+let otpTurnStartLogLen = 0;     // gameLog-Laenge beim erstmaligen Rendern DIESES Zugs - alles davor gehoert
+                                 // noch zum vorherigen Zug und darf hier nicht als "aktuelle Aktion" auftauchen
+
+// Eindeutiger Schluessel fuer "genau dieser eine Zug" - roundCount UND currentPlayerIdx zusammen,
+// weil derselbe Spieler-Index in jeder neuen Runde wiederkehrt (reines currentPlayerIdx wuerde einen
+// in Runde 1 weggeklickten Hinweis auch in Runde 2 faelschlich unterdruecken).
+function otpTurnKey() { return roundCount + ':' + currentPlayerIdx; }
+
+function opponentTurnPanelShouldShow() {
+    if (!players.length || typeof isGameOver === 'undefined' || isGameOver || gameState === 'SETUP') return false;
+    const p = players[currentPlayerIdx];
+    if (!p) return false;
+    if (otpDismissedTurnKey === otpTurnKey()) return false;
+    if (p.isNPC) return true;
+    if (net.active && net.myIndex !== currentPlayerIdx) return true; // menschlicher Mitspieler online (oder Zuschauer, net.myIndex === -1)
+    return false;
+}
+
+// Klick auf den ×-Button im Panel - blendet es nur fuer den GENAU aktuellen Zug aus (siehe
+// otpTurnKey()), beim naechsten Zug erscheint es automatisch wieder.
+function dismissOpponentTurnPanel() {
+    otpDismissedTurnKey = otpTurnKey();
+    renderOpponentTurnPanel();
+}
+
+// Aufgerufen aus updateUI() (siehe dort) - also nach jeder lokalen Aktion UND nach jedem
+// Netzwerk-Sync (applyRemoteState() endet ebenfalls mit updateUI()), deckt damit KI-Zuege,
+// eigene Zuege UND fremde Zuege eines echten Online-Mitspielers gleichermassen ab.
+function renderOpponentTurnPanel() {
+    const panel = document.getElementById('opponent-turn-panel');
+    if (!panel) return;
+    if (!opponentTurnPanelShouldShow()) { panel.classList.add('hidden'); return; }
+    const p = players[currentPlayerIdx];
+    const key = otpTurnKey();
+    if (key !== otpTurnKeySeen) { otpTurnKeySeen = key; otpTurnStartLogLen = gameLog.length; }
+    document.getElementById('otp-player-dot').style.background = p.color || '#888';
+    document.getElementById('otp-player-label').textContent =
+        `${playerLabel(p)}${p.isNPC ? ` (KI, ${npcDifficultyLabel(p.npcDifficulty)})` : ''} ist am Zug`;
+    const hasFreshEntry = gameLog.length > otpTurnStartLogLen;
+    document.getElementById('otp-action-text').textContent = hasFreshEntry ? gameLog[gameLog.length - 1].text : 'Überlegt den nächsten Zug…';
+    panel.classList.remove('hidden');
+}
+
 // Macht die Leiste sichtbar und aktualisiert den Chat-Eingabe-Zustand je nach Modus - idempotent,
 // darf beliebig oft aufgerufen werden (z.B. bei JEDEM Online-Sync), OHNE bestehende Nachrichten
 // zu loeschen.
@@ -7663,6 +7819,7 @@ function showVictoryUI(player, reason) {
     // #stats-panel zeigt dieselben Werte bereits als eigener Abschnitt direkt im Sieg-Panel (siehe
     // buildVictoryStatsHtml() oben) - waere hier oben rechts nur eine redundante Doppelanzeige.
     document.getElementById('stats-panel').classList.add('hidden');
+    document.getElementById('opponent-turn-panel').classList.add('hidden'); // Punkt 88, siehe Kommentar dort - isGameOver ist jetzt true, ergaebe sonst ohnehin nichts mehr zu zeigen
     document.getElementById('leave-game-fab').classList.add('hidden'); // "NEUES SPIEL"-Button im Sieg-Panel deckt das jetzt ab
     document.getElementById('camera-lock-fab').classList.add('hidden');
 
@@ -7985,6 +8142,7 @@ function updateUI() {
     sweepUnitsOnCollapsedRings();
     noteTurnActivity(); // Kick-Vote-Inaktivitaetstimer (siehe dortiger Kommentar) - hier, weil updateUI() zuverlaessig bei jeder echten Zugaktion laeuft
     updateStatsPanel(); // #stats-panel oben rechts, siehe Kommentar dort - deckt laufende Partie (lokal+online) ab
+    renderOpponentTurnPanel(); // #opponent-turn-panel unten links, Punkt 88, siehe Kommentar dort
     const p = players[currentPlayerIdx], guide = document.getElementById('guide-text');
     document.getElementById('player-turn-display').innerText = playerLabel(p);
     updateTurnOrderUI();
