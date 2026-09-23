@@ -1255,7 +1255,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.38</div>
+                <div class="version-tag">v1.39</div>
             </div>
         </div>
 
@@ -2379,11 +2379,12 @@ function centeredEmojiPos(ctx, icon, cx, cy, fallbackXRatio = 0.5, fallbackYRati
     return { x: cx - fontPx * fallbackXRatio, y: cy + fontPx * fallbackYRatio };
 }
 function drawVoidHex(dctx, x, y, s) {
+    // Nutzerwunsch (Lava-Adern-Feature): die Wolke passte optisch nicht mehr zur neuen Lava-Ader-
+    // Optik auf kollabierten Feldern (siehe drawVoidCraterFX() weiter unten) - ein Feld ist entweder
+    // schlicht schwarz (steigen ja ohnehin schon Asche-/Glutpartikel auf, siehe drawVoidEmbers()) oder
+    // traegt einen Krater mit gluehenden Rissen. Kein Emoji mehr noetig.
     hexSpritePath(dctx, x, y, s); dctx.fillStyle = '#050505'; dctx.fill();
     dctx.strokeStyle = 'rgba(255,255,255,0.08)'; dctx.lineWidth = 1; dctx.stroke();
-    dctx.font = `${s}px Arial`; dctx.fillStyle = 'rgba(255,255,255,0.6)';
-    const pos = centeredEmojiPos(dctx, '☁️', x, y);
-    dctx.fillText('☁️', pos.x, pos.y);
 }
 function drawShieldToken(dctx, cx, cy, s, color, glow, icon) {
     const w = s * 0.85, h = s * 1.05;
@@ -8718,6 +8719,301 @@ function drawVoidEmbers() {
     });
 }
 
+// ========== Lava-Adern auf kollabierten (void) Feldern (Punkt 85) ==========
+// Nutzerwunsch: das unbegehbare Rand-Wasser um einen kollabierten Ring soll mit gluehenden Lava-
+// Adern "verziert" werden, die von vereinzelten Kratern in der Void ausgehen und (meist) bis ins
+// Wasser reichen - vorab als eigenstaendiges Mockup (lava_veins_mockup.html) mit dem Nutzer
+// abgestimmt, u.a. ueber mehrere Feedback-Runden: Krater statt Riss-Muster auf JEDEM Void-Feld,
+// Haupt-"Stamm" laeuft wie ein Baumstamm moeglichst direkt statt kreuz und quer zu maeandern (mit
+// hoechstens einem kurzen Seiten-"Ast"), reicht nur noch 1-2 Felder ins Wasser statt lang hinein,
+// weiche tapernde (am Krater dick, an der Spitze duenn) statt gleichmaessig breiter Linien, nicht
+// jede Ader muss das Wasser ueberhaupt erreichen (Chance sinkt von Ring zu Ring), und die Ader darf
+// sich - Kartenbild "Mitte=Huegel/Ziel, Gelaende faellt zum Rand-Wasser hin ab" - an keiner Stelle
+// mehr "bergauf" (weiter weg vom Wasser) bewegen, nur bergab oder seitlich auf gleicher Hoehe.
+//
+// WICHTIG fuer Mehrspieler-Konsistenz: absichtlich KEIN Math.random()/performance.now() als Seed,
+// sondern ein Seed, der NUR aus bereits synchronisierten, statischen Kartendaten (Ring-Zugehoerigkeit
+// ueber npcRingKeyForHex()/baseTerrain, Hex-Koordinaten) abgeleitet wird - dadurch berechnen alle
+// Clients (inkl. spaeter beitretender Zuschauer, nach Reload, oder beim Zurueckspulen im Replay)
+// unabhaengig voneinander exakt dieselben Krater/Adern, ganz ohne einen einzigen zusaetzlichen Wert
+// ueber das Netzwerk zu synchronisieren. Die Krater-URSPRUENGE eines Rings werden zudem bewusst nur
+// aus den Feldern DIESES EINEN Rings gezogen (nicht aus dem gesamten, ggf. inzwischen groesseren
+// Void-Gebiet) - so bleiben einmal berechnete Adern eines fruehen Kollaps' stabil an derselben
+// Stelle, auch wenn spaeter weitere Ringe hinzukommen.
+const VOID_RING_ORDER = ['outer', 'middle', 'inner'];
+const VOID_CRATER_STAGE_TUNING = {
+    // density: grober Anteil der Ring-Felder, der zu einem Krater wird; min/maxCraters deckeln das
+    // nach unten/oben (kleiner Ring bekommt trotzdem mind. 2, ein riesiger Ring nicht endlos viele).
+    // waterReachChance/intensity: siehe abgestimmtes Mockup, 1:1 uebernommen.
+    outer:  { density: 0.12, minCraters: 2, maxCraters: 7,  waterReachChance: 0.85, intensity: 0.6 },
+    middle: { density: 0.12, minCraters: 3, maxCraters: 10, waterReachChance: 0.4,  intensity: 0.85 },
+    inner:  { density: 0.12, minCraters: 4, maxCraters: 13, waterReachChance: 0.08, intensity: 1.1 },
+};
+// { stages: [{ key, intensity, craters:[{q,r,seed}], veins:[{pts:[{q,r},...],seed}], twigs:[...] }],
+//   usedKeys: Set<"q,r"> } - siehe ensureVoidCraterFX() fuer den Auf-/Umbau.
+let voidCraterFX = { stages: [], usedKeys: new Set() };
+
+function ringHexKeySet(key) {
+    // Alle Felder, die (unabhaengig vom aktuellen Kollaps-FORTSCHRITT) LOGISCH zu diesem Ring
+    // gehoeren - dieselbe Zuordnung wie npcRingKeyForHex()/triggerKollaps(), aber rein aus dem
+    // statischen baseTerrain abgeleitet und daher bei jedem Aufruf/auf jedem Client identisch.
+    if (!mapData || !mapData.hexes) return [];
+    return Object.values(mapData.hexes).filter(h => npcRingKeyForHex(h) === key);
+}
+function stageVoidKeySet(uptoKey) {
+    // Alle Feld-Keys, die zu dem Zeitpunkt, an dem "uptoKey" kollabiert, GARANTIERT schon (oder
+    // gerade) void sind bzw. werden. Ringe kollabieren immer in fester Reihenfolge outer -> middle
+    // -> inner (siehe checkApocalypse()), daher ist das unabhaengig davon, ob inzwischen noch
+    // WEITERE Ringe kollabiert sind - haelt einmal berechnete Adern stabil (siehe Kommentar oben).
+    const idx = VOID_RING_ORDER.indexOf(uptoKey);
+    const set = new Set();
+    for (let i = 0; i <= idx; i++) ringHexKeySet(VOID_RING_ORDER[i]).forEach(h => set.add(`${h.q},${h.r}`));
+    return set;
+}
+function computeStageWaterDist(voidSet) {
+    // BFS-Abstand jedes Void-Feldes dieser Stufe zum naechsten (echten, nie einstuerzenden) Wasserfeld
+    // - dient als sanfte "Kompassnadel" fuer den Riss-Walk (siehe buildStageCraterVeins()).
+    const dist = {};
+    let frontier = [];
+    Object.values(mapData.hexes).forEach(h => {
+        if (h.terrain !== 'water') return;
+        hexDirections.forEach(d => {
+            const key = `${h.q + d.q},${h.r + d.r}`;
+            if (voidSet.has(key) && dist[key] === undefined) { dist[key] = 1; frontier.push(key); }
+        });
+    });
+    let dd = 1;
+    while (frontier.length) {
+        const next = [];
+        frontier.forEach(key => {
+            const [q, r] = key.split(',').map(Number);
+            hexDirections.forEach(d => {
+                const nk = `${q + d.q},${r + d.r}`;
+                if (voidSet.has(nk) && dist[nk] === undefined) { dist[nk] = dd + 1; next.push(nk); }
+            });
+        });
+        frontier = next; dd++;
+    }
+    return dist;
+}
+function hashStageSeed(key, hexList) {
+    // Rein deterministischer Hash aus Ring-Name + den (stabil sortierten) Hex-Koordinaten dieses
+    // Rings - siehe Mehrspieler-Konsistenz-Kommentar oben. KEIN Math.random().
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    const sorted = hexList.map(hx => hx.q * 100000 + hx.r).sort((a, b) => a - b);
+    sorted.forEach(v => { h = (h * 31 + (v & 0xffff)) >>> 0; });
+    return h >>> 0;
+}
+// Baut die Krater+Adern EINER Ring-Stufe - direkte Portierung der in lava_veins_mockup.html mit dem
+// Nutzer abgestimmten buildCraterPaths()-Logik, nur angepasst auf echte Kartendaten (mapData.hexes)
+// statt eines Test-Rasters mit nur zwei Terrain-Typen: "passierbar" ist hier ein Feld, wenn es
+// entweder echtes Wasser ist ODER zur (kumulierten) Void-Menge dieser Stufe gehoert - alles andere
+// (noch nicht kollabiertes Land) ist fuer die Ader tabu, genau wie ein Kartenrand im Mockup.
+function buildStageCraterVeins(key, sharedUsedKeys) {
+    const tuning = VOID_CRATER_STAGE_TUNING[key];
+    const originHexes = ringHexKeySet(key);
+    if (!originHexes.length) return { craters: [], veins: [], twigs: [], intensity: tuning.intensity };
+    const voidSet = stageVoidKeySet(key);
+    const toWater = computeStageWaterDist(voidSet);
+    const seed = hashStageSeed(key, originHexes);
+    const rnd = seededRandom(seed);
+
+    const craterCount = Math.max(tuning.minCraters, Math.min(tuning.maxCraters, Math.round(originHexes.length * tuning.density)));
+    let maxToWater = 0;
+    Object.values(toWater).forEach(d => { if (d > maxToWater) maxToWater = d; });
+    const maxSteps = Math.max(6, Math.min(60, maxToWater * 2 + 6)); // grosszuegiger Puffer, siehe Mockup-Kommentar zu maxSteps
+
+    const shuffled = originHexes.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]; }
+    const craters = shuffled.slice(0, Math.min(craterCount, shuffled.length));
+
+    const passable = (q, r) => { const n = mapData.hexes[`${q},${r}`]; return n && (n.terrain === 'water' || voidSet.has(`${q},${r}`)); };
+    const veins = [], twigs = [];
+    craters.forEach(startHex => {
+        const validDirs0 = hexDirections.map((d, i) => i).filter(i => passable(startHex.q + hexDirections[i].q, startHex.r + hexDirections[i].r));
+        if (!validDirs0.length) return;
+        let enterDir = validDirs0[Math.floor(rnd() * validDirs0.length)];
+        const pts = [{ q: startHex.q, r: startHex.r }];
+        let curQ = startHex.q, curR = startHex.r, reachedWater = false, waterHexCount = 0;
+        const waterStepsCap = 1 + Math.floor(rnd() * 2); // 1 oder 2 - soll nur kurz ins Wasser ueberlaufen
+        const reachesWaterFate = rnd() < tuning.waterReachChance;
+        const earlyStopAt = reachesWaterFate ? Infinity : (1 + Math.floor(rnd() * Math.max(1, Math.min(maxSteps - 1, 6))));
+        for (let step = 0; step < maxSteps; step++) {
+            const opts = hexDirections.map((d, i) => i).filter(i => (i + 3) % 6 !== enterDir && passable(curQ + hexDirections[i].q, curR + hexDirections[i].r));
+            if (!opts.length) break;
+            const curKey = `${curQ},${curR}`;
+            let candidate;
+            if (!reachedWater) {
+                // "Bergab": nie eine Richtung, die WEITER vom Wasser wegfuehrt als das aktuelle Feld.
+                const curDist = toWater[curKey] !== undefined ? toWater[curKey] : 99;
+                let best = null, bestDist = Infinity; const downhill = [];
+                opts.forEach(i => {
+                    const nk = `${curQ + hexDirections[i].q},${curR + hexDirections[i].r}`;
+                    const n = mapData.hexes[nk];
+                    const dd = n.terrain === 'water' ? -1 : (toWater[nk] !== undefined ? toWater[nk] : 99);
+                    if (dd < bestDist) { bestDist = dd; best = i; }
+                    if (dd <= curDist) downhill.push(i);
+                });
+                const pool = downhill.length ? downhill : opts;
+                candidate = (best !== null && rnd() < 0.85) ? best : pool[Math.floor(rnd() * pool.length)];
+            } else {
+                candidate = (opts.includes(enterDir) && rnd() < 0.7) ? enterDir : opts[Math.floor(rnd() * opts.length)];
+            }
+            const candKey = `${curQ + hexDirections[candidate].q},${curR + hexDirections[candidate].r}`;
+            if (sharedUsedKeys.has(candKey) && rnd() < 0.85) {
+                const free = opts.filter(i => !sharedUsedKeys.has(`${curQ + hexDirections[i].q},${curR + hexDirections[i].r}`));
+                if (free.length) candidate = free[Math.floor(rnd() * free.length)];
+            }
+            enterDir = candidate;
+            let nq = curQ + hexDirections[enterDir].q, nr = curR + hexDirections[enterDir].r, nk = `${nq},${nr}`, n = mapData.hexes[nk];
+            if (!n) break;
+            if (!reachesWaterFate && n.terrain === 'water') {
+                const nonWater = opts.filter(i => { const n2 = mapData.hexes[`${curQ + hexDirections[i].q},${curR + hexDirections[i].r}`]; return n2 && n2.terrain !== 'water'; });
+                if (nonWater.length) {
+                    enterDir = nonWater[Math.floor(rnd() * nonWater.length)];
+                    nq = curQ + hexDirections[enterDir].q; nr = curR + hexDirections[enterDir].r; nk = `${nq},${nr}`; n = mapData.hexes[nk];
+                    if (!n) break;
+                } else break;
+            }
+            if (n.terrain === 'water') { reachedWater = true; waterHexCount++; }
+            if (!reachedWater && rnd() < 0.16) {
+                const curDistTwig = toWater[curKey] !== undefined ? toWater[curKey] : 99;
+                const twigDirs = hexDirections.map((d, i) => ({ i, n: mapData.hexes[`${curQ + d.q},${curR + d.r}`] }))
+                    .filter(x => x.n && x.i !== enterDir && voidSet.has(`${x.n.q},${x.n.r}`) && !sharedUsedKeys.has(`${x.n.q},${x.n.r}`)
+                        && (toWater[`${x.n.q},${x.n.r}`] !== undefined ? toWater[`${x.n.q},${x.n.r}`] : 99) <= curDistTwig);
+                if (twigDirs.length) {
+                    const t = twigDirs[Math.floor(rnd() * twigDirs.length)];
+                    twigs.push({ pts: [{ q: curQ, r: curR }, { q: t.n.q, r: t.n.r }], seed: seed + twigs.length * 97 + 1 });
+                    sharedUsedKeys.add(`${t.n.q},${t.n.r}`);
+                }
+            }
+            curQ = nq; curR = nr; sharedUsedKeys.add(`${curQ},${curR}`);
+            pts.push({ q: curQ, r: curR });
+            if (reachedWater && waterHexCount >= waterStepsCap) break;
+            if (!reachesWaterFate && step + 1 >= earlyStopAt) break;
+        }
+        if (pts.length > 1) veins.push({ pts, seed: seed + veins.length * 131 + 1 });
+    });
+    return { craters: craters.map(h => ({ q: h.q, r: h.r, seed })), veins, twigs, intensity: tuning.intensity };
+}
+// Sorgt dafuer, dass fuer jeden AKTUELL kollabierten Ring genau eine Stufe berechnet ist, in fester
+// Reihenfolge outer/middle/inner - und baut komplett (aber billig, siehe kleine Kraterzahlen/Schritt-
+// Obergrenzen) neu auf, sobald sich das unterscheidet (Ring gerade kollabiert, neu beigetretener
+// Zuschauer, Seiten-Reload mitten im Spiel, oder ein Replay-Ruecksprung VOR einen Kollaps). Rein
+// deterministisch (siehe hashStageSeed()) -> fuehrt bei jedem Client/jedem Aufruf zu demselben
+// Ergebnis, ganz ohne dass irgendetwas davon zusaetzlich uebers Netzwerk synchronisiert werden muss.
+function ensureVoidCraterFX() {
+    if (!mapData || !mapData.hexes) return;
+    const activeKeys = VOID_RING_ORDER.filter(k => closedRings[k]);
+    const upToDate = activeKeys.length === voidCraterFX.stages.length && activeKeys.every((k, i) => voidCraterFX.stages[i].key === k);
+    if (upToDate) return;
+    voidCraterFX = { stages: [], usedKeys: new Set() };
+    activeKeys.forEach(key => {
+        const result = buildStageCraterVeins(key, voidCraterFX.usedKeys);
+        voidCraterFX.stages.push({ key, intensity: result.intensity, craters: result.craters, veins: result.veins, twigs: result.twigs });
+    });
+}
+// Krater: eine unregelmaessige, dunkle Vertiefung mit gluehendem Kern/Rand - 1:1 aus dem Mockup
+// uebernommen, nur mit explizitem seed-Parameter statt aus den (bei Kamera-Zoom/Pan wechselnden)
+// Bildschirmkoordinaten abgeleitet, damit die Kraterform bei jedem Zoomstand gleich bleibt.
+function drawLavaCrater(dctx, cx, cy, s, pulse, seed) {
+    const rnd = seededRandom(seed);
+    const rBase = s * 0.42;
+    const pts = [];
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const r = rBase * (0.75 + rnd() * 0.4);
+        pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+    }
+    dctx.save();
+    const glow = dctx.createRadialGradient(cx, cy, 0, cx, cy, rBase * 2.6);
+    glow.addColorStop(0, `rgba(255,140,50,${0.5 * (0.7 + pulse * 0.3)})`);
+    glow.addColorStop(1, 'rgba(255,90,20,0)');
+    dctx.beginPath(); dctx.arc(cx, cy, rBase * 2.6, 0, Math.PI * 2); dctx.fillStyle = glow; dctx.fill();
+    dctx.beginPath(); pts.forEach((p, i) => i ? dctx.lineTo(p.x, p.y) : dctx.moveTo(p.x, p.y)); dctx.closePath();
+    const core = dctx.createRadialGradient(cx, cy, 0, cx, cy, rBase);
+    core.addColorStop(0, 'rgba(255,225,140,0.95)');
+    core.addColorStop(0.35, 'rgba(255,120,40,0.9)');
+    core.addColorStop(0.75, 'rgba(90,20,10,0.95)');
+    core.addColorStop(1, 'rgba(20,8,6,1)');
+    dctx.fillStyle = core; dctx.fill();
+    dctx.strokeStyle = `rgba(255,150,70,${0.6 + pulse * 0.4})`; dctx.lineWidth = 1.4;
+    dctx.shadowColor = 'rgba(255,110,40,0.9)'; dctx.shadowBlur = 10 * (0.6 + pulse * 0.4);
+    dctx.stroke();
+    dctx.restore();
+}
+// Glut-Ader mit weicher, unregelmaessiger Kurve statt scharfer Hex-Kanten-Ecken, die vom Krater
+// (dick) zur Spitze (duenn) hin ausblutet - 1:1 aus dem Mockup uebernommen (siehe dortiger
+// Kommentar zu den Nutzer-Feedback-Runden).
+function drawLavaCrackGlow(dctx, pts, seed, intensity, pulse) {
+    const rnd = seededRandom(seed);
+    const n = pts.length;
+    if (n < 2) return;
+    const mids = [];
+    for (let i = 1; i < n; i++) {
+        const a = pts[i - 1], b = pts[i];
+        mids.push({ x: (a.x + b.x) / 2 + (rnd() - 0.5) * 16, y: (a.y + b.y) / 2 + (rnd() - 0.5) * 16 });
+    }
+    const alpha = intensity * (0.6 + pulse * 0.4);
+    const glowW0 = 12 * intensity, glowW1 = 3.5 * intensity;
+    const coreW0 = 3 + intensity * 1.3, coreW1 = 0.9 + intensity * 0.25;
+    dctx.save();
+    dctx.lineCap = 'round'; dctx.lineJoin = 'round';
+    for (let i = 1; i < n; i++) {
+        const t = (i - 1) / Math.max(1, n - 2);
+        const from = pts[i - 1], to = pts[i], mid = mids[i - 1];
+        dctx.beginPath();
+        dctx.moveTo(from.x, from.y);
+        dctx.quadraticCurveTo(mid.x, mid.y, to.x, to.y);
+        dctx.strokeStyle = `rgba(255,90,20,${0.28 * alpha * (1 - t * 0.3)})`;
+        dctx.lineWidth = glowW0 + (glowW1 - glowW0) * t;
+        dctx.shadowColor = 'rgba(255,90,20,0.9)';
+        dctx.shadowBlur = 14 * intensity * (1 - t * 0.3);
+        dctx.stroke();
+        dctx.beginPath();
+        dctx.moveTo(from.x, from.y);
+        dctx.quadraticCurveTo(mid.x, mid.y, to.x, to.y);
+        dctx.strokeStyle = `rgba(255,205,120,${0.85 * alpha * (1 - t * 0.25)})`;
+        dctx.lineWidth = coreW0 + (coreW1 - coreW0) * t;
+        dctx.shadowBlur = 6 * intensity * (1 - t * 0.3);
+        dctx.stroke();
+    }
+    dctx.restore();
+}
+// Zeichnet alle aktuell berechneten Krater/Adern/Aeste - nur fuer den Teil eines Pfades, dessen
+// Felder schon SICHTBAR void bzw. Wasser sind (siehe hexReady()): waehrend der gestaffelten Meteor-
+// Kaskade (siehe pendingMeteors) erscheint eine Ader so Stueck fuer Stueck, so wie der Boden davor
+// tatsaechlich aufbricht, statt schon auf noch normal aussehendem Gelaende zu gluehen.
+function drawVoidCraterFX() {
+    if (!mapData || !mapData.hexes) return;
+    ensureVoidCraterFX();
+    if (!voidCraterFX.stages.length) return;
+    const now = performance.now() / 1000;
+    const pulse = 0.5 + Math.sin(now * 1.1) * 0.5;
+    const s = hexSize * camera.zoom;
+    const px = (q, r) => ({ x: (hexSize * 1.5 * q) * camera.zoom + camera.x, y: (hexSize * Math.sqrt(3) * (r + q / 2)) * camera.zoom + camera.y });
+    const hexReady = (q, r) => { const h = mapData.hexes[`${q},${r}`]; return h && (h.terrain === 'void' || h.terrain === 'water'); };
+    voidCraterFX.stages.forEach(stage => {
+        stage.veins.forEach(v => {
+            let ready = 0;
+            while (ready < v.pts.length && hexReady(v.pts[ready].q, v.pts[ready].r)) ready++;
+            if (ready < 2) return;
+            drawLavaCrackGlow(fctx, v.pts.slice(0, ready).map(p => px(p.q, p.r)), v.seed, stage.intensity, pulse);
+        });
+        stage.twigs.forEach(t => {
+            if (!hexReady(t.pts[0].q, t.pts[0].r) || !hexReady(t.pts[1].q, t.pts[1].r)) return;
+            drawLavaCrackGlow(fctx, t.pts.map(p => px(p.q, p.r)), t.seed, stage.intensity * 0.55, pulse);
+        });
+        stage.craters.forEach(c => {
+            if (!hexReady(c.q, c.r)) return;
+            const p = px(c.q, c.r);
+            drawLavaCrater(fctx, p.x, p.y, s, pulse, c.seed);
+        });
+    });
+}
+
 // Gesamtstimmung: Rottönung fuers spaete Spiel (Nutzerwunsch, direkte Fortsetzung von Punkt 73 -
 // vorab als eigenstaendiges Mockup "mood_tint_mockup.html" abgestimmt: 4 Stufen 0-3 kollabierte
 // Ringe, Nutzer wollte das Ergebnis aber direkt im echten Spiel sehen statt nur im Mockup, da die
@@ -8767,6 +9063,7 @@ function renderFX() {
     updateAndDrawClouds();
     drawRingHaze();
     drawVoidEmbers();
+    drawVoidCraterFX();
     const hl = computeHighlightTargets();
 
     // Ring-Vorschau (siehe toggleRingPreview()/#apo-panel) - zeigt auf Knopfdruck rot, welche Felder
