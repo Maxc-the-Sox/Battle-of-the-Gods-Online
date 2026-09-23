@@ -237,6 +237,19 @@
         .to-player.current { opacity: 1; transform: translateY(-1px) scale(1.08); }
         .to-player.current .to-token { border-color: var(--gold-light); box-shadow: inset 0 2px 4px rgba(255,255,255,0.35), inset 0 -3px 5px rgba(0,0,0,0.35), 0 0 14px var(--pc), 0 0 5px var(--gold-light); }
         .to-player.current .to-name { color: var(--gold-light); font-weight: 700; }
+        /* ---------- Punkt 91 (Nutzerwunsch): "sehen koennen, welche Aktionskarten die Gegner haben,
+           um ihnen eine Falle zu stellen" - Karten-Icons jedes Spielers direkt unter seinem Namen in
+           der Zugreihenfolge-Leiste (Nutzer-Entscheidung: hier statt #stats-panel/#opponent-turn-panel,
+           nur Icons, Kartenname per Hover/Tap; gilt fuer ALLE Gegner, auch Menschen - nicht nur KI).
+           Rein clientseitig: serializeState() sendet ohnehin schon JEDES Spielers volles inventory an
+           alle Online-Mitspieler (siehe applyRemoteState()), es gab also nie ein serverseitiges
+           Geheimnis zu brechen - das war bisher rein eine UI-Entscheidung, nichts zu verstecken. */
+        .to-cards { display: flex; gap: 2px; min-height: 14px; }
+        .to-card-icon {
+            font-size: 0.72em; line-height: 1; cursor: default; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6));
+            opacity: 0.9; transition: transform 0.15s;
+        }
+        .to-card-icon:hover { transform: scale(1.25); }
         /* Replay-Viewer: Zugreihenfolge-Leiste hier bewusst UNABHAENGIG von der Bildschirmbreite
            immer als volle obere Leiste (wie das Live-Spiel-Desktop) - es gibt im Replay-Modus gar
            kein #mobile-dock, ueber das man sie auf dem Handy sonst einklappbar erreichen koennte,
@@ -481,6 +494,17 @@
             z-index: 1500; opacity: 0; transition: opacity 0.35s, transform 0.35s; pointer-events: none;
         }
         #turn-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        /* ---------- Punkt 90 (Nutzer-Bug-Report per Screenshot, Handy): #turn-toast ("X IST DRAN!")
+           wurde von der oben sitzenden FAB-Icon-Reihe (Hilfe/Sound/Musik/Verlassen/Kamera/FreeRoam -
+           alle position:fixed; top:20px; height:42px, siehe #help-fab & Co. weiter oben) komplett
+           ueberdeckt. Ursache: #turn-toast sitzt mit top:26px praktisch in derselben Hoehe wie die
+           Icons (deren Unterkante liegt bei 20+42=62px), hat aber nur z-index:1500 gegen deren
+           z-index:3001 - die Icons gewinnen und verdecken den Toast. Auf Desktop-Breiten faellt das
+           nicht auf (Icons oben rechts, Toast mittig, genug freier Platz dazwischen), auf schmalen
+           Handy-Screens liegt der zentrierte Toast aber direkt unter der Icon-Reihe. Fix: auf Handy
+           den Toast unter die Icon-Reihe schieben (62px Icon-Unterkante + 12px Abstand - gleiches
+           Abstandsmuster wie bei #inventory-panel/#opponent-turn-panel weiter oben). */
+        @media (max-width: 700px) { #turn-toast { top: 74px; } }
 
         /* ---------- Wirbelsturm: kurzer, spuerbarer Effekt statt nur einer stillen Text-Notification ---------- */
         @keyframes screenShake {
@@ -1286,7 +1310,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.43</div>
+                <div class="version-tag">v1.45</div>
             </div>
         </div>
 
@@ -5190,9 +5214,24 @@ function updateTurnOrderUI() {
         html += `<div class="to-player${isCurrent ? ' current' : ''}" style="--pc:${p.color};">
             <div class="to-token">${i + 1}</div>
             <div class="to-name">${name}</div>
+            <div class="to-cards">${buildToCardsHtml(p)}</div>
         </div>`;
     });
     row.innerHTML = html;
+}
+// Punkt 91 (siehe CSS-Kommentar bei .to-cards): baut die kleinen Karten-Icons EINES Spielers fuer die
+// Zugreihenfolge-Leiste. title-Attribut deckt Desktop-Hover ab; das zusaetzliche onclick deckt Handy/
+// Tablet ab, wo es kein Hover gibt (title wird dort von den meisten Browsern nicht zuverlaessig
+// angezeigt) - tippt man ein Icon an, erscheint der Kartenname kurz als Toast (bestehendes
+// showLobbyNotice(), sonst nur fuer Vor-Spielbeginn-Hinweise genutzt, aber technisch unabhaengig
+// vom Spielzustand nutzbar). data-cardname statt direkt im onclick-String, damit Namen mit
+// Anführungszeichen o.ä. nicht die Attribut-Syntax kaputt machen koennen.
+function buildToCardsHtml(p) {
+    if (!p.inventory || !p.inventory.length) return '';
+    return p.inventory.map(c => {
+        const safeName = escapeHtml(c.name || c.type || '?');
+        return `<span class="to-card-icon" title="${safeName}" data-cardname="${safeName}" onclick="showLobbyNotice(this.dataset.cardname)">${c.icon || '❔'}</span>`;
+    }).join('');
 }
 
 // Zeigt/versteckt auf Knopfdruck (siehe #apo-panel) die Felder eines Rings direkt auf der Karte -
