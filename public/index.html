@@ -1310,7 +1310,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.45</div>
+                <div class="version-tag">v1.47</div>
             </div>
         </div>
 
@@ -4356,6 +4356,23 @@ function npcCancelPendingCard() {
 // ---------- Zielfindung (gemeinsam fuer mehrere Entscheidungen genutzt) ----------
 function templeLandmark() { return mapData.landmarks.find(l => l.icon && l.icon.toLowerCase().includes('temple')); }
 function unlootedLandmarks() { return mapData.landmarks.filter(l => !l.looted && !(l.icon && l.icon.toLowerCase().includes('temple'))); }
+// Punkt 93 (Nutzer-Bug-Report): "wollte mich gerade teleportieren und konnte eine Ruine im Void
+// auswaehlen". Ursache: mapData.landmarks-Eintraege werden beim Ring-Kollaps NICHT entfernt, wenn das
+// darunterliegende Feld zu 'void' wird (siehe triggerKollaps() weiter unten, setzt hex.terrain='void'
+// beim Meteor-Einschlag) - die Ruine "existiert" koordinatenmaessig also weiter, auch wenn ihr Feld
+// laengst Void ist. Der Teleport-Kartentyp pruefte
+// bisher nur l.looted, nicht das aktuelle Terrain - in JEDER anderen Bewegungsart (Gehen, Boot, Ufer-
+// Rettung, Wegschubsen, Berg-Zwangsraeumung, Extra-Zug ...) wird 'void' konsequent ausgeschlossen, nur
+// hier war es vergessen worden. Gemeinsame Hilfsfunktion fuer Highlight (computeHighlightTargets()),
+// Klick-Annahme (performHexClick()) und KI-Zielwahl (npcDoSelectTeleportTarget()), damit alle drei immer
+// synchron bleiben.
+function validTeleportLandmarks() {
+    return mapData.landmarks.filter(l => {
+        if (!l.looted) return false;
+        const h = mapData.hexes[`${l.q},${l.r}`];
+        return h && h.terrain !== 'void';
+    });
+}
 function objectiveHexFor(unit) {
     if (!unit) return null;
     const temple = templeLandmark();
@@ -4847,7 +4864,7 @@ function npcDoSelectTeleportUnit(p, diff) {
     performHexClick(unit.q, unit.r, mapData.hexes[`${unit.q},${unit.r}`]);
 }
 function npcDoSelectTeleportTarget(p, diff) {
-    const options = mapData.landmarks.filter(l => l.looted);
+    const options = validTeleportLandmarks();
     if (options.length === 0) { npcCancelPendingCard(); return; }
     let target;
     if (diff === 'easy') { target = pickRandom(options); }
@@ -5758,6 +5775,25 @@ function processNextRiverInterstitial() {
     }
 }
 
+// Punkt 92 (Nutzer-Bug-Report): Bugfix fuer alle drei "ohne Boot vom Fluss mitgerissen -> Ufer waehlen"
+// Stellen (sweepUnitAlongRiver(), handlePushFlow(), processMovement()-Fluss-Zweig). Vorher wurden
+// Bergfelder in riverEscapeHexes IMMER hart ausgefiltert, unabhaengig davon, ob der/die Besitzer:in
+// noch einen Seil & Haken im Inventar hatte - man konnte sich also nie auf einen Berg retten, obwohl
+// das beim analogen Boots-Sonderzug (BOAT_LANDING, siehe boatLandingTargets weiter oben/unten) schon
+// laengst erlaubt war (dort wird der Haken beim Anklicken automatisch verbraucht). Fix: Bergfelder
+// zaehlen jetzt auch hier als gueltiges Ufer, wenn ein Haken vorhanden ist - verbraucht wird er beim
+// tatsaechlichen Klick in performHexClick() (RIVER_ESCAPE/RIVER_ESCAPE_PUSH), symmetrisch zu BOAT_LANDING.
+function computeRiverEscapeHexes(unit, owner) {
+    const hasHook = !!(owner && owner.inventory && owner.inventory.some(c => c.type === 'tool_hook'));
+    return hexDirections.map(d => ({ q: unit.q + d.q, r: unit.r + d.r })).filter(p => {
+        const h = mapData.hexes[`${p.q},${p.r}`];
+        if (!h) return false;
+        if (['water', 'void', 'river'].includes(h.terrain)) return false;
+        if (h.terrain === 'mountains' && !hasHook) return false;
+        return true;
+    });
+}
+
 // Automatische Fluss-Mitnahme fuer eine Figur, die (ohne Boot) auf einem frisch gesetzten Fluss-Feld
 // steht - exakt dieselbe Kettenlogik wie beim normalen Hineinziehen in einen Fluss per Bewegung (siehe
 // processMovement()), nur eben ausgeloest durch eine Platzierung statt durch einen eigenen Schritt.
@@ -5776,8 +5812,7 @@ function sweepUnitAlongRiver(unit, owner, onDone) {
         const nQ = unit.q + dir.q, nR = unit.r + dir.r, nH = mapData.hexes[`${nQ},${nR}`];
         const occupied = players.some(pl => pl.units.some(u => u.q === nQ && u.r === nR));
         if (!nH || ['mountains', 'water', 'void'].includes(nH.terrain) || occupied) {
-            riverEscapeHexes = hexDirections.map(d => ({ q: unit.q + d.q, r: unit.r + d.r }))
-                .filter(pt => { const h = mapData.hexes[`${pt.q},${pt.r}`]; return h && !['mountains', 'water', 'void', 'river'].includes(h.terrain); });
+            riverEscapeHexes = computeRiverEscapeHexes(unit, owner);
             if (riverEscapeHexes.length > 0) {
                 currentPlayerIdx = players.indexOf(owner);
                 selectedUnit = unit;
@@ -7894,7 +7929,7 @@ function handlePushFlow(unit) {
             unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR, owner); curHex = nH;
         }
         else if (nH) {
-            riverEscapeHexes = hexDirections.map(d => ({q: unit.q+d.q, r: unit.r+d.r})).filter(p => { const h = mapData.hexes[`${p.q},${p.r}`]; return h && !['mountains', 'water', 'void', 'river'].includes(h.terrain); });
+            riverEscapeHexes = computeRiverEscapeHexes(unit, owner);
             if (riverEscapeHexes.length > 0) { selectedUnit = unit; gameState = "RIVER_ESCAPE_PUSH"; return true; } else break;
         } else break;
     }
@@ -7983,7 +8018,7 @@ function processMovement(unit, tQ, tR) {
             let nQ = unit.q + hexDirections[curH.direction || 0].q, nR = unit.r + hexDirections[curH.direction || 0].r, nH = mapData.hexes[`${nQ},${nR}`];
             const occupied = players.some(p => p.units.some(u => u.q === nQ && u.r === nR));
             if (!nH || ['mountains', 'water', 'void'].includes(nH.terrain) || occupied) {
-                riverEscapeHexes = hexDirections.map(d => ({q: unit.q+d.q, r: unit.r+d.r})).filter(p => { const h = mapData.hexes[`${p.q},${p.r}`]; return h && !['mountains', 'water', 'void', 'river'].includes(h.terrain); });
+                riverEscapeHexes = computeRiverEscapeHexes(unit, p);
                 if (riverEscapeHexes.length > 0) { addLogEntry(`🌊 Strömung reißt Figur von ${playerLabel(p)} weiter mit (steht jetzt bei (${unit.q},${unit.r})) - Ufer muss gewählt werden`); gameState = "RIVER_ESCAPE"; updateUI(); return true; } else { actionPoints = 0; finishPath(); return true; }
             } else if (nH.terrain === 'river') { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); curH = nH; } else { unit.q = nQ; unit.r = nR; checkLandmark(nQ, nR); addLogEntry(`🌊 Strömung reißt Figur von ${playerLabel(p)} mit bis (${nQ},${nR})`); actionPoints = 0; finishPath(); return true; }
         }
@@ -8008,7 +8043,17 @@ function performHexClick(rx, rz, hex) {
         else { const u = players[currentPlayerIdx].units.find(u => u.q === rx && u.r === rz); if (u) selectedUnit = u; }
     } else if (gameState === "RIVER_ESCAPE") {
         if (riverEscapeHexes.some(p => p.q === rx && p.r === rz)) {
-            addLogEntry(`🏝️ ${playerLabel(players[currentPlayerIdx])} rettet Figur ans Ufer: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
+            // Punkt 92: Rettung auf ein Bergfeld verbraucht (analog zu BOAT_LANDING weiter unten) einen
+            // Seil & Haken - computeRiverEscapeHexes() hat das Feld nur ueberhaupt als Ziel zugelassen,
+            // wenn zum Zeitpunkt der Berechnung ein Haken vorhanden war; die Pruefung hier ist nur eine
+            // zusaetzliche Absicherung (z.B. falls sich das Inventar zwischenzeitlich geaendert haette).
+            const rescueOwner = players[currentPlayerIdx];
+            if (hex.terrain === 'mountains') {
+                const hookIdx = rescueOwner.inventory.findIndex(c => c.type === 'tool_hook');
+                if (hookIdx === -1) { alert("Rettung auf ein Bergfeld nur mit Seil & Haken möglich!"); return; }
+                rescueOwner.inventory.splice(hookIdx, 1);
+            }
+            addLogEntry(`🏝️ ${playerLabel(rescueOwner)} rettet Figur ans Ufer: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
             selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz); riverEscapeHexes = [];
             // Sonderfall "Landschaft auf stehende Figur gesetzt" (siehe sweepUnitAlongRiver()): dann
             // NICHT die normalen Zugende-Regeln des aktuell umgeschalteten Spielers anwenden, sondern
@@ -8042,6 +8087,13 @@ function performHexClick(rx, rz, hex) {
     } else if (gameState === "RIVER_ESCAPE_PUSH") {
         if (riverEscapeHexes.some(p => p.q === rx && p.r === rz)) {
             const escOwner = players.find(pl => pl.units.includes(selectedUnit));
+            // Punkt 92: gleicher Haken-Verbrauch wie im RIVER_ESCAPE-Zweig oben, falls das gewaehlte
+            // Ufer-Feld ein Berg ist.
+            if (hex.terrain === 'mountains') {
+                const hookIdx = escOwner.inventory.findIndex(c => c.type === 'tool_hook');
+                if (hookIdx === -1) { alert("Rettung auf ein Bergfeld nur mit Seil & Haken möglich!"); return; }
+                escOwner.inventory.splice(hookIdx, 1);
+            }
             addLogEntry(`🏝️ ${playerLabel(escOwner)} rettet weggestoßene Figur ans Ufer: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
             selectedUnit.q = rx; selectedUnit.r = rz; checkLandmark(rx, rz, escOwner); riverEscapeHexes = [];
             currentPushUnit = null; selectedUnit = null;
@@ -8135,7 +8187,7 @@ function performHexClick(rx, rz, hex) {
         const u = players[currentPlayerIdx].units.find(u => u.q === rx && u.r === rz); if (u) { selectedUnit = u; gameState = "SELECT_TELEPORT_TARGET"; }
     } else if (gameState === "SELECT_TELEPORT_TARGET") {
         const lm = mapData.landmarks.find(l => l.q === rx && l.r === rz);
-        if (lm && lm.looted) {
+        if (lm && lm.looted && hex && hex.terrain !== 'void') {
             playSoundCard();
             addLogEntry(`✨ ${playerLabel(players[currentPlayerIdx])} teleportiert Figur: (${selectedUnit.q},${selectedUnit.r}) → (${rx},${rz})`);
             selectedUnit.q = rx; selectedUnit.r = rz; players[currentPlayerIdx].inventory.splice(pendingCardSlot, 1); selectedUnit = null; gameState = pendingCardReturnState; pendingCardReturnState = "CHOOSING";
@@ -8657,7 +8709,7 @@ function computeHighlightTargets() {
         case 'SELECT_TELEPORT_UNIT':
             return { select: p.units.map(u => ({ q: u.q, r: u.r })), go: [] };
         case 'SELECT_TELEPORT_TARGET':
-            return { select: [], go: mapData.landmarks.filter(l => l.looted).map(l => ({ q: l.q, r: l.r })) };
+            return { select: [], go: validTeleportLandmarks().map(l => ({ q: l.q, r: l.r })) };
         case 'SELECT_PUSH_DESTINATION': {
             if (!currentPushUnit) return none;
             const go = hexDirections.map(d => mapData.hexes[`${currentPushUnit.q + d.q},${currentPushUnit.r + d.r}`])
