@@ -224,7 +224,14 @@
             width: auto; max-width: 90vw; padding: 10px 22px;
         }
         .to-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 18px; }
-        .to-label { font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1.5px; text-transform: uppercase; color: #9a8f6f; white-space: nowrap; margin-right: 2px; }
+        /* Punkt 94 (Nutzerwunsch): "woher weiß man, dass da oben das Inventar steht" - bewusst KEINE
+           Erklaerung/Tooltip (explizit abgelehnt), nur eine kleine zweite Beschriftungszeile direkt
+           unter "Zugreihenfolge", die knapp sagt, was die Icon-Reihe unter jedem Namen ist. Selbes
+           Markup auf Handy UND Desktop (nur #turnorder-panel drumherum wird responsive umgeschaltet,
+           siehe Kommentar dort), kein zusaetzlicher Media-Query-Fall noetig. */
+        .to-label-group { display: flex; flex-direction: column; align-items: flex-start; gap: 0; margin-right: 2px; }
+        .to-label { font-family: 'Cinzel', serif; font-size: 0.78em; letter-spacing: 1.5px; text-transform: uppercase; color: #9a8f6f; white-space: nowrap; }
+        .to-sublabel { font-family: 'Cormorant Garamond', serif; font-size: 0.64em; letter-spacing: 0.5px; color: #6b6350; white-space: nowrap; }
         .to-player { display: flex; flex-direction: column; align-items: center; gap: 3px; opacity: 0.55; transition: opacity 0.3s, transform 0.3s; }
         .to-token {
             width: 26px; height: 26px; border-radius: 50%; background: var(--pc); border: 2px solid rgba(0,0,0,0.4);
@@ -1310,7 +1317,7 @@
                 <!-- Versionsnummer - bei kleineren Fixes die zweite Stelle hochzaehlen (v1.0 -> v1.1),
                      bei groesseren neuen Features/Umbauten die erste (v1.x -> v2.0). Manuell gepflegt,
                      hier einfach im Markup aendern. -->
-                <div class="version-tag">v1.47</div>
+                <div class="version-tag">v1.48</div>
             </div>
         </div>
 
@@ -1740,7 +1747,7 @@
 <div id="turnorder-panel" class="hidden">
     <i class="corner-tl"></i><i class="corner-tr"></i><i class="corner-bl"></i><i class="corner-br"></i>
     <div class="to-row" id="turnorder-row">
-        <span class="to-label">Zugreihenfolge</span>
+        <div class="to-label-group"><span class="to-label">Zugreihenfolge</span><span class="to-sublabel">Inventar</span></div>
     </div>
 </div>
 
@@ -1784,7 +1791,7 @@
     <div class="apo-row"><span>Ring 1</span> <span class="apo-status-group"><span id="apo-1" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="outer" onclick="toggleRingPreview('outer')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
     <div class="apo-row"><span>Ring 2</span> <span class="apo-status-group"><span id="apo-2" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="middle" onclick="toggleRingPreview('middle')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
     <div class="apo-row"><span>Ring 3</span> <span class="apo-status-group"><span id="apo-3" class="apo-status-safe">STABIL</span><button class="apo-preview-btn" data-ring="inner" onclick="toggleRingPreview('inner')" title="Betroffene Felder auf der Karte zeigen">👁</button></span></div>
-    <div class="apo-next">Nächster Kollaps bei <span id="apo-next-trigger" style="color:#f3e2a9; font-weight:bold;">3</span> Artefakten</div>
+    <div class="apo-next">Nächster Kollaps bei <span id="apo-next-trigger" style="color:#f3e2a9; font-weight:bold;">0 / 3</span> Artefakten</div>
 </div>
 
 <div id="inventory-panel" class="hidden">
@@ -2852,6 +2859,28 @@ async function loadStandardMap() {
     }
 }
 
+// Punkt 94 (Nutzerwunsch): "wenn KI (Schwer) 3 mal existiert, weiß man ja nicht wer das ist". Mehrere
+// KI-Gegner derselben Schwierigkeit ohne eigenen Namen (oder mehrere Menschen mit demselben getippten
+// Namen) hießen bisher identisch "🤖 KI (Schwer)" - im Verlauf/Gegner-Zug-Fenster/Sieg-Panel usw. rein
+// textlich nicht unterscheidbar, auch wenn die Spielfigur/Farbe unterschiedlich ist. Haengt jedem
+// doppelten Namen automatisch eine fortlaufende Nummer an (NUR bei tatsaechlichen Duplikaten -
+// eindeutige Namen bleiben unveraendert). Einmaliger Aufruf direkt nach dem Zusammenstellen der finalen
+// players-Liste (processLoadedMap()) deckt automatisch jede Anzeige ab, die playerLabel() nutzt, ohne
+// dass jede einzelne Stelle selbst etwas ueber Duplikate wissen muss - inkl. Online-Partien, da der
+// Host hier einmal vor dem eigentlichen Spielstart durchnummeriert und der so korrigierte Name danach
+// ganz normal ueber serializeState()/applyRemoteState() an alle Mitspieler mitgesendet wird.
+function disambiguateDuplicatePlayerNames(list) {
+    const counts = {};
+    list.forEach(p => { if (p.name) counts[p.name] = (counts[p.name] || 0) + 1; });
+    const seen = {};
+    list.forEach(p => {
+        if (p.name && counts[p.name] > 1) {
+            seen[p.name] = (seen[p.name] || 0) + 1;
+            p.name = `${p.name} ${seen[p.name]}`;
+        }
+    });
+}
+
 function processLoadedMap(data, count, presetPlayers) {
     mapData = data;
     Object.values(mapData.hexes).forEach(h => h.baseTerrain = h.terrain);
@@ -2863,6 +2892,7 @@ function processLoadedMap(data, count, presetPlayers) {
     Object.values(mapData.hexes).forEach(h => { if (h.terrain !== 'void') bakeHex(h); });
 
     players = presetPlayers || Array.from({length: count}, (_, i) => ({ id: i+1, color: PLAYER_COLORS[i], units: [], inventory: [], skipped: false, kicked: false, name: null, netId: null, isNPC: false, npcDifficulty: null, ruinsLooted: 0, collapsesSurvived: 0 }));
+    disambiguateDuplicatePlayerNames(players);
     document.getElementById('setup-overlay').style.display = 'none';
     document.getElementById('ui-panel').classList.remove('hidden');
     document.getElementById('apo-panel').classList.remove('hidden');
@@ -4846,10 +4876,32 @@ function npcDoBoatLanding(p, diff) {
 }
 
 // ---------- Zielauswahl fuer Aktionskarten (Aussetzen/Schubsen/Teleport) ----------
+// Punkt 94 (Nutzer-Bug-Report, per Spielverlauf-Export nachgewiesen): Endlosschleife, wenn der von
+// npcLeadingOpponentTargetUnit() ermittelte "fuehrende" Gegner (naechste Distanz zum Tempel) bereits
+// aussetzt (owner.skipped). Die Funktion kennt den skipped-Status gar nicht und lieferte deshalb bei
+// JEDEM npcStep()-Tick (alle 650ms, siehe NPC_TICK_MS) wieder exakt dasselbe, bereits blockierte Ziel.
+// performHexClick() lehnt das im SELECT_SKIP-Zweig mit der "KARTE WIRKUNGSLOS"-Meldung ab, verlaesst
+// dabei aber bewusst NICHT den gameState (siehe Kommentar dort - Zielwahl soll fuer Menschen aktiv
+// bleiben, damit sie ein anderes Ziel waehlen koennen) - fuer die KI, die sich nie ein anderes Ziel
+// aussucht, hiess das: fuer immer derselbe Toast, nie ein echter Fortschritt. Kein JS-Fehler, daher
+// griff auch npcSafetyBailout() nicht (der nur bei einer geworfenen Exception in npcStep() einspringt).
+// Fix: bereits aussetzende Gegner werden vorab aus der Kandidatenliste entfernt. Bleibt dann niemand
+// mehr uebrig (z.B. wenn wirklich alle Gegner schon aussetzen), wird die Karte sauber abgebrochen
+// (npcCancelPendingCard()) statt sich endlos zu wiederholen.
 function npcDoSelectSkip(p, diff) {
-    const list = npcOpponentUnits(p);
+    const list = npcOpponentUnits(p).filter(entry => !entry.owner.skipped);
     if (list.length === 0) { npcCancelPendingCard(); return; }
-    const unit = (diff === 'easy') ? pickRandom(list).unit : npcLeadingOpponentTargetUnit(p);
+    let unit;
+    if (diff === 'easy') { unit = pickRandom(list).unit; }
+    else {
+        const temple = templeLandmark();
+        let best = list[0];
+        if (temple) {
+            let bestD = Infinity;
+            list.forEach(entry => { const d = getHexDistance(entry.unit.q, entry.unit.r, temple.q, temple.r); if (d < bestD) { bestD = d; best = entry; } });
+        } else { best = pickRandom(list); }
+        unit = best.unit;
+    }
     performHexClick(unit.q, unit.r, mapData.hexes[`${unit.q},${unit.r}`]);
 }
 function npcDoSelectTeleportUnit(p, diff) {
@@ -5193,8 +5245,16 @@ function updateApoUI() {
     s2.innerText = closedRings.middle ? "ZERSTÖRT" : "STABIL";
     s3.className = closedRings.inner ? "apo-status-dead" : (collectedArtifacts >= ringThresholds[2]-1 ? "apo-status-danger" : "apo-status-safe");
     s3.innerText = closedRings.inner ? "ZERSTÖRT" : "STABIL";
+    // Punkt 94 (Nutzerwunsch): "wäre es nicht sinnvoll, wenn da auch stehen würde, wieviel schon
+    // eingesammelt sind?" - vorher stand hier nur die Schwelle selbst (z.B. "bei 3 Artefakten"), der
+    // aktuelle Stand war nur an anderer Stelle im UI (#artifact-display) sichtbar. Jetzt direkt als
+    // Verhaeltnis "aktuell / Schwelle" - Math.min() faengt den kurzen Moment ab, in dem
+    // collectedArtifacts die Schwelle schon erreicht/ueberschritten hat, aber triggerKollaps() den
+    // Ring in genau diesem Frame noch nicht geschlossen hat (sonst kurzzeitig z.B. "4 / 3" sichtbar).
     let nextT = "KEINER";
-    if (!closedRings.outer) nextT = ringThresholds[0]; else if (!closedRings.middle) nextT = ringThresholds[1]; else if (!closedRings.inner) nextT = ringThresholds[2];
+    if (!closedRings.outer) nextT = `${Math.min(collectedArtifacts, ringThresholds[0])} / ${ringThresholds[0]}`;
+    else if (!closedRings.middle) nextT = `${Math.min(collectedArtifacts, ringThresholds[1])} / ${ringThresholds[1]}`;
+    else if (!closedRings.inner) nextT = `${Math.min(collectedArtifacts, ringThresholds[2])} / ${ringThresholds[2]}`;
     document.getElementById('apo-next-trigger').innerText = nextT;
     // Augen-Buttons: fuer einen bereits kollabierten Ring gibt es nichts mehr zu zeigen (die Felder
     // sind schon void) - Button deaktivieren und eine laufende Vorschau fuer genau diesen Ring beenden.
@@ -5223,14 +5283,19 @@ function updateApoUI() {
 function updateTurnOrderUI() {
     const row = document.getElementById('turnorder-row');
     if (!row || !players || !players.length) return;
-    let html = '<span class="to-label">Zugreihenfolge</span>';
+    let html = '<div class="to-label-group"><span class="to-label">Zugreihenfolge</span><span class="to-sublabel">Inventar</span></div>';
     players.forEach((p, i) => {
         if (i > 0) html += '<span class="to-arrow">›</span>';
         const isCurrent = i === currentPlayerIdx;
         const name = playerLabel(p) + (p.isNPC ? ' (KI)' : '');
+        // Punkt 94: .to-name ist per CSS auf 74px Breite gekappt (ellipsis) - die von
+        // disambiguateDuplicatePlayerNames() angehaengte Nummer bei doppelten KI-Namen ("KI (Schwer) 1")
+        // wuerde in dieser schmalen Anzeige sonst mit abgeschnitten werden. title-Attribut zeigt den
+        // vollen Namen zumindest per Desktop-Hover - der Name steht ausserdem ungekuerzt im Verlauf/
+        // Gegner-Zug-Fenster/Sieg-Panel, wo genug Platz ist.
         html += `<div class="to-player${isCurrent ? ' current' : ''}" style="--pc:${p.color};">
             <div class="to-token">${i + 1}</div>
-            <div class="to-name">${name}</div>
+            <div class="to-name" title="${escapeHtml(name)}">${name}</div>
             <div class="to-cards">${buildToCardsHtml(p)}</div>
         </div>`;
     });
